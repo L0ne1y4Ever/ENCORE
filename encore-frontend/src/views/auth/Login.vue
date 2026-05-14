@@ -3,11 +3,12 @@ import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
 import { useI18n } from 'vue-i18n'
+import LanguageSwitch from '../../components/LanguageSwitch.vue'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
-const { t, locale } = useI18n()
+const { t } = useI18n()
 
 const username = ref('')
 const password = ref('')
@@ -15,14 +16,10 @@ const isRegister = ref(false)
 const errorMsg = ref('')
 const submitting = ref(false)
 
-const toggleLang = () => {
-  locale.value = locale.value === 'en' ? 'zh' : 'en'
-}
-
 const handleSubmit = async () => {
   errorMsg.value = ''
   if (isRegister.value) {
-    alert('Mock Registration Success! Please login.')
+    alert(t('auth.registerSuccess'))
     isRegister.value = false
     return
   }
@@ -41,7 +38,7 @@ const handleSubmit = async () => {
       else router.push('/')
     }
   } catch (error) {
-    errorMsg.value = error instanceof Error ? error.message : 'Invalid credentials'
+    errorMsg.value = error instanceof Error ? error.message : t('auth.invalidCredentials')
   } finally {
     submitting.value = false
   }
@@ -51,9 +48,7 @@ const handleSubmit = async () => {
 <template>
   <div class="login-page">
     <div class="top-nav">
-      <div class="lang-toggle" @click="toggleLang">
-        {{ t('common.language') }}
-      </div>
+      <LanguageSwitch />
     </div>
     
     <div class="auth-container">
@@ -76,7 +71,7 @@ const handleSubmit = async () => {
           <div class="error" v-if="errorMsg">{{ errorMsg }}</div>
           
           <button type="submit" class="submit-btn" :disabled="submitting">
-            {{ submitting ? 'Loading...' : t('common.submit') }}
+            {{ submitting ? t('common.loading') : t('common.submit') }}
           </button>
         </form>
       </div>
@@ -99,19 +94,6 @@ const handleSubmit = async () => {
   position: absolute;
   top: var(--spacing-6);
   right: var(--spacing-6);
-  
-  .lang-toggle {
-    font-family: var(--font-family-sans);
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    color: var(--color-text-secondary);
-    transition: color 150ms ease;
-    
-    &:hover {
-      color: var(--color-text-primary);
-    }
-  }
 }
 
 .auth-container {

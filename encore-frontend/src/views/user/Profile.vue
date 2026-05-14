@@ -23,7 +23,7 @@ const handleLogout = async () => {
   <div class="profile-page">
     <header class="profile-header">
       <div class="user-info">
-        <h1>{{ authStore.currentUser?.username }}</h1>
+        <h1>{{ authStore.currentUser?.displayName || authStore.currentUser?.username }}</h1>
         <div class="role-tag">{{ authStore.currentUser?.role.toUpperCase() }}</div>
       </div>
       <button class="logout-btn" @click="handleLogout">{{ t('common.logout') }}</button>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed } from 'vue'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart, BarChart } from 'echarts/charts'
@@ -9,6 +9,7 @@ import {
   GridComponent,
 } from 'echarts/components'
 import VChart from 'vue-echarts'
+import { useI18n } from 'vue-i18n'
 
 use([
   CanvasRenderer,
@@ -19,20 +20,30 @@ use([
   GridComponent
 ])
 
-const stats = [
-  { label: 'Total Revenue', value: '$12,450' },
-  { label: 'Tickets Sold', value: '450' },
-  { label: 'Active Shows', value: '3' },
-  { label: 'Avg Attendance', value: '85%' }
-]
+const { t } = useI18n()
 
-const lineOption = ref({
+const stats = computed(() => [
+  { label: t('admin.totalRevenue'), value: '$12,450' },
+  { label: t('admin.ticketsSold'), value: '450' },
+  { label: t('admin.activeShows'), value: '3' },
+  { label: t('admin.avgAttendance'), value: '85%' }
+])
+
+const lineOption = computed(() => ({
   backgroundColor: 'transparent',
   tooltip: { trigger: 'axis' },
   grid: { top: 20, right: 20, bottom: 20, left: 40 },
   xAxis: {
     type: 'category',
-    data: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+    data: [
+      t('admin.weekdays.mon'),
+      t('admin.weekdays.tue'),
+      t('admin.weekdays.wed'),
+      t('admin.weekdays.thu'),
+      t('admin.weekdays.fri'),
+      t('admin.weekdays.sat'),
+      t('admin.weekdays.sun')
+    ],
     axisLine: { lineStyle: { color: '#8A8480' } }
   },
   yAxis: {
@@ -49,7 +60,7 @@ const lineOption = ref({
       itemStyle: { color: '#C8955A' }
     }
   ]
-})
+}))
 </script>
 
 <template>
@@ -63,7 +74,7 @@ const lineOption = ref({
 
     <div class="chart-section">
       <div class="chart-card">
-        <h3>7-Day Sales Trend</h3>
+        <h3>{{ t('admin.salesTrend') }}</h3>
         <div class="chart-container">
           <v-chart class="chart" :option="lineOption" autoresize />
         </div>

@@ -2,10 +2,13 @@
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { computed } from 'vue'
+import { useAuthStore } from '../stores/auth'
+import LanguageSwitch from '../components/LanguageSwitch.vue'
 
 const route = useRoute()
 const router = useRouter()
-const { t, locale } = useI18n()
+const authStore = useAuthStore()
+const { t } = useI18n()
 
 const menuItems = computed(() => [
   { path: '/admin', label: t('admin.dashboard'), icon: 'Histogram' },
@@ -15,8 +18,9 @@ const menuItems = computed(() => [
   { path: '/admin/ai', label: t('admin.ai'), icon: 'Cpu' },
 ])
 
-const toggleLang = () => {
-  locale.value = locale.value === 'en' ? 'zh' : 'en'
+const logout = async () => {
+  await authStore.logout()
+  router.push('/login')
 }
 </script>
 
@@ -36,8 +40,8 @@ const toggleLang = () => {
         </div>
       </nav>
       <div class="bottom-action">
-        <div class="lang-toggle" @click="toggleLang">{{ t('common.language') }}</div>
-        <div class="logout" @click="router.push('/')">{{ t('common.logout') }}</div>
+        <LanguageSwitch />
+        <button class="logout" type="button" @click="logout">{{ t('common.logout') }}</button>
       </div>
     </aside>
     <main class="content-area">
@@ -120,6 +124,7 @@ const toggleLang = () => {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: var(--spacing-3);
 
     .user-info {
       font-size: 12px;
@@ -127,9 +132,12 @@ const toggleLang = () => {
     }
 
     .logout {
+      background: transparent;
+      border: 0;
       font-size: 12px;
       color: var(--color-text-secondary);
       cursor: pointer;
+      font-family: var(--font-family-sans);
       &:hover {
         color: var(--color-error);
       }

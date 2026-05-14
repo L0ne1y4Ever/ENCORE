@@ -38,6 +38,7 @@ Implemented frontend areas:
 - Mock data and mock API modules for shows, seats, orders, and users.
 - Vue I18n is partially wired for Chinese/English.
 - Axios client reads `VITE_API_BASE_URL`, defaults to `http://localhost:8080`, and stores the backend `encore-token` in `sessionStorage`.
+- I18n now initializes from `localStorage` or browser language, writes `html lang` / `data-locale`, and uses a reusable `LanguageSwitch` component across login, user, admin, and check-in layouts.
 
 Backend foundation added on 2026-05-14:
 
@@ -52,6 +53,7 @@ Backend foundation added on 2026-05-14:
 - Auth/show APIs were verified against the initialized database and Redis login state.
 - Frontend auth and show browsing were switched from mock data to backend APIs on 2026-05-14.
 - Frontend build passed after adding Axios integration.
+- Chinese/English switching was expanded across the core demo pages and verified with browser automation on 2026-05-14.
 
 Important current limitation:
 

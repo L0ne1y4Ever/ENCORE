@@ -3,9 +3,11 @@ import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getOrderDetail, simulatePayment } from '../../api/order'
 import type { Order } from '../../mock/orders'
+import { useI18n } from 'vue-i18n'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 const orderId = route.query.id as string
 
 const order = ref<Order | null>(null)
@@ -29,7 +31,7 @@ const handlePay = async () => {
     // 支付成功，跳转到电子票页面
     router.replace(`/ticket/${orderId}`)
   } else {
-    alert('Payment failed or order expired.')
+    alert(t('payment.failed'))
   }
 }
 </script>
@@ -37,19 +39,19 @@ const handlePay = async () => {
 <template>
   <div class="payment-page" v-if="!loading && order">
     <div class="content">
-      <h1 class="page-title">Payment</h1>
+      <h1 class="page-title">{{ t('payment.title') }}</h1>
       
       <div class="order-info">
-        <div class="meta">Order ID: {{ order.id }}</div>
+        <div class="meta">{{ t('payment.orderId') }}: {{ order.id }}</div>
         <div class="amount">${{ order.totalAmount }}</div>
       </div>
 
       <div class="mock-gateway">
-        <div class="gateway-title">Mock Gateway</div>
-        <p>This is a simulated payment environment. Click below to complete the transaction.</p>
+        <div class="gateway-title">{{ t('payment.gateway') }}</div>
+        <p>{{ t('payment.description') }}</p>
         
         <button class="btn-pay" @click="handlePay" :disabled="paying">
-          {{ paying ? 'Processing...' : `Pay $${order.totalAmount}` }}
+          {{ paying ? t('common.processing') : t('payment.pay', { amount: order.totalAmount }) }}
         </button>
       </div>
     </div>

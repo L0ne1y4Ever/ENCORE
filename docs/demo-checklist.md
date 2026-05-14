@@ -13,6 +13,8 @@ Use this checklist to prepare the final course defense.
 - Backend login and show APIs can read initialized MySQL data.
 - Frontend login page authenticates through backend auth API.
 - Frontend home and show detail pages read backend show APIs.
+- Chinese/English switch is available on login, user, admin, and check-in screens.
+- Language selection persists after navigation and refresh.
 - Demo accounts are available.
 
 ## User Flow

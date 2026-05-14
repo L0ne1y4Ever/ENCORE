@@ -1,13 +1,10 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import LanguageSwitch from '../components/LanguageSwitch.vue'
 
 const router = useRouter()
-const { t, locale } = useI18n()
-
-const toggleLang = () => {
-  locale.value = locale.value === 'en' ? 'zh' : 'en'
-}
+const { t } = useI18n()
 </script>
 
 <template>
@@ -16,9 +13,9 @@ const toggleLang = () => {
     <header class="header">
       <div class="logo" @click="router.push('/')">ENCORE.</div>
       <nav class="nav-links">
-        <a href="#" @click.prevent="router.push('/')">Shows</a>
-        <a href="#" @click.prevent="router.push('/profile')">Profile</a>
-        <a href="#" @click.prevent="toggleLang">{{ t('common.language') }}</a>
+        <a href="#" @click.prevent="router.push('/')">{{ t('home.shows') }}</a>
+        <a href="#" @click.prevent="router.push('/profile')">{{ t('home.profile') }}</a>
+        <LanguageSwitch />
       </nav>
     </header>
 
@@ -61,6 +58,7 @@ const toggleLang = () => {
 
   .nav-links {
     display: flex;
+    align-items: center;
     gap: var(--spacing-5);
     
     a {
@@ -74,6 +72,19 @@ const toggleLang = () => {
       &:hover {
         color: var(--color-accent);
       }
+    }
+  }
+}
+
+@media (max-width: 640px) {
+  .header {
+    height: auto;
+    min-height: 80px;
+    padding: var(--spacing-3) var(--spacing-4);
+    gap: var(--spacing-3);
+
+    .nav-links {
+      gap: var(--spacing-3);
     }
   }
 }

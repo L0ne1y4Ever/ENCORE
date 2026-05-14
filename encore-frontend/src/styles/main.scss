@@ -13,6 +13,15 @@ html, body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: color 180ms ease, background-color 180ms ease;
+}
+
+html[data-locale='en'] body {
+  font-family: var(--font-family-sans);
+}
+
+html[data-locale='zh'] body {
+  font-family: var(--font-family-cjk);
 }
 
 #app {

@@ -5,8 +5,10 @@ import { getOrderDetail } from '../../api/order'
 import { getShowDetail, getShowSchedules } from '../../api/show'
 import type { Order } from '../../mock/orders'
 import type { Show, Schedule } from '../../mock/shows'
+import { useI18n } from 'vue-i18n'
 
 const route = useRoute()
+const { t, locale } = useI18n()
 const orderId = route.params.id as string
 
 const order = ref<Order | null>(null)
@@ -37,8 +39,9 @@ onMounted(async () => {
 
 const formatDate = (dateStr: string) => {
   const d = new Date(dateStr)
-  const date = d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).toUpperCase()
-  const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+  const dateLocale = locale.value === 'zh' ? 'zh-CN' : 'en-US'
+  const date = d.toLocaleDateString(dateLocale, { month: 'short', day: '2-digit', year: 'numeric' }).toUpperCase()
+  const time = d.toLocaleTimeString(dateLocale, { hour: '2-digit', minute: '2-digit' })
   return { date, time }
 }
 </script>
@@ -54,7 +57,7 @@ const formatDate = (dateStr: string) => {
         >
           <!-- 票头部 -->
           <div class="t-header">
-            <div class="back-link" @click="$router.push('/')">← BACK</div>
+            <div class="back-link" @click="$router.push('/')">← {{ t('common.back') }}</div>
             <div class="brand">ENCORE</div>
           </div>
           
@@ -70,18 +73,18 @@ const formatDate = (dateStr: string) => {
 
           <!-- 座位区 -->
           <div class="t-seat">
-            <div class="s-label">SEAT</div>
+            <div class="s-label">{{ t('ticket.seat') }}</div>
             <div class="s-details">
               <div class="s-item">
-                <div class="sm">SEC</div>
+                <div class="sm">{{ t('ticket.section') }}</div>
                 <div class="lg">VIP</div>
               </div>
               <div class="s-item">
-                <div class="sm">ROW</div>
+                <div class="sm">{{ t('ticket.row') }}</div>
                 <div class="lg">{{ ticket.seatId.split('-')[1] }}</div>
               </div>
               <div class="s-item">
-                <div class="sm">NO.</div>
+                <div class="sm">{{ t('ticket.number') }}</div>
                 <div class="lg">{{ ticket.seatId.split('-')[2] }}</div>
               </div>
             </div>
@@ -99,9 +102,9 @@ const formatDate = (dateStr: string) => {
 
           <!-- 状态区 -->
           <div class="t-footer">
-            <div class="status">Status: VALID</div>
+            <div class="status">{{ t('ticket.statusValid') }}</div>
             <div class="tag">
-              <span class="dot"></span> Unused
+              <span class="dot"></span> {{ t('ticket.unused') }}
             </div>
           </div>
         </div>

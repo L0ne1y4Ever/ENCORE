@@ -2,9 +2,11 @@
 import { ref, onMounted } from 'vue'
 import { getShowList } from '../../api/show'
 import type { Show } from '../../mock/shows'
+import { useI18n } from 'vue-i18n'
 
 const tableData = ref<Show[]>([])
 const loading = ref(true)
+const { t } = useI18n()
 
 onMounted(async () => {
   tableData.value = await getShowList()
@@ -15,8 +17,8 @@ onMounted(async () => {
 <template>
   <div class="admin-shows">
     <div class="toolbar">
-      <h2>Shows Management</h2>
-      <el-button type="primary" class="custom-btn">Add New Show</el-button>
+      <h2>{{ t('admin.showsManagement') }}</h2>
+      <el-button type="primary" class="custom-btn">{{ t('admin.addNewShow') }}</el-button>
     </div>
 
     <el-table 
@@ -26,13 +28,13 @@ onMounted(async () => {
       class="custom-table"
     >
       <el-table-column prop="id" label="ID" width="100" />
-      <el-table-column prop="title" label="Title" min-width="200" />
-      <el-table-column prop="category" label="Category" width="120" />
-      <el-table-column prop="duration" label="Duration (m)" width="120" />
-      <el-table-column label="Actions" width="150" fixed="right">
+      <el-table-column prop="title" :label="t('admin.title')" min-width="200" />
+      <el-table-column prop="category" :label="t('admin.category')" width="120" />
+      <el-table-column prop="duration" :label="t('admin.durationMinutes')" width="120" />
+      <el-table-column :label="t('admin.actions')" width="150" fixed="right">
         <template #default>
-          <el-button link type="primary" class="action-btn">Edit</el-button>
-          <el-button link type="danger" class="action-btn">Delete</el-button>
+          <el-button link type="primary" class="action-btn">{{ t('admin.edit') }}</el-button>
+          <el-button link type="danger" class="action-btn">{{ t('admin.delete') }}</el-button>
         </template>
       </el-table-column>
     </el-table>

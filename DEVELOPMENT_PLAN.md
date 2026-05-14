@@ -68,6 +68,8 @@ Progress:
 - Persisted Sa-Token header and current user in `sessionStorage` for route guards.
 - Replaced show list, detail, and schedule APIs with backend calls.
 - Verified frontend production build and backend CORS/login response for Vite origin.
+- Added persistent Chinese/English switching with a reusable segmented language control.
+- Localized the main user, admin, check-in, order, payment, and ticket visible text used in the demo flow.
 
 Commit trigger:
 

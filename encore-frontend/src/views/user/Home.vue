@@ -3,8 +3,10 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getShowList } from '../../api/show'
 import type { Show } from '../../mock/shows'
+import { useI18n } from 'vue-i18n'
 
 const router = useRouter()
+const { t } = useI18n()
 const shows = ref<Show[]>([])
 const loading = ref(true)
 
@@ -31,7 +33,7 @@ const goDetail = (id: string) => {
     </section>
 
     <section class="list-section">
-      <h2 class="section-title">Now Showing</h2>
+      <h2 class="section-title">{{ t('home.nowShowing') }}</h2>
       
       <div class="show-grid" v-if="!loading">
         <div 

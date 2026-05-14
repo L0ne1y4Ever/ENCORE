@@ -3,9 +3,11 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getSeatMap, lockSeats } from '../../api/seat'
 import type { Seat } from '../../mock/seats'
+import { useI18n } from 'vue-i18n'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 const scheduleId = route.params.id as string
 
 const seats = ref<Seat[]>([])
@@ -54,7 +56,7 @@ const submitLock = async () => {
     }))
     router.push('/confirm')
   } catch (e) {
-    alert('Seats are no longer available, please reselect.')
+    alert(t('seat.conflict'))
     seats.value = await getSeatMap(scheduleId) // refresh
     selectedSeatIds.value.clear()
   } finally {
@@ -77,7 +79,7 @@ const seatGrid = computed(() => {
   <div class="seat-selection">
     <div class="main-area">
       <header class="stage-header">
-        <div class="stage-bar">STAGE</div>
+        <div class="stage-bar">{{ t('seat.stage') }}</div>
       </header>
 
       <div class="seat-map" v-if="!loading">
@@ -93,7 +95,7 @@ const seatGrid = computed(() => {
                 { 'selected': selectedSeatIds.has(seat.id) }
               ]"
               @click="toggleSeat(seat)"
-              :title="`Row ${seat.row} Col ${seat.col} - $${seat.price}`"
+              :title="`${t('seat.row')} ${seat.row} ${t('seat.col')} ${seat.col} - $${seat.price}`"
             >
             </div>
           </div>
@@ -102,25 +104,25 @@ const seatGrid = computed(() => {
     </div>
 
     <aside class="side-panel">
-      <h2>Selection</h2>
+      <h2>{{ t('seat.selection') }}</h2>
       
       <div class="legend">
-        <div class="legend-item"><div class="box status-available"></div> Available</div>
-        <div class="legend-item"><div class="box status-locked"></div> Locked</div>
-        <div class="legend-item"><div class="box status-sold"></div> Sold</div>
-        <div class="legend-item"><div class="box selected"></div> Your Selection</div>
+        <div class="legend-item"><div class="box status-available"></div> {{ t('seat.available') }}</div>
+        <div class="legend-item"><div class="box status-locked"></div> {{ t('seat.locked') }}</div>
+        <div class="legend-item"><div class="box status-sold"></div> {{ t('seat.sold') }}</div>
+        <div class="legend-item"><div class="box selected"></div> {{ t('seat.yourSelection') }}</div>
       </div>
 
       <div class="selected-list">
-        <div class="empty-msg" v-if="selectedSeats.length === 0">No seats selected</div>
+        <div class="empty-msg" v-if="selectedSeats.length === 0">{{ t('seat.noSeats') }}</div>
         <div v-for="s in selectedSeats" :key="s.id" class="selected-item">
-          <span>Row {{ s.row }} Col {{ s.col }}</span>
+          <span>{{ t('seat.row') }} {{ s.row }} {{ t('seat.col') }} {{ s.col }}</span>
           <span>${{ s.price }}</span>
         </div>
       </div>
 
       <div class="total-bar">
-        <span>Total</span>
+        <span>{{ t('seat.total') }}</span>
         <span class="amount">${{ totalAmount }}</span>
       </div>
 
@@ -129,7 +131,7 @@ const seatGrid = computed(() => {
         :disabled="selectedSeatIds.size === 0 || locking"
         @click="submitLock"
       >
-        {{ locking ? 'Locking...' : 'Checkout' }}
+        {{ locking ? t('seat.locking') : t('seat.checkout') }}
       </button>
     </aside>
   </div>

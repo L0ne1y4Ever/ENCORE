@@ -5,7 +5,7 @@ import { getShowDetail, getShowSchedules } from '../../api/show'
 import type { Show, Schedule } from '../../mock/shows'
 import { useI18n } from 'vue-i18n'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const show = ref<Show | null>(null)
@@ -41,7 +41,8 @@ const submitReservation = () => {
 
 const formatDate = (dateStr: string) => {
   const d = new Date(dateStr)
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+  const dateLocale = locale.value === 'zh' ? 'zh-CN' : 'en-US'
+  return d.toLocaleDateString(dateLocale, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 </script>
 
@@ -64,7 +65,7 @@ const formatDate = (dateStr: string) => {
         </div>
         <div class="meta-item">
           <label>{{ t('detail.duration') }}</label>
-          <div>{{ show.duration }} Mins</div>
+          <div>{{ show.duration }} {{ t('detail.minutes') }}</div>
         </div>
         <div class="meta-item">
           <label>{{ t('detail.tags') }}</label>
@@ -112,7 +113,7 @@ const formatDate = (dateStr: string) => {
               </div>
             </div>
             <div v-if="schedules.length === 0" class="empty-state">
-              No schedules available for this show.
+              {{ t('detail.emptySchedules') }}
             </div>
           </div>
         </section>

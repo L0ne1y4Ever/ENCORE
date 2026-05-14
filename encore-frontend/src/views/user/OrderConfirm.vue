@@ -2,8 +2,10 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { createOrder } from '../../api/order'
+import { useI18n } from 'vue-i18n'
 
 const router = useRouter()
+const { t } = useI18n()
 const orderData = ref<any>(null)
 const timeLeft = ref(15 * 60)
 const timer = ref<number | null>(null)
@@ -22,7 +24,7 @@ onMounted(() => {
       timeLeft.value--
     } else {
       clearInterval(timer.value!)
-      alert('Time expired. Order cancelled.')
+      alert(t('order.expired'))
       router.replace('/')
     }
   }, 1000) as unknown as number
@@ -46,7 +48,7 @@ const doConfirm = async () => {
     sessionStorage.removeItem('tempOrder')
     router.push(`/payment?id=${orderId}`)
   } catch (e) {
-    alert('Failed to create order')
+    alert(t('order.createFailed'))
   } finally {
     submitting.value = false
   }
@@ -56,26 +58,26 @@ const doConfirm = async () => {
 <template>
   <div class="confirm-page" v-if="orderData">
     <div class="content">
-      <h1 class="page-title">Order Confirmation</h1>
+      <h1 class="page-title">{{ t('order.confirmation') }}</h1>
       
       <div class="timer-box">
-        <div class="timer-label">Please complete your payment within</div>
+        <div class="timer-label">{{ t('order.paymentDeadline') }}</div>
         <div class="timer-value">{{ formatTime(timeLeft) }}</div>
       </div>
 
       <div class="summary-card">
         <div class="row">
-          <span class="label">Seats</span>
-          <span class="value">{{ orderData.seatIds.length }} Tickets</span>
+          <span class="label">{{ t('order.seats') }}</span>
+          <span class="value">{{ orderData.seatIds.length }} {{ t('order.tickets') }}</span>
         </div>
         <div class="row total-row">
-          <span class="label">Total Amount</span>
+          <span class="label">{{ t('order.totalAmount') }}</span>
           <span class="value amount">${{ orderData.totalAmount }}</span>
         </div>
       </div>
 
       <button class="btn-confirm" @click="doConfirm" :disabled="submitting">
-        {{ submitting ? 'Processing...' : 'Proceed to Payment' }}
+        {{ submitting ? t('common.processing') : t('order.proceedToPayment') }}
       </button>
     </div>
   </div>
