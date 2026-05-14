@@ -13,12 +13,13 @@ const username = ref('')
 const password = ref('')
 const isRegister = ref(false)
 const errorMsg = ref('')
+const submitting = ref(false)
 
 const toggleLang = () => {
   locale.value = locale.value === 'en' ? 'zh' : 'en'
 }
 
-const handleSubmit = () => {
+const handleSubmit = async () => {
   errorMsg.value = ''
   if (isRegister.value) {
     alert('Mock Registration Success! Please login.')
@@ -26,8 +27,10 @@ const handleSubmit = () => {
     return
   }
   
-  const success = authStore.login(username.value, password.value)
-  if (success) {
+  submitting.value = true
+  try {
+    const success = await authStore.login(username.value, password.value)
+    if (!success) return
     const role = authStore.currentUser?.role
     const redirect = route.query.redirect as string
     if (redirect) {
@@ -37,8 +40,10 @@ const handleSubmit = () => {
       else if (role === 'checker') router.push('/checkin')
       else router.push('/')
     }
-  } else {
-    errorMsg.value = 'Invalid Credentials. Try user/123, admin/123'
+  } catch (error) {
+    errorMsg.value = error instanceof Error ? error.message : 'Invalid credentials'
+  } finally {
+    submitting.value = false
   }
 }
 </script>
@@ -70,7 +75,9 @@ const handleSubmit = () => {
           
           <div class="error" v-if="errorMsg">{{ errorMsg }}</div>
           
-          <button type="submit" class="submit-btn">{{ t('common.submit') }}</button>
+          <button type="submit" class="submit-btn" :disabled="submitting">
+            {{ submitting ? 'Loading...' : t('common.submit') }}
+          </button>
         </form>
       </div>
     </div>
@@ -197,6 +204,11 @@ const handleSubmit = () => {
 
     &:hover {
       background-color: var(--color-accent);
+    }
+
+    &:disabled {
+      cursor: wait;
+      opacity: 0.7;
     }
   }
 }

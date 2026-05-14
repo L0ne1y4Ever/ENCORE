@@ -13,8 +13,8 @@ const reservations = ref([
   { id: 'r-001', show: 'COLDPLAY: MUSIC OF THE SPHERES', date: '2026-08-15', lineNum: 8204 }
 ])
 
-const handleLogout = () => {
-  authStore.logout()
+const handleLogout = async () => {
+  await authStore.logout()
   router.push('/login')
 }
 </script>

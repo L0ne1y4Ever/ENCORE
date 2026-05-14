@@ -50,6 +50,8 @@ Commit trigger:
 
 ## Phase 2 - Auth And Catalog Integration
 
+Status: in progress on 2026-05-14
+
 Target outcome: frontend login and show browsing use real backend APIs.
 
 - Implement register/login/logout/current-user APIs.
@@ -58,6 +60,14 @@ Target outcome: frontend login and show browsing use real backend APIs.
 - Add Axios client in frontend.
 - Replace mock auth and show APIs with backend calls.
 - Preserve role-based route guards.
+
+Progress:
+
+- Added Axios frontend client with `VITE_API_BASE_URL`.
+- Replaced frontend login/logout/current-user flow with backend auth APIs.
+- Persisted Sa-Token header and current user in `sessionStorage` for route guards.
+- Replaced show list, detail, and schedule APIs with backend calls.
+- Verified frontend production build and backend CORS/login response for Vite origin.
 
 Commit trigger:
 

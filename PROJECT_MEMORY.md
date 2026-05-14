@@ -31,12 +31,13 @@ The current implemented application is `encore-frontend`, a Vue 3 + Vite + TypeS
 
 Implemented frontend areas:
 
-- Auth page with mock login/register.
+- Auth page with backend login/logout integration and mock-only register placeholder.
 - User layout with show browsing, show detail, reservation, seat selection, order confirmation, mock payment, electronic ticket, profile.
 - Admin layout with dashboard and show management table.
 - Check-in layout with single-screen scanner simulation.
 - Mock data and mock API modules for shows, seats, orders, and users.
 - Vue I18n is partially wired for Chinese/English.
+- Axios client reads `VITE_API_BASE_URL`, defaults to `http://localhost:8080`, and stores the backend `encore-token` in `sessionStorage`.
 
 Backend foundation added on 2026-05-14:
 
@@ -49,6 +50,8 @@ Backend foundation added on 2026-05-14:
 - Docker Compose MySQL/Redis startup was verified after Docker Desktop became available.
 - Seed data was verified from MySQL: 4 demo accounts, 4 shows, and 5 schedules.
 - Auth/show APIs were verified against the initialized database and Redis login state.
+- Frontend auth and show browsing were switched from mock data to backend APIs on 2026-05-14.
+- Frontend build passed after adding Axios integration.
 
 Important current limitation:
 
@@ -180,7 +183,6 @@ git push origin main
 
 ## Next Recommended Work
 
-1. Replace frontend mock auth/show APIs with Axios calls.
-2. Preserve role-based route guards while switching login/current-user to backend state.
-3. Commit and push the first backend runnable loop.
-4. Start Phase 3 seat/order/payment backend after frontend auth/catalog integration is stable.
+1. Commit the Phase 2 frontend auth/catalog integration.
+2. Resolve GitHub HTTPS credentials, then push local commits to `origin/main`.
+3. Start Phase 3 seat/order/payment backend after frontend auth/catalog integration is stable.

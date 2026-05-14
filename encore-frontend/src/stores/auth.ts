@@ -1,27 +1,65 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { mockUsers } from '../mock/users'
-import type { User } from '../mock/users'
+import { getCurrentUserApi, loginApi, logoutApi } from '../api/auth'
+import type { UserProfile } from '../api/auth'
+
+const USER_KEY = 'encore.currentUser'
+
+function readStoredUser(): UserProfile | null {
+  const raw = sessionStorage.getItem(USER_KEY)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as UserProfile
+  } catch {
+    sessionStorage.removeItem(USER_KEY)
+    return null
+  }
+}
+
+function saveStoredUser(user: UserProfile | null) {
+  if (user) {
+    sessionStorage.setItem(USER_KEY, JSON.stringify(user))
+  } else {
+    sessionStorage.removeItem(USER_KEY)
+  }
+}
 
 export const useAuthStore = defineStore('auth', () => {
-  const currentUser = ref<User | null>(null)
+  const currentUser = ref<UserProfile | null>(readStoredUser())
   
-  function login(username: string, password?: string) {
-    const user = mockUsers.find(u => u.username === username && u.password === password)
-    if (user) {
-      currentUser.value = user
-      return true
-    }
-    return false
+  async function login(username: string, password: string) {
+    const user = await loginApi(username, password)
+    currentUser.value = user
+    saveStoredUser(user)
+    return true
   }
 
-  function logout() {
-    currentUser.value = null
+  async function logout() {
+    try {
+      await logoutApi()
+    } finally {
+      currentUser.value = null
+      saveStoredUser(null)
+    }
+  }
+
+  async function refreshCurrentUser() {
+    try {
+      const user = await getCurrentUserApi()
+      currentUser.value = user
+      saveStoredUser(user)
+      return user
+    } catch {
+      currentUser.value = null
+      saveStoredUser(null)
+      return null
+    }
   }
 
   return {
     currentUser,
     login,
-    logout
+    logout,
+    refreshCurrentUser
   }
 })

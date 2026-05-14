@@ -11,6 +11,8 @@ Use this checklist to prepare the final course defense.
 - MySQL and Redis can start through Docker Compose.
 - `GET /api/health` returns `code:0`.
 - Backend login and show APIs can read initialized MySQL data.
+- Frontend login page authenticates through backend auth API.
+- Frontend home and show detail pages read backend show APIs.
 - Demo accounts are available.
 
 ## User Flow

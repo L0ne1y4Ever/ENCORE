@@ -1,17 +1,14 @@
-import { mockRequest } from './index'
-import { mockShows, mockSchedules } from '../mock/shows'
+import { apiClient, requestData } from './index'
 import type { Show, Schedule } from '../mock/shows'
 
 export function getShowList(): Promise<Show[]> {
-  return mockRequest(mockShows)
+  return requestData<Show[]>(apiClient.get('/api/shows'))
 }
 
-export function getShowDetail(id: string): Promise<Show | undefined> {
-  const show = mockShows.find(s => s.id === id)
-  return mockRequest(show)
+export function getShowDetail(id: string): Promise<Show> {
+  return requestData<Show>(apiClient.get(`/api/shows/${id}`))
 }
 
 export function getShowSchedules(showId: string): Promise<Schedule[]> {
-  const schedules = mockSchedules[showId] || []
-  return mockRequest(schedules)
+  return requestData<Schedule[]>(apiClient.get(`/api/shows/${showId}/schedules`))
 }
