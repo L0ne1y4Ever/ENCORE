@@ -48,3 +48,57 @@ CREATE TABLE IF NOT EXISTS show_schedule (
     FOREIGN KEY (show_id) REFERENCES encore_show (id)
     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS schedule_seat (
+  id VARCHAR(64) PRIMARY KEY,
+  schedule_id VARCHAR(32) NOT NULL,
+  seat_code VARCHAR(32) NOT NULL,
+  row_no INT NOT NULL,
+  col_no INT NOT NULL,
+  section VARCHAR(32) NOT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'AVAILABLE',
+  price DECIMAL(10, 2) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_schedule_seat_code (schedule_id, seat_code),
+  INDEX idx_schedule_seat_schedule_status (schedule_id, status),
+  CONSTRAINT fk_schedule_seat_schedule
+    FOREIGN KEY (schedule_id) REFERENCES show_schedule (id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS ticket_order (
+  id VARCHAR(40) PRIMARY KEY,
+  user_id VARCHAR(32) NOT NULL,
+  schedule_id VARCHAR(32) NOT NULL,
+  total_amount DECIMAL(10, 2) NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expires_at DATETIME NOT NULL,
+  paid_at DATETIME NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_ticket_order_user_status (user_id, status),
+  INDEX idx_ticket_order_schedule_status (schedule_id, status),
+  CONSTRAINT fk_ticket_order_user
+    FOREIGN KEY (user_id) REFERENCES user_account (id),
+  CONSTRAINT fk_ticket_order_schedule
+    FOREIGN KEY (schedule_id) REFERENCES show_schedule (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS ticket_item (
+  id VARCHAR(48) PRIMARY KEY,
+  order_id VARCHAR(40) NOT NULL,
+  schedule_id VARCHAR(32) NOT NULL,
+  seat_id VARCHAR(32) NOT NULL,
+  ticket_code VARCHAR(64) NOT NULL UNIQUE,
+  status VARCHAR(32) NOT NULL DEFAULT 'UNUSED',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_ticket_item_order (order_id),
+  INDEX idx_ticket_item_code_status (ticket_code, status),
+  CONSTRAINT fk_ticket_item_order
+    FOREIGN KEY (order_id) REFERENCES ticket_order (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_ticket_item_schedule_seat
+    FOREIGN KEY (schedule_id, seat_id) REFERENCES schedule_seat (schedule_id, seat_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

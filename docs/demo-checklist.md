@@ -28,6 +28,7 @@ Use this checklist to prepare the final course defense.
 - User creates an order and sees countdown.
 - User completes mock payment.
 - User opens electronic ticket and sees ticket code.
+- Seat selection, order creation, payment, and ticket generation use backend APIs.
 
 ## Check-In Flow
 

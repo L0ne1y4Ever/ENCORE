@@ -25,6 +25,11 @@ Useful endpoints:
 - `POST http://localhost:8080/api/auth/login`
 - `GET http://localhost:8080/api/shows`
 - `GET http://localhost:8080/api/shows/s-001/schedules`
+- `GET http://localhost:8080/api/schedules/sch-101/seats`
+- `POST http://localhost:8080/api/schedules/sch-101/seats/lock`
+- `POST http://localhost:8080/api/orders`
+- `GET http://localhost:8080/api/orders/{id}`
+- `POST http://localhost:8080/api/orders/{id}/pay`
 - `http://localhost:8080/doc.html`
 
 Demo accounts:

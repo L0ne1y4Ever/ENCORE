@@ -90,3 +90,44 @@ ON DUPLICATE KEY UPDATE
   end_time = VALUES(end_time),
   status = VALUES(status),
   price_range = VALUES(price_range);
+
+INSERT INTO schedule_seat (
+  id, schedule_id, seat_code, row_no, col_no, section, status, price
+)
+SELECT
+  CONCAT(s.id, ':seat-', r.row_no, '-', c.col_no) AS id,
+  s.id AS schedule_id,
+  CONCAT('seat-', r.row_no, '-', c.col_no) AS seat_code,
+  r.row_no,
+  c.col_no,
+  CASE
+    WHEN r.row_no <= 3 THEN 'VIP'
+    WHEN r.row_no <= 7 THEN 'A'
+    ELSE 'B'
+  END AS section,
+  CASE
+    WHEN c.col_no = 8 AND r.row_no IN (1, 5, 9) THEN 'DISABLED'
+    WHEN r.row_no = 10 AND c.col_no IN (3, 4, 5) THEN 'SOLD'
+    ELSE 'AVAILABLE'
+  END AS status,
+  CASE
+    WHEN r.row_no <= 3 THEN 150
+    WHEN r.row_no <= 7 THEN 100
+    ELSE 50
+  END AS price
+FROM show_schedule s
+CROSS JOIN (
+  SELECT 1 AS row_no UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5
+  UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10
+) r
+CROSS JOIN (
+  SELECT 1 AS col_no UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5
+  UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10
+  UNION ALL SELECT 11 UNION ALL SELECT 12 UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15
+) c
+WHERE TRUE
+ON DUPLICATE KEY UPDATE
+  row_no = VALUES(row_no),
+  col_no = VALUES(col_no),
+  section = VALUES(section),
+  price = VALUES(price);

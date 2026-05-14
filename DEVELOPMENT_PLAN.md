@@ -77,6 +77,8 @@ Commit trigger:
 
 ## Phase 3 - Seat Locking, Orders, And Payment
 
+Status: in progress on 2026-05-14
+
 Target outcome: full user purchase flow works against backend state.
 
 - Implement schedule seat query.
@@ -86,6 +88,17 @@ Target outcome: full user purchase flow works against backend state.
 - Implement mock payment.
 - Generate ticket items after successful payment.
 - Update frontend seat selection, confirmation, payment, and ticket pages.
+
+Progress:
+
+- Added `schedule_seat`, `ticket_order`, and `ticket_item` schema.
+- Seeded deterministic 10x15 seat pools for each schedule.
+- Implemented schedule seat query API with Redis lock overlay.
+- Implemented Redis seat lock API with 15-minute TTL and conflict checks.
+- Implemented order creation with pending-order idempotency for repeated submits.
+- Implemented order detail, timeout expiration, mock payment, seat sale finalization, and ticket status transition.
+- Switched frontend seat/order API layer from mock data to backend APIs without changing the optimized page layouts.
+- Verified lock -> order -> payment -> ticket flow against Docker MySQL and Redis.
 
 Commit trigger:
 

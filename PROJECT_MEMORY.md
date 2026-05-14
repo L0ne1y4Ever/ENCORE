@@ -54,10 +54,18 @@ Backend foundation added on 2026-05-14:
 - Frontend auth and show browsing were switched from mock data to backend APIs on 2026-05-14.
 - Frontend build passed after adding Axios integration.
 - Chinese/English switching was expanded across the core demo pages and verified with browser automation on 2026-05-14.
+- Phase 3 backend started on 2026-05-14:
+  - `schedule_seat` stores per-schedule seat pools.
+  - Redis keys `encore:seat-lock:{scheduleId}:{seatId}` represent temporary 15-minute seat locks.
+  - `ticket_order` stores pending/paid/expired order state.
+  - `ticket_item` stores generated ticket codes and transitions from `RESERVED` to `UNUSED` after mock payment.
+  - Frontend `api/seat.ts` and `api/order.ts` call backend APIs instead of mock data.
 
 Important current limitation:
 
-- Seat locking, order creation, payment, ticket generation, and check-in are currently simulated in frontend memory/sessionStorage.
+- Check-in is still simulated in frontend memory/sessionStorage.
+- Admin schedule/order pages currently use frontend demo data and should be wired to backend APIs later.
+- Seat locking, order creation, mock payment, and ticket generation now have backend APIs, but the full browser purchase flow still needs visual verification after the user's latest frontend changes are committed.
 
 ## Target Technical Stack
 
@@ -185,6 +193,6 @@ git push origin main
 
 ## Next Recommended Work
 
-1. Commit the Phase 2 frontend auth/catalog integration.
-2. Resolve GitHub HTTPS credentials, then push local commits to `origin/main`.
-3. Start Phase 3 seat/order/payment backend after frontend auth/catalog integration is stable.
+1. Commit or review the user's latest frontend UI optimizations.
+2. Visually verify the full browser purchase flow after those frontend edits are settled.
+3. Start Phase 4 check-in verification backend and replace the check-in mock screen.
