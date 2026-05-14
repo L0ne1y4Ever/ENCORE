@@ -8,7 +8,7 @@ Build the course acceptance version of ENCORE from the current Vue frontend prot
 
 ## Phase 0 - Repository Memory And Workflow
 
-Status: in progress on 2026-05-14
+Status: completed on 2026-05-14
 
 - Add repository-level `.gitignore`.
 - Add `PROJECT_MEMORY.md`.
@@ -21,6 +21,8 @@ Status: in progress on 2026-05-14
 
 ## Phase 1 - Backend Foundation
 
+Status: completed on 2026-05-14
+
 Target outcome: backend can start and expose health/auth/show APIs.
 
 - Create `encore-backend` Spring Boot 3 project.
@@ -30,6 +32,15 @@ Target outcome: backend can start and expose health/auth/show APIs.
 - Add development profile and environment examples.
 - Add database schema and seed data matching current frontend mock data.
 - Add Docker Compose services for MySQL and Redis.
+
+Progress:
+
+- Created `encore-backend` Spring Boot 3 Maven project.
+- Added unified response, global exception handling, CORS, Knife4j config, and dev profile.
+- Added health, auth, show, show detail, and schedule APIs.
+- Added MyBatis-Plus entities/mappers/services for users, shows, and schedules.
+- Added MySQL schema/seed scripts and Docker Compose services for MySQL and Redis.
+- Verified Docker Compose MySQL/Redis startup, database seed data, `mvn test`, `GET /api/health`, login, current user, show list, show detail, and schedule list APIs.
 
 Commit trigger:
 

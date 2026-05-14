@@ -16,12 +16,20 @@ target/
 *.war
 *.ear
 
+# Python scripts
+__pycache__/
+*.py[cod]
+
 # Local environment
 .env
 .env.*
 !.env.example
 application-local.yml
 application-local.yaml
+
+# Local assistant/tooling state
+.claude/
+.codex/
 
 # IDE / OS
 .idea/
@@ -36,7 +44,11 @@ logs/
 *.log
 *.tmp
 *.bak
+~$*
 
 # Generated reports
 jmeter-report/
 skywalking-screenshots/
+
+# Generated documents
+*_temp.docx

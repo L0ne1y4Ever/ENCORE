@@ -1,0 +1,40 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: encore-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${ENCORE_MYSQL_ROOT_PASSWORD:-root123}
+      MYSQL_DATABASE: ${ENCORE_DB_NAME:-encore}
+      MYSQL_USER: ${ENCORE_DB_USER:-encore}
+      MYSQL_PASSWORD: ${ENCORE_DB_PASSWORD:-encore123}
+      TZ: Asia/Shanghai
+    ports:
+      - "${ENCORE_DB_PORT:-3307}:3306"
+    volumes:
+      - encore-mysql-data:/var/lib/mysql
+      - ./encore-backend/src/main/resources/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${ENCORE_MYSQL_ROOT_PASSWORD:-root123}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: encore-redis
+    restart: unless-stopped
+    ports:
+      - "${ENCORE_REDIS_PORT:-6379}:6379"
+    volumes:
+      - encore-redis-data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  encore-mysql-data:
+  encore-redis-data:

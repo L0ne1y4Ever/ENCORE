@@ -7,8 +7,10 @@ Use this checklist to prepare the final course defense.
 - GitHub repository can be cloned.
 - Dependencies can be installed.
 - Frontend can build with `npm run build`.
-- Backend can start after it is added.
-- MySQL and Redis can start through Docker Compose after deployment files are added.
+- Backend can start with `mvn spring-boot:run`.
+- MySQL and Redis can start through Docker Compose.
+- `GET /api/health` returns `code:0`.
+- Backend login and show APIs can read initialized MySQL data.
 - Demo accounts are available.
 
 ## User Flow
