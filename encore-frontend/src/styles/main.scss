@@ -1,0 +1,74 @@
+@import './variables.scss';
+
+/* 全局重置与基础样式 */
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font-family: var(--font-family-cjk);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 覆盖 Element Plus 的暗黑主题变量以匹配系统 Token */
+:root.dark {
+  --el-bg-color: var(--color-bg-base);
+  --el-bg-color-overlay: var(--color-bg-overlay);
+  --el-text-color-primary: var(--color-text-primary);
+  --el-text-color-regular: var(--color-text-secondary);
+  --el-border-color: var(--color-border);
+  --el-border-color-light: var(--color-border-strong);
+  --el-color-primary: var(--color-accent);
+  --el-color-primary-light-3: var(--color-accent-hover);
+  --el-color-success: var(--color-success);
+  --el-color-warning: var(--color-warning);
+  --el-color-danger: var(--color-error);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+  font-family: var(--font-family-display);
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+  transition: color 150ms ease;
+  &:hover {
+    color: var(--color-accent-hover);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* 路由全局动效 (Fade + 上移) */
+.page-fade-enter-active,
+.page-fade-leave-active {
+  transition: opacity 300ms cubic-bezier(0.4, 0, 0.2, 1), transform 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.page-fade-enter-from {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+.page-fade-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}

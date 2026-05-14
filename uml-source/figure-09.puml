@@ -1,0 +1,39 @@
+@startuml
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 13
+title 图1  ENCORE 核心业务总活动图
+
+|票务管理员|
+start
+:创建演出分类与剧目;
+:维护演出厅与座位布局;
+:为剧目创建演出场次;
+:根据演出厅生成场次座位票池;
+:开放场次售票 (ON_SALE);
+|注册用户|
+:浏览演出与场次;
+:进入可视化选座;
+:选择座位;
+note right: 座位状态 LOCKED, 创建待支付订单
+:在订单倒计时内模拟支付;
+if (支付成功?) then (是)
+  :订单 PAID, 座位 SOLD;
+  :系统生成电子票;
+else (否 / 超时)
+  :订单 EXPIRED 或 CANCELLED;
+  :座位释放为 AVAILABLE;
+  stop
+endif
+|检票员|
+:扫描 / 输入票号;
+:系统核验票据;
+if (有效?) then (是)
+  :核销入场, 票据 CHECKED_IN;
+else (否)
+  :提示异常;
+endif
+|票务管理员|
+:统计销售额 / 上座率 / 热门演出;
+stop
+@enduml

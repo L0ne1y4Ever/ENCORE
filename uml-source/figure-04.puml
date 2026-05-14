@@ -1,0 +1,31 @@
+@startuml
+!pragma teoz true
+left to right direction
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 13
+title 图7  游客浏览演出用例图
+
+actor 游客 as Guest
+
+rectangle "演出浏览子系统" {
+  usecase "浏览演出列表" as UC1
+  usecase "按分类筛选" as UC2
+  usecase "按关键词搜索" as UC3
+  usecase "查看演出详情" as UC4
+  usecase "查看场次信息" as UC5
+  usecase "查看座位布局预览" as UC6
+  usecase "查看公告" as UC7
+}
+
+Guest --> UC1
+Guest --> UC2
+Guest --> UC3
+Guest --> UC4
+Guest --> UC5
+Guest --> UC6
+Guest --> UC7
+
+UC4 ..> UC5 : <<include>>
+UC5 ..> UC6 : <<extend>>
+@enduml

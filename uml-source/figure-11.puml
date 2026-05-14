@@ -1,0 +1,33 @@
+@startuml
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 13
+title 图20  订单支付活动图
+
+start
+:用户进入支付页;
+:订单状态 PENDING_PAYMENT;
+:校验订单倒计时;
+if (超时?) then (是)
+  :订单 EXPIRED;
+  :释放座位 -> AVAILABLE;
+  :票据未生成;
+  stop
+else (否)
+  :用户确认模拟支付;
+  :提交支付参数;
+  if (模拟支付通过?) then (是)
+    :写入 payment_record;
+    :订单 PAID;
+    :座位 SOLD;
+    :批量生成 ticket_item (UNUSED);
+    :返回成功;
+    stop
+  else (否)
+    :订单保持 PENDING_PAYMENT;
+    :允许用户重试;
+    :若用户取消 -> CANCELLED, 释放座位;
+    stop
+  endif
+endif
+@enduml

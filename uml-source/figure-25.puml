@@ -1,0 +1,46 @@
+@startuml
+!pragma teoz true
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 12
+title 图16  WebSocket 实时多人选座顺序图
+
+actor "用户A 浏览器" as UA
+actor "用户B 浏览器" as UB
+participant "Nginx" as NGX
+participant "WebSocketServer\n(Spring + STOMP)" as WS
+participant "SeatLockService" as SVC
+database "Redis" as RDS
+database "MySQL" as DB
+
+UA -> NGX: WebSocket 连接 /ws
+NGX -> WS: HTTP Upgrade
+WS --> UA: STOMP CONNECTED
+UA -> WS: SUBSCRIBE /topic/schedule/{id}/seat
+
+UB -> NGX: WebSocket 连接 /ws
+NGX -> WS: HTTP Upgrade
+WS --> UB: STOMP CONNECTED
+UB -> WS: SUBSCRIBE /topic/schedule/{id}/seat
+
+UA -> WS: SEND /app/seat/lock\n{seatIds:[12,13]}
+WS -> SVC: lockSeats(scheduleId, seatIds, userA)
+SVC -> RDS: SETNX schedule:{id}:seat:12 NX EX 900
+RDS --> SVC: OK
+SVC -> RDS: SETNX schedule:{id}:seat:13 NX EX 900
+RDS --> SVC: OK
+SVC -> DB: UPDATE schedule_seat SET status=LOCKED
+DB --> SVC: rows=2
+SVC --> WS: lockedSeats=[12,13]
+
+WS -> UA: /user/queue/lock-result\n{success:true}
+WS ->> UA: /topic/schedule/{id}/seat\n{seat:12, status:LOCKED, by:userA}
+WS ->> UB: /topic/schedule/{id}/seat\n{seat:12, status:LOCKED, by:userA}
+
+note over UB
+  用户B 屏幕上 12/13 号座位
+  即时变红 (LOCKED)
+  无需刷新, 无需轮询
+  推送 P95 ≤ 200ms
+end note
+@enduml

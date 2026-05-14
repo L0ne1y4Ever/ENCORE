@@ -1,0 +1,49 @@
+@startuml
+!pragma teoz true
+left to right direction
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 13
+title 图8  注册用户购票用例图
+
+actor 注册用户 as User
+
+rectangle "购票子系统" {
+  usecase "登录账号" as UC1
+  usecase "查看场次" as UC2
+  usecase "进入可视化选座" as UC3
+  usecase "选择座位" as UC4
+  usecase "确认订单" as UC5
+  usecase "模拟支付" as UC6
+  usecase "取消订单" as UC7
+  usecase "查看我的订单" as UC8
+  usecase "查看电子票" as UC9
+  usecase "查看二维码模拟码" as UC10
+  usecase "舞台视角预览" as UC11
+  usecase "生成拼座邀请" as UC12
+  usecase "提交退票/改签申请" as UC13
+  usecase "查看个性化推荐" as UC14
+}
+
+User --> UC1
+User --> UC2
+User --> UC3
+User --> UC4
+User --> UC5
+User --> UC6
+User --> UC7
+User --> UC8
+User --> UC9
+User --> UC11
+User --> UC12
+User --> UC13
+User --> UC14
+
+UC3 ..> UC4 : <<include>>
+UC3 ..> UC11 : <<extend>>
+UC4 ..> UC12 : <<extend>>
+UC5 ..> UC6 : <<include>>
+UC6 ..> UC9 : <<include>>
+UC9 ..> UC10 : <<extend>>
+UC8 ..> UC13 : <<extend>>
+@enduml

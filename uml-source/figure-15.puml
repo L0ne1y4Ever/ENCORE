@@ -1,0 +1,40 @@
+@startuml
+!pragma teoz true
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 13
+title 图14  可视化选座顺序图
+
+actor "注册用户" as User
+participant "Vue 前端页面" as FE
+participant "ScheduleSeatController" as Ctrl
+participant "ScheduleSeatService" as Svc
+database "Redis\n(座位锁)" as Redis
+database "MySQL\n(schedule_seat)" as DB
+
+User -> FE : 进入场次选座页
+FE -> Ctrl : GET /api/schedule/{id}/seats
+Ctrl -> Svc : listSeats(scheduleId)
+Svc -> DB : SELECT * FROM schedule_seat\n WHERE schedule_id=?
+DB --> Svc : 全部座位 + 状态
+Svc --> Ctrl : SeatVO[]
+Ctrl --> FE : 200 OK + seats
+FE --> User : 渲染座位图
+
+User -> FE : 点击选择 N 个 AVAILABLE 座位
+FE -> Ctrl : POST /api/schedule/{id}/lock\n(seatIds)
+Ctrl -> Svc : tryLock(scheduleId, seatIds)
+Svc -> Redis : SETNX schedule:{id}:seat:{seatId} (TTL=15min)
+Redis --> Svc : 1 (成功) 或 0 (失败)
+alt 全部锁定成功
+  Svc -> DB : UPDATE schedule_seat\n SET status='LOCKED'\n WHERE id IN (...)
+  Svc --> Ctrl : LockResultVO(ok=true)
+  Ctrl --> FE : 200 OK
+  FE --> User : 跳转订单确认页
+else 部分失败
+  Svc -> Redis : 回滚已加锁的 key
+  Svc --> Ctrl : LockResultVO(ok=false, conflict=[...])
+  Ctrl --> FE : 409 Conflict
+  FE --> User : 提示座位已被锁定 / 售出
+end
+@enduml

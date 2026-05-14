@@ -1,0 +1,36 @@
+@startuml
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 13
+title 图23  检票核销活动图
+
+start
+:检票员登录检票端;
+:扫描二维码模拟码 或 手动输入票号;
+:系统查询 ticket_item;
+if (找到票据?) then (否)
+  :提示票据不存在;
+  stop
+else (是)
+  if (票据状态 = UNUSED?) then (否)
+    if (CHECKED_IN) then
+      :提示重复检票;
+    elseif (INVALID) then
+      :提示票据已作废;
+    else
+      :提示已退票;
+    endif
+    stop
+  else (是)
+    if (场次时间在合法窗口内?) then (否)
+      :提示非当前场次, 不可入场;
+      stop
+    else (是)
+      :票据 -> CHECKED_IN;
+      :写入 checkin_record;
+      :提示核销成功并入场;
+      stop
+    endif
+  endif
+endif
+@enduml

@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import docx; print\\('python-docx:', docx.__version__\\)\")",
+      "Bash(python -c \"import pptx; print\\('python-pptx:', pptx.__version__\\)\")",
+      "Bash(where soffice *)",
+      "Bash(where libreoffice *)",
+      "Bash(where pandoc *)",
+      "Bash(where plantuml *)",
+      "Bash(where java *)",
+      "Bash(where mmdc *)",
+      "Bash(where npm *)",
+      "Bash(where node *)",
+      "Bash(pip list *)",
+      "Bash(where curl *)",
+      "Bash(where wget *)",
+      "Bash(where 7z)",
+      "Bash(where powershell *)"
+    ]
+  }
+}

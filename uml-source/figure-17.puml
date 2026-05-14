@@ -1,0 +1,40 @@
+@startuml
+!pragma teoz true
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 13
+title 图21  模拟支付与电子票生成顺序图
+
+actor "注册用户" as User
+participant "Vue 支付页" as FE
+participant "PaymentController" as Ctrl
+participant "OrderService" as OS
+participant "PaymentRecordService" as PRS
+participant "TicketItemService" as TS
+database "MySQL" as DB
+
+User -> FE : 点击 "模拟支付"
+FE -> Ctrl : POST /api/payment/mock
+Ctrl -> OS : payOrder(orderId, userId)
+OS -> DB : SELECT ticket_order FOR UPDATE
+DB --> OS : order(PENDING_PAYMENT)
+alt 倒计时未过期
+  OS -> PRS : recordPayment(orderId, amount, "MOCK")
+  PRS -> DB : INSERT payment_record
+  OS -> DB : UPDATE ticket_order SET status='PAID'
+  OS -> DB : UPDATE schedule_seat SET status='SOLD'
+  OS -> TS : batchCreate(orderId, scheduleSeatIds)
+  TS -> DB : INSERT ticket_item\n(状态=UNUSED, 票号=雪花ID,\n二维码模拟码)
+  DB --> TS : ticketIds
+  TS --> OS : tickets
+  OS --> Ctrl : PaymentResultVO(success)
+  Ctrl --> FE : 200 OK + 票号列表
+  FE --> User : 跳转 "我的电子票"
+else 倒计时已过期
+  OS -> DB : UPDATE ticket_order SET status='EXPIRED'
+  OS -> DB : UPDATE schedule_seat SET status='AVAILABLE'
+  OS --> Ctrl : 408 订单已超时
+  Ctrl --> FE : 错误信息
+  FE --> User : 提示重新选座
+end
+@enduml

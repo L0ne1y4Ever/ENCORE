@@ -1,0 +1,39 @@
+@startuml
+!pragma teoz true
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 12
+title 图17  three.js 3D 座位舞台视角预览组件视图
+
+package "用户端 (Vue 3 + TypeScript)" {
+  component [SeatPicker.vue\n2D 座位平面图] as SP
+  component [Seat3DPreview.vue\n3D 视角弹层] as S3D
+  component [SceneController\n场景生命周期] as SCC
+}
+
+package "three.js 渲染层" {
+  component [Scene\n剧院 3D 场景] as SCN
+  component [PerspectiveCamera\n(StagePOV)] as CAM
+  component [WebGLRenderer\nCanvas 输出] as RND
+  component [SeatModel.glb\n座位 + 剧院 + 舞台模型] as MDL
+  component [OrbitControls\n小幅旋转浏览] as CTL
+  component [requestAnimationFrame\nLoop 60 Hz] as RAF
+}
+
+SP --> S3D : props.seatId\n(用户点击座位)
+S3D --> SCC : initScene(seatId)
+SCC --> SCN : add(mesh)
+SCC --> CAM : setPositionFromSeat(seatId)
+SCC --> CTL : enable(限制 yaw±30°)
+SCC --> MDL : loader.load('.glb')
+SCN --> RND : scene
+CAM --> RND : camera
+RAF --> RND : tick()
+
+note bottom of S3D
+  组件入口: <Seat3DPreview :seatId="..." :scheduleId="..."/>
+  目标体验: 弹出"从该座位看舞台"的实时 3D 视野
+  性能预算: 帧率 ≥ 30 FPS, 首屏加载 ≤ 3 秒
+  降级路径: WebGL 不可用时, 退回静态全景图
+end note
+@enduml

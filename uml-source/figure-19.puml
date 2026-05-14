@@ -1,0 +1,32 @@
+@startuml
+!pragma teoz true
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 13
+title 图26  统计报表生成顺序图
+
+actor "票务管理员" as Admin
+participant "Vue 看板页" as FE
+participant "StatisticsController" as Ctrl
+participant "StatisticsService" as SS
+database "MySQL\n(ticket_order / ticket_item / show_schedule)" as DB
+participant "ECharts" as Chart
+
+Admin -> FE : 打开数据看板
+FE -> Ctrl : GET /api/stat/dashboard
+Ctrl -> SS : getDashboard(dateRange)
+SS -> DB : SELECT COUNT(*), SUM(amount)\nFROM ticket_order WHERE date=today
+DB --> SS : 今日订单数 / 销售额
+SS -> DB : 近7天订单按日聚合
+DB --> SS : 趋势数据
+SS -> DB : 热门演出 TOP10
+DB --> SS : 排行榜
+SS -> DB : 各场次上座率\n(已售/总座位)
+DB --> SS : 上座率数据
+SS -> DB : 订单状态分布
+DB --> SS : 状态聚合
+SS --> Ctrl : DashboardVO
+Ctrl --> FE : 200 OK + 数据
+FE -> Chart : 渲染折线 / 柱状 / 饼图
+Chart --> Admin : 显示数据看板
+@enduml

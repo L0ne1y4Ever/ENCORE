@@ -1,0 +1,60 @@
+@startuml
+!pragma teoz true
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 12
+skinparam package {
+  BackgroundColor #FFF8E7
+  BorderColor #5B0E0E
+}
+title 图29  ENCORE 领域驱动设计 (DDD) 限界上下文图
+
+package "Account 账号上下文" as ACC {
+  class User
+  class Role
+  class Session
+}
+package "Catalog 剧目上下文" as CAT {
+  class ShowInfo
+  class ShowCategory
+}
+package "Scheduling 排期上下文" as SCH {
+  class TheaterHall
+  class HallSeat
+  class ShowSchedule
+  class ScheduleSeat
+}
+package "Ordering 订单上下文" as ORD {
+  class TicketOrder
+  class TicketItem
+  class PaymentRecord
+}
+package "CheckIn 检票上下文" as CHK {
+  class CheckinRecord
+}
+package "Analytics 分析上下文" as ANA {
+  class DashboardVO
+  class StatAggregator
+}
+package "Recommendation 推荐上下文" as REC {
+  class RecommendVO
+  class RecallEngine
+  class RankingEngine
+}
+
+ACC -[#5B0E0E]-> ORD : << Customer-Supplier >>\n用户身份
+ACC -[#5B0E0E]-> CHK : << Customer-Supplier >>\n检票员身份
+CAT -[#5B0E0E]-> SCH : << Customer-Supplier >>\n剧目元数据
+SCH -[#5B0E0E]-> ORD : << OHS / PL >>\n场次座位票池
+ORD -[#5B0E0E]-> CHK : << Customer-Supplier >>\n电子票
+ORD -[#999]-> ANA : << Conformist >>\n订单事件
+SCH -[#999]-> ANA : << Conformist >>\n上座率事件
+CAT -[#999]-> REC : << Conformist >>\n剧目特征
+ORD -[#999]-> REC : << Conformist >>\n用户购买行为
+
+note bottom
+  限界上下文划分依据: 业务能力垂直切片
+  上下文映射: Customer-Supplier / OHS-PL (开放主机+发布语言) / Conformist
+  应用分层: interface (Controller) / application (UseCase) / domain (Aggregate+ValueObject) / infrastructure (MyBatis/Redis)
+end note
+@enduml

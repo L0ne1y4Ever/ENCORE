@@ -1,0 +1,163 @@
+@startuml
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 12
+skinparam class {
+  BackgroundColor #FFF8E7
+  BorderColor #5B0E0E
+}
+title 图4  ENCORE 核心领域类图
+
+class User {
+  - id : Long
+  - username : String
+  - passwordHash : String
+  - phone : String
+  - email : String
+  - status : Integer
+  + login()
+  + register()
+}
+class Role {
+  - id : Long
+  - code : String
+  - name : String
+}
+class UserRole {
+  - userId : Long
+  - roleId : Long
+}
+
+class ShowCategory {
+  - id : Long
+  - name : String
+  - sort : Integer
+}
+class ShowInfo {
+  - id : Long
+  - title : String
+  - poster : String
+  - intro : String
+  - durationMin : Integer
+  - categoryId : Long
+  - priceMin : BigDecimal
+  - priceMax : BigDecimal
+}
+
+class TheaterHall {
+  - id : Long
+  - name : String
+  - rowCount : Integer
+  - colCount : Integer
+}
+class HallSeat {
+  - id : Long
+  - hallId : Long
+  - rowNo : Integer
+  - colNo : Integer
+  - area : String
+  - sellable : Boolean
+}
+
+class ShowSchedule {
+  - id : Long
+  - showId : Long
+  - hallId : Long
+  - startTime : DateTime
+  - endTime : DateTime
+  - status : ScheduleStatus
+  + open()
+  + stop()
+  + finish()
+}
+class ScheduleSeat {
+  - id : Long
+  - scheduleId : Long
+  - hallSeatId : Long
+  - price : BigDecimal
+  - status : SeatStatus
+  + lock()
+  + release()
+}
+
+class TicketOrder {
+  - id : Long
+  - userId : Long
+  - scheduleId : Long
+  - totalAmount : BigDecimal
+  - status : OrderStatus
+  - createTime : DateTime
+  - expireTime : DateTime
+  + pay()
+  + cancel()
+  + expire()
+}
+class TicketItem {
+  - id : Long
+  - orderId : Long
+  - scheduleSeatId : Long
+  - ticketCode : String
+  - qrMockCode : String
+  - status : TicketStatus
+  + checkIn()
+  + invalidate()
+}
+class PaymentRecord {
+  - id : Long
+  - orderId : Long
+  - amount : BigDecimal
+  - channel : String
+  - payTime : DateTime
+}
+class CheckinRecord {
+  - id : Long
+  - ticketId : Long
+  - checkerId : Long
+  - checkTime : DateTime
+}
+
+enum ScheduleStatus {
+  DRAFT
+  ON_SALE
+  STOP_SALE
+  FINISHED
+  CANCELLED
+}
+enum SeatStatus {
+  AVAILABLE
+  LOCKED
+  SOLD
+  DISABLED
+}
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  CANCELLED
+  EXPIRED
+  REFUNDED
+}
+enum TicketStatus {
+  UNUSED
+  CHECKED_IN
+  INVALID
+  REFUNDED
+}
+
+User "1" -- "*" UserRole
+Role "1" -- "*" UserRole
+ShowCategory "1" -- "*" ShowInfo
+ShowInfo "1" -- "*" ShowSchedule
+TheaterHall "1" -- "*" HallSeat
+TheaterHall "1" -- "*" ShowSchedule
+ShowSchedule "1" -- "*" ScheduleSeat
+HallSeat "1" -- "*" ScheduleSeat
+TicketOrder "1" -- "*" TicketItem
+ScheduleSeat "1" -- "1" TicketItem
+TicketOrder "1" -- "*" PaymentRecord
+TicketItem "1" -- "0..1" CheckinRecord
+User "1" -- "*" TicketOrder
+ShowSchedule -- ScheduleStatus
+ScheduleSeat -- SeatStatus
+TicketOrder -- OrderStatus
+TicketItem -- TicketStatus
+@enduml

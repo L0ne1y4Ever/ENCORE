@@ -1,0 +1,30 @@
+@startuml
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 13
+title 图19  订单状态流转图
+
+[*] --> PENDING_PAYMENT : 创建订单
+PENDING_PAYMENT --> PAID : 模拟支付成功
+PENDING_PAYMENT --> CANCELLED : 用户主动取消
+PENDING_PAYMENT --> EXPIRED : 倒计时超时
+PAID --> REFUNDED : 申请退款审核通过\n(后续扩展)
+
+note right of PENDING_PAYMENT
+  关联座位状态 LOCKED
+end note
+
+note right of PAID
+  关联座位 SOLD
+  生成 ticket_item
+end note
+
+note right of EXPIRED
+  座位自动释放为 AVAILABLE
+end note
+
+PAID --> [*]
+CANCELLED --> [*]
+EXPIRED --> [*]
+REFUNDED --> [*]
+@enduml

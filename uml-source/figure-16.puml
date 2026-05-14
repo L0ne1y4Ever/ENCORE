@@ -1,0 +1,33 @@
+@startuml
+!pragma teoz true
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 13
+title 图18  创建订单顺序图
+
+actor "注册用户" as User
+participant "Vue 前端页面" as FE
+participant "OrderController" as Ctrl
+participant "OrderService" as OS
+participant "ScheduleSeatService" as SS
+database "Redis\n(订单倒计时)" as Redis
+database "MySQL\n(ticket_order)" as DB
+
+User -> FE : 确认订单
+FE -> Ctrl : POST /api/order
+Ctrl -> OS : createOrder(userId, scheduleId, seatIds)
+OS -> SS : verifyLocked(scheduleId, seatIds, userId)
+SS --> OS : OK / Conflict
+alt 已锁定且锁属于本用户
+  OS -> DB : INSERT ticket_order\n(状态=PENDING_PAYMENT, 倒计时=15min)
+  DB --> OS : orderId
+  OS -> Redis : SET order:{id}:expire (TTL=15min)
+  OS --> Ctrl : OrderVO
+  Ctrl --> FE : 200 OK + orderId
+  FE --> User : 跳转支付页 + 倒计时
+else 锁不属于该用户 / 已过期
+  OS --> Ctrl : 412 Precondition Failed
+  Ctrl --> FE : 错误信息
+  FE --> User : 提示重新选座
+end
+@enduml

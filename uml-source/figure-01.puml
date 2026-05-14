@@ -1,0 +1,47 @@
+@startuml
+!pragma teoz true
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 13
+skinparam node {
+  BackgroundColor #FFF8E7
+  BorderColor #5B0E0E
+}
+skinparam database {
+  BackgroundColor #FFE4B5
+  BorderColor #5B0E0E
+}
+skinparam cloud {
+  BackgroundColor #F8F0E0
+  BorderColor #5B0E0E
+}
+title 图2  ENCORE 票务管理系统 物理架构
+
+cloud "用户浏览器\n(用户端 / 管理端 / 检票端)" as Browser
+
+node "应用服务器" {
+  node "Nginx 反向代理\n(静态资源 + 路由分发)" as Nginx
+  node "Vue 3 前端 SPA\n(用户端 + 管理端)" as Frontend
+  node "Spring Boot 3 后端\n(Java 17, Sa-Token, MyBatis-Plus)" as Backend
+}
+
+node "数据服务" {
+  database "MySQL 8\n(剧目 / 场次 / 订单 / 票据 / 用户 / 日志)" as MySQL
+  database "Redis 7\n(登录态 / 座位锁 / 订单倒计时 / 验证码)" as Redis
+}
+
+Browser --> Nginx : HTTPS
+Nginx --> Frontend : 静态资源
+Nginx --> Backend : /api/** (HTTP/JSON)
+Backend --> MySQL : JDBC 持久化
+Backend --> Redis : 缓存与锁
+
+note right of Backend
+  核心模块：
+  - 剧目 / 场次 / 演出厅 / 座位
+  - 可视化选座与座位锁
+  - 订单倒计时与模拟支付
+  - 电子票与检票核销
+  - 数据看板
+end note
+@enduml

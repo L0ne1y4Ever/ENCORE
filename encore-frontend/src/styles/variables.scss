@@ -1,0 +1,45 @@
+:root {
+  /* 基础层 */
+  --color-bg-base: #080808;         /* 主背景，接近纯黑但保留呼吸感 */
+  --color-bg-elevated: #111111;     /* 卡片/面板底色 */
+  --color-bg-overlay: #1a1a1a;      /* 悬浮层、下拉、模态 */
+
+  /* 文字层 */
+  --color-text-primary: #F0EDE8;    /* 主文字，暖白而非纯白，降低刺眼感 */
+  --color-text-secondary: #8A8480;  /* 次要信息、标签 */
+  --color-text-ghost: #3D3A38;      /* 占位符、禁用态 */
+
+  /* 品牌强调色 */
+  --color-accent: #C8955A;          /* 琥珀橙 */
+  --color-accent-hover: #E0A96A;
+
+  /* 功能色 */
+  --color-success: #4CAF7D;
+  --color-error: #E05454;
+  --color-warning: #E0A030;
+
+  /* 边界与分割 */
+  --color-border: rgba(240, 237, 232, 0.08);
+  --color-border-strong: rgba(240, 237, 232, 0.16);
+
+  /* 间距系统 Base = 8px */
+  --spacing-1: 8px;
+  --spacing-2: 12px;
+  --spacing-3: 16px;
+  --spacing-4: 24px;
+  --spacing-5: 32px;
+  --spacing-6: 48px;
+  --spacing-7: 64px;
+  --spacing-8: 96px;
+
+  /* 圆角系统 */
+  --radius-sm: 4px;    /* 标签、小按钮 */
+  --radius-md: 8px;    /* 卡片、输入框 */
+  --radius-lg: 16px;   /* 模态框、大卡片 */
+  --radius-full: 9999px; /* 胶囊形标签 */
+
+  /* 字体族 */
+  --font-family-display: 'Playfair Display', serif;
+  --font-family-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-family-cjk: 'LXGW WenKai', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+}

@@ -1,0 +1,41 @@
+@startuml
+!pragma teoz true
+left to right direction
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 13
+title 图10  检票员检票核销用例图
+
+actor 检票员 as Checker
+
+rectangle "检票核销子系统" {
+  usecase "登录检票端" as UC1
+  usecase "扫描或输入票号" as UC2
+  usecase "查询票据信息" as UC3
+  usecase "核验票据状态" as UC4
+  usecase "核销入场" as UC5
+  usecase "处理重复检票异常" as UC6
+  usecase "处理作废票异常" as UC7
+  usecase "处理非当前场次异常" as UC8
+  usecase "弱网离线检票缓存" as UC9
+  usecase "恢复网络后同步记录" as UC10
+}
+
+Checker --> UC1
+Checker --> UC2
+Checker --> UC5
+Checker --> UC6
+Checker --> UC7
+Checker --> UC8
+Checker --> UC9
+Checker --> UC10
+
+UC2 ..> UC3 : <<include>>
+UC3 ..> UC4 : <<include>>
+UC4 ..> UC5 : <<include>>
+UC4 ..> UC6 : <<extend>>
+UC4 ..> UC7 : <<extend>>
+UC4 ..> UC8 : <<extend>>
+UC5 ..> UC9 : <<extend>>
+UC9 ..> UC10 : <<include>>
+@enduml

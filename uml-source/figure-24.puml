@@ -1,0 +1,147 @@
+@startuml
+!pragma teoz true
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 12
+skinparam linetype ortho
+hide circle
+title 图5  ENCORE 数据库实体关系图 (ER)
+
+entity "sys_user" as U {
+  *id : BIGINT <<PK>>
+  --
+  username : VARCHAR
+  password_hash : VARCHAR
+  phone : VARCHAR
+  email : VARCHAR
+  status : TINYINT
+}
+entity "sys_role" as R {
+  *id : BIGINT <<PK>>
+  --
+  code : VARCHAR
+  name : VARCHAR
+}
+entity "sys_user_role" as UR {
+  *user_id : BIGINT <<FK>>
+  *role_id : BIGINT <<FK>>
+}
+
+entity "show_category" as CAT {
+  *id : BIGINT <<PK>>
+  --
+  name : VARCHAR
+  sort : INT
+}
+entity "show_info" as SHOW {
+  *id : BIGINT <<PK>>
+  --
+  category_id : BIGINT <<FK>>
+  title : VARCHAR
+  poster : VARCHAR
+  intro : TEXT
+  duration_min : INT
+}
+
+entity "theater_hall" as H {
+  *id : BIGINT <<PK>>
+  --
+  name : VARCHAR
+  row_count : INT
+  col_count : INT
+}
+entity "hall_seat" as HS {
+  *id : BIGINT <<PK>>
+  --
+  hall_id : BIGINT <<FK>>
+  row_no : INT
+  col_no : INT
+  area : VARCHAR
+  sellable : TINYINT
+}
+
+entity "show_schedule" as SCH {
+  *id : BIGINT <<PK>>
+  --
+  show_id : BIGINT <<FK>>
+  hall_id : BIGINT <<FK>>
+  start_time : DATETIME
+  end_time : DATETIME
+  status : VARCHAR
+}
+entity "schedule_seat" as SS {
+  *id : BIGINT <<PK>>
+  --
+  schedule_id : BIGINT <<FK>>
+  hall_seat_id : BIGINT <<FK>>
+  price : DECIMAL
+  status : VARCHAR
+}
+
+entity "ticket_order" as TO_ {
+  *id : BIGINT <<PK>>
+  --
+  user_id : BIGINT <<FK>>
+  schedule_id : BIGINT <<FK>>
+  total_amount : DECIMAL
+  status : VARCHAR
+  create_time : DATETIME
+  expire_time : DATETIME
+}
+entity "ticket_item" as TI {
+  *id : BIGINT <<PK>>
+  --
+  order_id : BIGINT <<FK>>
+  schedule_seat_id : BIGINT <<FK>>
+  ticket_code : VARCHAR
+  qr_mock_code : VARCHAR
+  status : VARCHAR
+}
+entity "payment_record" as PR {
+  *id : BIGINT <<PK>>
+  --
+  order_id : BIGINT <<FK>>
+  amount : DECIMAL
+  channel : VARCHAR
+  pay_time : DATETIME
+}
+entity "checkin_record" as CR {
+  *id : BIGINT <<PK>>
+  --
+  ticket_id : BIGINT <<FK>>
+  checker_id : BIGINT <<FK>>
+  check_time : DATETIME
+}
+entity "announcement" as ANN {
+  *id : BIGINT <<PK>>
+  --
+  title : VARCHAR
+  content : TEXT
+  publish_time : DATETIME
+}
+entity "operation_log" as LOG {
+  *id : BIGINT <<PK>>
+  --
+  user_id : BIGINT <<FK>>
+  action : VARCHAR
+  target : VARCHAR
+  detail : TEXT
+  log_time : DATETIME
+}
+
+U ||..o{ UR
+R ||..o{ UR
+CAT ||..o{ SHOW
+SHOW ||..o{ SCH
+H ||..o{ HS
+H ||..o{ SCH
+SCH ||..o{ SS
+HS ||..o{ SS
+U ||..o{ TO_
+SCH ||..o{ TO_
+TO_ ||..o{ TI
+SS ||..|| TI
+TO_ ||..o{ PR
+TI ||..o| CR
+U ||..o{ LOG
+@enduml

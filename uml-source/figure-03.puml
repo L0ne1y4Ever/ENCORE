@@ -1,0 +1,95 @@
+@startuml
+!pragma teoz true
+left to right direction
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 13
+skinparam actor {
+  BackgroundColor #FFF8E7
+  BorderColor #5B0E0E
+}
+skinparam usecase {
+  BackgroundColor #FAF0DC
+  BorderColor #5B0E0E
+}
+title 图6  ENCORE 票务管理系统 总用例图
+
+actor 游客 as Guest
+actor 注册用户 as User
+actor 票务管理员 as Admin
+actor 检票员 as Checker
+actor 系统管理员 as SysAdmin
+
+User --|> Guest
+
+rectangle "ENCORE 票务管理系统" {
+  usecase "浏览演出" as UC1
+  usecase "搜索演出" as UC2
+  usecase "查看演出详情" as UC3
+  usecase "查看场次" as UC4
+  usecase "注册登录" as UC5
+  usecase "可视化选座" as UC6
+  usecase "创建订单" as UC7
+  usecase "模拟支付" as UC8
+  usecase "查看电子票" as UC9
+  usecase "查看我的订单" as UC10
+  usecase "舞台视角预览" as UC22
+  usecase "拼座邀请" as UC23
+  usecase "退票/改签申请" as UC24
+
+  usecase "剧目管理" as UC11
+  usecase "演出厅与座位管理" as UC12
+  usecase "场次排期管理" as UC13
+  usecase "场次座位票池管理" as UC14
+  usecase "订单管理" as UC15
+  usecase "公告管理" as UC16
+  usecase "统计报表查看" as UC17
+  usecase "批量排期" as UC25
+  usecase "退改审核" as UC26
+  usecase "报表导出" as UC27
+  usecase "AI 运营助手" as UC30
+
+  usecase "检票核销" as UC18
+  usecase "异常票据处理" as UC19
+  usecase "离线检票缓存" as UC28
+
+  usecase "用户与角色管理" as UC20
+  usecase "操作日志查看" as UC21
+  usecase "系统参数配置" as UC29
+}
+
+Guest --> UC1
+Guest --> UC2
+Guest --> UC3
+Guest --> UC4
+Guest --> UC5
+
+User --> UC6
+User --> UC7
+User --> UC8
+User --> UC9
+User --> UC10
+User --> UC22
+User --> UC23
+User --> UC24
+
+Admin --> UC11
+Admin --> UC12
+Admin --> UC13
+Admin --> UC14
+Admin --> UC15
+Admin --> UC16
+Admin --> UC17
+Admin --> UC25
+Admin --> UC26
+Admin --> UC27
+Admin --> UC30
+
+Checker --> UC18
+Checker --> UC19
+Checker --> UC28
+
+SysAdmin --> UC20
+SysAdmin --> UC21
+SysAdmin --> UC29
+@enduml

@@ -1,0 +1,33 @@
+@startuml
+!pragma teoz true
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 13
+title 图3  ENCORE 票务管理系统 网络拓扑
+
+cloud "互联网 / 内网" as Net
+
+node "用户终端" {
+  [游客 / 注册用户\nWeb 浏览器] as UserPC
+  [票务管理员\nWeb 浏览器] as AdminPC
+  [检票员\nWeb 浏览器 / 平板] as CheckPC
+}
+
+node "Web 服务器\n(Nginx 80/443)" as Nginx
+node "应用服务器\n(Spring Boot 8080)" as App
+database "数据库服务器\n(MySQL 8 / 3306)" as DB
+database "缓存服务器\n(Redis 7 / 6379)" as Cache
+
+UserPC --> Net
+AdminPC --> Net
+CheckPC --> Net
+Net --> Nginx : HTTPS
+Nginx --> App : HTTP/JSON (内网)
+App --> DB : JDBC (内网)
+App --> Cache : RESP (内网)
+
+note bottom of Nginx
+  外网入口仅暴露 80/443
+  其余端口在内网通信
+end note
+@enduml

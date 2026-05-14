@@ -1,0 +1,40 @@
+@startuml
+!pragma teoz true
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 13
+title 图24  检票核销顺序图
+
+actor "检票员" as Checker
+participant "Vue 检票页" as FE
+participant "CheckinController" as Ctrl
+participant "TicketItemService" as TS
+participant "ScheduleService" as SS
+participant "CheckinRecordService" as CRS
+database "MySQL" as DB
+
+Checker -> FE : 输入 / 扫描票号
+FE -> Ctrl : POST /api/checkin/verify
+Ctrl -> TS : findByCode(ticketCode)
+TS -> DB : SELECT ticket_item WHERE code=?
+DB --> TS : ticket / null
+alt 票据存在 且 状态=UNUSED
+  TS -> SS : checkScheduleTime(scheduleId)
+  SS --> TS : 在允许检票窗口内
+  TS -> DB : UPDATE ticket_item SET status='CHECKED_IN'
+  TS -> CRS : record(ticketId, checkerId, time)
+  CRS -> DB : INSERT checkin_record
+  TS --> Ctrl : CheckinResultVO(success, 座位号)
+  Ctrl --> FE : 200 OK
+  FE --> Checker : 显示核销成功 + 座位
+else 票据不存在
+  TS --> Ctrl : 404 票据不存在
+  Ctrl --> FE : 错误
+else 票据已检票 / 作废 / 退票
+  TS --> Ctrl : 409 异常
+  Ctrl --> FE : 错误
+else 非当前场次
+  TS --> Ctrl : 425 非当前场次
+  Ctrl --> FE : 错误
+end
+@enduml

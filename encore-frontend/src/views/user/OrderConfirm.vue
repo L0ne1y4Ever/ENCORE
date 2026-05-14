@@ -1,0 +1,179 @@
+<script setup lang="ts">
+import { ref, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { createOrder } from '../../api/order'
+
+const router = useRouter()
+const orderData = ref<any>(null)
+const timeLeft = ref(15 * 60)
+const timer = ref<number | null>(null)
+const submitting = ref(false)
+
+onMounted(() => {
+  const data = sessionStorage.getItem('tempOrder')
+  if (!data) {
+    router.replace('/')
+    return
+  }
+  orderData.value = JSON.parse(data)
+
+  timer.value = setInterval(() => {
+    if (timeLeft.value > 0) {
+      timeLeft.value--
+    } else {
+      clearInterval(timer.value!)
+      alert('Time expired. Order cancelled.')
+      router.replace('/')
+    }
+  }, 1000) as unknown as number
+})
+
+onUnmounted(() => {
+  if (timer.value) clearInterval(timer.value)
+})
+
+const formatTime = (secs: number) => {
+  const m = Math.floor(secs / 60).toString().padStart(2, '0')
+  const s = (secs % 60).toString().padStart(2, '0')
+  return `${m}:${s}`
+}
+
+const doConfirm = async () => {
+  submitting.value = true
+  try {
+    // 假设当前用户 ID 为 u-101
+    const orderId = await createOrder('u-101', orderData.value.scheduleId, orderData.value.seatIds, orderData.value.totalAmount)
+    sessionStorage.removeItem('tempOrder')
+    router.push(`/payment?id=${orderId}`)
+  } catch (e) {
+    alert('Failed to create order')
+  } finally {
+    submitting.value = false
+  }
+}
+</script>
+
+<template>
+  <div class="confirm-page" v-if="orderData">
+    <div class="content">
+      <h1 class="page-title">Order Confirmation</h1>
+      
+      <div class="timer-box">
+        <div class="timer-label">Please complete your payment within</div>
+        <div class="timer-value">{{ formatTime(timeLeft) }}</div>
+      </div>
+
+      <div class="summary-card">
+        <div class="row">
+          <span class="label">Seats</span>
+          <span class="value">{{ orderData.seatIds.length }} Tickets</span>
+        </div>
+        <div class="row total-row">
+          <span class="label">Total Amount</span>
+          <span class="value amount">${{ orderData.totalAmount }}</span>
+        </div>
+      </div>
+
+      <button class="btn-confirm" @click="doConfirm" :disabled="submitting">
+        {{ submitting ? 'Processing...' : 'Proceed to Payment' }}
+      </button>
+    </div>
+  </div>
+</template>
+
+<style scoped lang="scss">
+.confirm-page {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: calc(100vh - 80px);
+}
+
+.content {
+  width: 100%;
+  max-width: 480px;
+  padding: var(--spacing-6);
+}
+
+.page-title {
+  font-family: var(--font-family-display);
+  font-size: 40px;
+  text-align: center;
+  margin-bottom: var(--spacing-8);
+}
+
+.timer-box {
+  text-align: center;
+  margin-bottom: var(--spacing-8);
+  padding: var(--spacing-4);
+  background-color: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  
+  .timer-label {
+    font-size: 14px;
+    color: var(--color-text-secondary);
+    margin-bottom: var(--spacing-2);
+  }
+  
+  .timer-value {
+    font-family: var(--font-family-sans);
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--color-accent);
+  }
+}
+
+.summary-card {
+  border: 1px solid var(--color-border);
+  padding: var(--spacing-6);
+  margin-bottom: var(--spacing-6);
+  
+  .row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: var(--spacing-4);
+    font-size: 16px;
+    
+    .label {
+      color: var(--color-text-secondary);
+    }
+    
+    &.total-row {
+      margin-top: var(--spacing-6);
+      padding-top: var(--spacing-4);
+      border-top: 1px solid var(--color-border);
+      margin-bottom: 0;
+      align-items: center;
+      
+      .amount {
+        font-size: 24px;
+        font-weight: 700;
+        color: var(--color-accent);
+      }
+    }
+  }
+}
+
+.btn-confirm {
+  width: 100%;
+  padding: 16px;
+  background-color: var(--color-text-primary);
+  color: var(--color-bg-base);
+  border: none;
+  font-family: var(--font-family-sans);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+
+  &:hover:not(:disabled) {
+    background-color: var(--color-accent);
+  }
+  
+  &:disabled {
+    background-color: var(--color-bg-elevated);
+    color: var(--color-text-ghost);
+    cursor: not-allowed;
+  }
+}
+</style>

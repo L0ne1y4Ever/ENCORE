@@ -1,0 +1,24 @@
+@startuml
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 13
+title 图15  场次座位状态图
+
+[*] --> AVAILABLE : 票池生成
+
+AVAILABLE --> LOCKED : 用户选座 / 临时锁定
+LOCKED --> SOLD : 订单 PAID
+LOCKED --> AVAILABLE : 订单超时 / 取消
+AVAILABLE --> DISABLED : 管理员设为不可售
+DISABLED --> AVAILABLE : 管理员恢复
+SOLD --> AVAILABLE : 退票 (后续扩展)
+
+note right of LOCKED
+  TTL = 15 分钟
+  超时由 Redis Key 过期触发
+end note
+
+note right of DISABLED
+  适用于柱子遮挡 / 设备区
+end note
+@enduml
