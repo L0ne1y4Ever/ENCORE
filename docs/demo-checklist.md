@@ -39,7 +39,9 @@ Use this checklist to prepare the final course defense.
 - Repeated check-in is rejected.
 - Invalid ticket is rejected.
 - Check-in page uses backend `POST /api/checkin/verify`.
-- Wrong schedule/time ticket is rejected when backend time validation is implemented.
+- Tickets before the 2-hour pre-show check-in window are rejected.
+- Tickets after schedule end or for cancelled/missing schedules are rejected.
+- Admin force-check-in remains available for operational correction outside the ordinary scanner window.
 
 ## Admin Flow
 

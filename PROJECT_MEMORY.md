@@ -1,6 +1,6 @@
 # ENCORE Project Memory
 
-Last updated: 2026-05-16
+Last updated: 2026-05-17
 
 ## Project Identity
 
@@ -90,12 +90,18 @@ Backend foundation added on 2026-05-14:
     - Dashboard aggregates paid revenue, valid sold tickets, published shows, attendance, 7-day paid sales trend, top shows, and check-in status counts from existing order/ticket/schedule/show tables.
     - Frontend admin dashboard now loads real backend metrics, shows the existing stats cards, a 7-day revenue/ticket chart, top-shows chart, check-in summary, refresh control, loading state, and localized empty/error text.
     - Real API/browser verification passed for `admin/123` dashboard access, `user/123` rejection, and visible admin dashboard metrics.
+  - Check-in time-window validation continued on 2026-05-17:
+    - Ordinary `POST /api/checkin/verify` now rejects tickets before the check-in window, after the schedule ends, for cancelled schedules, and for missing schedules.
+    - The check-in window is inclusive from 2 hours before `show_schedule.start_time` through `show_schedule.end_time`.
+    - `AdminService.forceCheckInOrder` intentionally remains unrestricted by the check-in window for administrator correction.
+    - Unit coverage now fixes service time through an injected `Clock` and covers window boundaries plus early, ended, cancelled, and missing-schedule rejection.
 
 Important current limitation:
 
 - Seat locking, order creation, mock payment, and ticket generation now have backend APIs, but the full browser purchase flow still needs visual verification after the user's latest frontend changes are committed.
 - Admin seat editing within an existing generated pool is not implemented yet; schedule creation generates the initial pool.
 - Dashboard refresh is query-based; WebSocket live refresh is still a later differentiator.
+- Check-in does not yet bind a scanner station to a selected current schedule; wrong-schedule rejection is currently represented by schedule existence, cancellation, and time-window validity.
 
 ## Target Technical Stack
 
@@ -223,6 +229,6 @@ git push origin main
 
 ## Next Recommended Work
 
-1. Add wrong-schedule/time-window validation to check-in when schedule policy is finalized.
-2. Add full browser purchase-flow regression screenshots after the admin analytics commits are pushed.
-3. Start the WebSocket differentiators: live seat updates first, then optional dashboard refresh events.
+1. Add full browser purchase-flow regression screenshots now that check-in timing rules are in place.
+2. Start the WebSocket differentiators: live seat updates first, then optional dashboard refresh events.
+3. Add scanner-station current-schedule binding if stricter wrong-schedule check-in is required for defense.

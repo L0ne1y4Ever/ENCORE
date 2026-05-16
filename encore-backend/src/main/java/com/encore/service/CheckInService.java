@@ -19,31 +19,37 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.Clock;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Set;
 
 @Service
 public class CheckInService {
     private static final Set<String> CHECKIN_ROLES = Set.of("checker", "admin", "sysadmin");
+    private static final Duration CHECKIN_OPEN_BEFORE_START = Duration.ofHours(2);
 
     private final TicketItemMapper ticketItemMapper;
     private final TicketOrderMapper ticketOrderMapper;
     private final ShowScheduleMapper showScheduleMapper;
     private final ShowMapper showMapper;
     private final UserAccountMapper userAccountMapper;
+    private final Clock clock;
 
     public CheckInService(
             TicketItemMapper ticketItemMapper,
             TicketOrderMapper ticketOrderMapper,
             ShowScheduleMapper showScheduleMapper,
             ShowMapper showMapper,
-            UserAccountMapper userAccountMapper
+            UserAccountMapper userAccountMapper,
+            Clock clock
     ) {
         this.ticketItemMapper = ticketItemMapper;
         this.ticketOrderMapper = ticketOrderMapper;
         this.showScheduleMapper = showScheduleMapper;
         this.showMapper = showMapper;
         this.userAccountMapper = userAccountMapper;
+        this.clock = clock;
     }
 
     @Transactional
@@ -71,14 +77,37 @@ public class CheckInService {
             throw new BusinessException(ErrorCode.CONFLICT, "票据状态不可核销");
         }
 
-        LocalDateTime checkedInAt = LocalDateTime.now();
+        ShowSchedule schedule = showScheduleMapper.selectById(ticket.getScheduleId());
+        validateScheduleForCheckIn(schedule);
+
+        LocalDateTime checkedInAt = LocalDateTime.now(clock);
         ticket.setStatus("CHECKED_IN");
         ticket.setUpdatedAt(checkedInAt);
         ticketItemMapper.updateById(ticket);
 
-        ShowSchedule schedule = showScheduleMapper.selectById(ticket.getScheduleId());
         ShowEntity show = schedule == null ? null : showMapper.selectById(schedule.getShowId());
         return toResponse(ticket, schedule, show, checkedInAt);
+    }
+
+    private void validateScheduleForCheckIn(ShowSchedule schedule) {
+        if (schedule == null) {
+            throw new BusinessException(ErrorCode.CONFLICT, "场次不存在，无法检票");
+        }
+        if ("CANCELLED".equals(schedule.getStatus())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "场次已取消，无法检票");
+        }
+        if (schedule.getStartTime() == null || schedule.getEndTime() == null) {
+            throw new BusinessException(ErrorCode.CONFLICT, "场次时间异常，无法检票");
+        }
+
+        LocalDateTime now = LocalDateTime.now(clock);
+        LocalDateTime checkInStart = schedule.getStartTime().minus(CHECKIN_OPEN_BEFORE_START);
+        if (now.isBefore(checkInStart)) {
+            throw new BusinessException(ErrorCode.CONFLICT, "未到检票时间，开演前 2 小时开放检票");
+        }
+        if (now.isAfter(schedule.getEndTime())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "演出已结束，无法检票");
+        }
     }
 
     private void ensureCheckInRole() {

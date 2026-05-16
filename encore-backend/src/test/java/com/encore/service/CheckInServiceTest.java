@@ -20,7 +20,11 @@ import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Clock;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.ZoneId;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -33,6 +37,12 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class CheckInServiceTest {
+    private static final ZoneId TEST_ZONE = ZoneId.of("Asia/Shanghai");
+    private static final LocalDate SHOW_DATE = LocalDate.of(2026, 5, 24);
+    private static final LocalDateTime SHOW_START = LocalDateTime.of(SHOW_DATE, LocalTime.of(19, 30));
+    private static final LocalDateTime SHOW_END = LocalDateTime.of(SHOW_DATE, LocalTime.of(22, 0));
+    private static final LocalDateTime WINDOW_NOW = LocalDateTime.of(SHOW_DATE, LocalTime.of(18, 0));
+
     @Mock
     private TicketItemMapper ticketItemMapper;
     @Mock
@@ -66,10 +76,146 @@ class CheckInServiceTest {
             assertThat(response.ticketCode()).isEqualTo("TK-VALID");
             assertThat(response.showTitle()).isEqualTo("THE PHANTOM OF THE OPERA");
             assertThat(response.status()).isEqualTo("CHECKED_IN");
-            assertThat(response.checkedInAt()).isNotNull();
+            assertThat(response.checkedInAt()).isEqualTo(WINDOW_NOW);
             verify(ticketItemMapper).updateById(argThat((TicketItem updated) ->
-                    "CHECKED_IN".equals(updated.getStatus()) && updated.getUpdatedAt() != null
+                    "CHECKED_IN".equals(updated.getStatus()) && WINDOW_NOW.equals(updated.getUpdatedAt())
             ));
+        }
+    }
+
+    @Test
+    void verifyAllowsCheckInAtOpeningBoundary() {
+        CheckInService service = createService(SHOW_START.minusHours(2));
+        TicketItem ticket = ticket("UNUSED");
+        ShowSchedule schedule = schedule();
+
+        when(userAccountMapper.selectById("u-801")).thenReturn(user("checker"));
+        when(ticketItemMapper.selectOne(any())).thenReturn(ticket);
+        when(ticketOrderMapper.selectById(ticket.getOrderId())).thenReturn(paidOrder());
+        when(showScheduleMapper.selectById(ticket.getScheduleId())).thenReturn(schedule);
+        when(showMapper.selectById(schedule.getShowId())).thenReturn(show());
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-801");
+
+            CheckInResponse response = service.verify("TK-VALID");
+
+            assertThat(response.status()).isEqualTo("CHECKED_IN");
+            assertThat(response.checkedInAt()).isEqualTo(SHOW_START.minusHours(2));
+            verify(ticketItemMapper).updateById(any(TicketItem.class));
+        }
+    }
+
+    @Test
+    void verifyAllowsCheckInAtScheduleEndBoundary() {
+        CheckInService service = createService(SHOW_END);
+        TicketItem ticket = ticket("UNUSED");
+        ShowSchedule schedule = schedule();
+
+        when(userAccountMapper.selectById("u-801")).thenReturn(user("checker"));
+        when(ticketItemMapper.selectOne(any())).thenReturn(ticket);
+        when(ticketOrderMapper.selectById(ticket.getOrderId())).thenReturn(paidOrder());
+        when(showScheduleMapper.selectById(ticket.getScheduleId())).thenReturn(schedule);
+        when(showMapper.selectById(schedule.getShowId())).thenReturn(show());
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-801");
+
+            CheckInResponse response = service.verify("TK-VALID");
+
+            assertThat(response.status()).isEqualTo("CHECKED_IN");
+            assertThat(response.checkedInAt()).isEqualTo(SHOW_END);
+            verify(ticketItemMapper).updateById(any(TicketItem.class));
+        }
+    }
+
+    @Test
+    void verifyRejectsTicketBeforeCheckInWindow() {
+        CheckInService service = createService(SHOW_START.minusHours(2).minusSeconds(1));
+        TicketItem ticket = ticket("UNUSED");
+
+        when(userAccountMapper.selectById("u-801")).thenReturn(user("checker"));
+        when(ticketItemMapper.selectOne(any())).thenReturn(ticket);
+        when(ticketOrderMapper.selectById(ticket.getOrderId())).thenReturn(paidOrder());
+        when(showScheduleMapper.selectById(ticket.getScheduleId())).thenReturn(schedule());
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-801");
+
+            assertThatThrownBy(() -> service.verify("TK-VALID"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("未到检票时间，开演前 2 小时开放检票")
+                    .extracting("code")
+                    .isEqualTo(ErrorCode.CONFLICT);
+            verify(ticketItemMapper, never()).updateById(any(TicketItem.class));
+        }
+    }
+
+    @Test
+    void verifyRejectsTicketAfterScheduleEnd() {
+        CheckInService service = createService(SHOW_END.plusSeconds(1));
+        TicketItem ticket = ticket("UNUSED");
+
+        when(userAccountMapper.selectById("u-801")).thenReturn(user("checker"));
+        when(ticketItemMapper.selectOne(any())).thenReturn(ticket);
+        when(ticketOrderMapper.selectById(ticket.getOrderId())).thenReturn(paidOrder());
+        when(showScheduleMapper.selectById(ticket.getScheduleId())).thenReturn(schedule());
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-801");
+
+            assertThatThrownBy(() -> service.verify("TK-VALID"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("演出已结束，无法检票")
+                    .extracting("code")
+                    .isEqualTo(ErrorCode.CONFLICT);
+            verify(ticketItemMapper, never()).updateById(any(TicketItem.class));
+        }
+    }
+
+    @Test
+    void verifyRejectsCancelledSchedule() {
+        CheckInService service = createService();
+        TicketItem ticket = ticket("UNUSED");
+        ShowSchedule schedule = schedule();
+        schedule.setStatus("CANCELLED");
+
+        when(userAccountMapper.selectById("u-801")).thenReturn(user("checker"));
+        when(ticketItemMapper.selectOne(any())).thenReturn(ticket);
+        when(ticketOrderMapper.selectById(ticket.getOrderId())).thenReturn(paidOrder());
+        when(showScheduleMapper.selectById(ticket.getScheduleId())).thenReturn(schedule);
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-801");
+
+            assertThatThrownBy(() -> service.verify("TK-VALID"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("场次已取消，无法检票")
+                    .extracting("code")
+                    .isEqualTo(ErrorCode.CONFLICT);
+            verify(ticketItemMapper, never()).updateById(any(TicketItem.class));
+        }
+    }
+
+    @Test
+    void verifyRejectsMissingSchedule() {
+        CheckInService service = createService();
+        TicketItem ticket = ticket("UNUSED");
+
+        when(userAccountMapper.selectById("u-801")).thenReturn(user("checker"));
+        when(ticketItemMapper.selectOne(any())).thenReturn(ticket);
+        when(ticketOrderMapper.selectById(ticket.getOrderId())).thenReturn(paidOrder());
+        when(showScheduleMapper.selectById(ticket.getScheduleId())).thenReturn(null);
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-801");
+
+            assertThatThrownBy(() -> service.verify("TK-VALID"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("场次不存在，无法检票")
+                    .extracting("code")
+                    .isEqualTo(ErrorCode.CONFLICT);
+            verify(ticketItemMapper, never()).updateById(any(TicketItem.class));
         }
     }
 
@@ -110,12 +256,17 @@ class CheckInServiceTest {
     }
 
     private CheckInService createService() {
+        return createService(WINDOW_NOW);
+    }
+
+    private CheckInService createService(LocalDateTime now) {
         return new CheckInService(
                 ticketItemMapper,
                 ticketOrderMapper,
                 showScheduleMapper,
                 showMapper,
-                userAccountMapper
+                userAccountMapper,
+                Clock.fixed(now.atZone(TEST_ZONE).toInstant(), TEST_ZONE)
         );
     }
 
@@ -149,7 +300,9 @@ class CheckInServiceTest {
         schedule.setId("sch-101");
         schedule.setShowId("s-001");
         schedule.setTheaterName("Main Hall");
-        schedule.setStartTime(LocalDateTime.of(2026, 5, 24, 19, 30));
+        schedule.setStartTime(SHOW_START);
+        schedule.setEndTime(SHOW_END);
+        schedule.setStatus("ON_SALE");
         return schedule;
     }
 

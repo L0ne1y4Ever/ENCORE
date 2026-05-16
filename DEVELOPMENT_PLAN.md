@@ -1,6 +1,6 @@
 # ENCORE Development Plan
 
-Updated: 2026-05-16
+Updated: 2026-05-17
 
 ## Goal
 
@@ -138,6 +138,10 @@ Progress:
 - Added automatic seat-pool generation for new schedules with configurable rows, columns, and VIP/A/B prices.
 - Connected frontend admin schedule management to create/edit/cancel flows with a dialog form, status controls, confirmation, and localized validation.
 - Verified generated schedule seats can be queried and locked while `ON_SALE`, and are blocked after the schedule is cancelled.
+- Added ordinary check-in time-window validation: tickets can be checked in from 2 hours before schedule start through schedule end.
+- Added ordinary check-in rejection for missing schedules, cancelled schedules, too-early tickets, and ended schedules.
+- Kept admin force-check-in independent from the ordinary check-in window for operational correction.
+- Expanded `CheckInServiceTest` to cover success, boundaries, early/ended/cancelled/missing schedule rejection, duplicate rejection, and unauthorized role rejection.
 
 Commit trigger:
 

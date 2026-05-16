@@ -18,3 +18,9 @@ This file is a defense-friendly index of meaningful commits. It complements `git
 | `267f6cc` | feat | Added backend admin show CRUD and connected the admin show page to real create/edit/publish/archive operations. | `mvn test` passed; `npm run build` passed; real admin show CRUD API flow passed; browser admin show page and create dialog loaded. | Pushed to `origin/main` |
 | `90415e0` | feat | Added admin schedule create/edit/cancel APIs, generated seat pools for new schedules, and connected the admin schedule page to real CRUD operations. | `mvn test` passed; `npm run build` passed; real schedule CRUD and generated-seat lock API flow passed; browser admin schedule page and create dialog loaded. | Pushed to `origin/main` |
 | `aa52c14` | feat | Added backend admin dashboard metrics and connected the admin dashboard page to real revenue, ticket, trend, top-show, and check-in data. | `mvn test` passed; `npm run build` passed; real admin dashboard API and ordinary-user rejection passed; browser admin dashboard rendered live metrics. | Pushed to `origin/main` |
+
+## 2026-05-17
+
+| Commit | Type | Summary | Verification | Push |
+| --- | --- | --- | --- | --- |
+| `TBD` | feat | Added ordinary check-in time-window and schedule-validity rules while keeping admin force-check-in available for correction. | `mvn test` passed; `npm run build` passed; real API rejected future-schedule scanner check-in and admin force-check-in still succeeded. | Pending push |
