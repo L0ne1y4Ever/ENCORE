@@ -29,6 +29,8 @@ const routes: Array<RouteRecordRaw> = [
     children: [
       { path: '', name: 'AdminDashboard', component: () => import('../views/admin/Dashboard.vue') },
       { path: 'shows', name: 'AdminShows', component: () => import('../views/admin/Shows.vue') },
+      { path: 'schedules', name: 'AdminSchedules', component: () => import('../views/admin/Schedules.vue') },
+      { path: 'orders', name: 'AdminOrders', component: () => import('../views/admin/Orders.vue') },
     ]
   },
   {

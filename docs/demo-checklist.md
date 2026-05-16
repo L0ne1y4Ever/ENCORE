@@ -29,6 +29,7 @@ Use this checklist to prepare the final course defense.
 - User completes mock payment.
 - User opens electronic ticket and sees ticket code.
 - Seat selection, order creation, payment, and ticket generation use backend APIs.
+- The generated ticket code can be submitted to the backend check-in endpoint.
 
 ## Check-In Flow
 
@@ -37,6 +38,7 @@ Use this checklist to prepare the final course defense.
 - Valid ticket is checked in successfully.
 - Repeated check-in is rejected.
 - Invalid ticket is rejected.
+- Check-in page uses backend `POST /api/checkin/verify`.
 - Wrong schedule/time ticket is rejected when backend time validation is implemented.
 
 ## Admin Flow

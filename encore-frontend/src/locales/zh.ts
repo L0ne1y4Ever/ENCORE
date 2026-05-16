@@ -2,39 +2,58 @@ export default {
   common: {
     login: '登录',
     register: '注册',
-    logout: '退出',
+    logout: '退出登录',
     username: '账号',
     password: '密码',
-    submit: '提交',
+    nickname: '昵称',
+    submit: '登录',
+    save: '保存',
     back: '返回',
     cancel: '取消',
     confirm: '确认',
     status: '状态',
-    language: '语言',
+    language: 'EN',
     languageSwitch: '切换语言',
     loading: '加载中...',
-    processing: '处理中...'
+    processing: '处理中...',
+    newToEncore: '初来 ENCORE？',
+    signUpNow: '立即注册。',
+    alreadyHaveAccount: '已有账号？',
+    signInNow: '去登录。',
+    getStarted: '立即开始'
   },
   home: {
     nowShowing: '正在热映',
+    comingSoon: '即将上映 / 预约',
+    comingSoonBadge: '即将上映',
     brand: 'ENCORE',
+    tagline: '为有品位的灵魂，策展每一场体验',
+    all: '全部',
+    movie: '电影',
+    musical: '音乐剧',
+    play: '话剧',
+    concert: '演唱会',
+    ballet: '芭蕾舞',
+    viewDetails: '查看详情',
+    noShows: '该分类下暂无演出。',
     shows: '演出',
     profile: '我的'
   },
-  auth: {
-    registerSuccess: '注册占位流程已完成，请使用演示账号登录。',
-    invalidCredentials: '账号或密码错误。可尝试 user/123、admin/123、checker/123 或 sysadmin/123。'
+  login: {
+    heroTitle: '无限演出、音乐会等你探索',
+    heroSubtitle: '随时随地购票，随时取消。',
+    heroPrompt: '准备好了吗？输入您的账号开始体验。'
   },
   detail: {
     category: '类型',
     duration: '时长',
-    minutes: '分钟',
     tags: '标签',
     synopsis: '剧情简介',
     selectSchedule: '选择场次',
     book: '立即购票',
     reserve: '立即预约',
     unavailable: '暂不可售',
+    minutes: '分钟',
     emptySchedules: '该演出暂无可选场次。'
   },
   reservation: {
@@ -87,6 +106,11 @@ export default {
     statusValid: '状态：有效',
     unused: '未使用'
   },
+  profile: {
+    personalInfo: '个人资料',
+    editNickname: '修改昵称',
+    successSave: '保存成功'
+  },
   admin: {
     dashboard: '数据看板',
     shows: '演出管理',
@@ -107,6 +131,13 @@ export default {
     actions: '操作',
     edit: '编辑',
     delete: '删除',
+    scheduleStatus: '状态',
+    reservedCount: '预约人数',
+    orderId: '订单号',
+    amount: '金额',
+    action: '操作',
+    refund: '退款',
+    checkin: '强制核销',
     weekdays: {
       mon: '周一',
       tue: '周二',
@@ -122,6 +153,8 @@ export default {
     placeholder: '...',
     online: '在线模式',
     offline: '离线模式 (稍后同步)',
-    invalid: '无效票据或已核销'
+    invalid: '无效票据或已核销',
+    verify: '核销',
+    success: '核销通过'
   }
 }

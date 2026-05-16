@@ -5,8 +5,9 @@ export interface Show {
   coverUrl: string
   description: string
   duration: number
-  category: string
+  category: 'Movie' | 'Musical' | 'Play' | 'Concert' | 'Ballet'
   tags: string[]
+  status?: 'ON_SALE' | 'COMING_SOON'
 }
 
 export interface Schedule {
@@ -28,7 +29,8 @@ export const mockShows: Show[] = [
     description: 'The brilliant original production of Andrew Lloyd Webber\'s classic musical.',
     duration: 150,
     category: 'Musical',
-    tags: ['Classic', 'Must See']
+    tags: ['Classic', 'Must See'],
+    status: 'ON_SALE'
   },
   {
     id: 's-002',
@@ -38,7 +40,8 @@ export const mockShows: Show[] = [
     description: 'A masterpiece of classical ballet with a timeless score.',
     duration: 120,
     category: 'Ballet',
-    tags: ['Dance', 'Romantic']
+    tags: ['Dance', 'Romantic'],
+    status: 'ON_SALE'
   },
   {
     id: 's-003',
@@ -48,7 +51,8 @@ export const mockShows: Show[] = [
     description: 'Experience the magic of Coldplay live in concert.',
     duration: 180,
     category: 'Concert',
-    tags: ['Live', 'Pop']
+    tags: ['Live', 'Pop'],
+    status: 'COMING_SOON'
   },
   {
     id: 's-004',
@@ -58,7 +62,8 @@ export const mockShows: Show[] = [
     description: 'The saga continues as Paul Atreides unites with Chani and the Fremen.',
     duration: 166,
     category: 'Movie',
-    tags: ['Sci-Fi', 'IMAX']
+    tags: ['Sci-Fi', 'IMAX'],
+    status: 'COMING_SOON'
   }
 ]
 

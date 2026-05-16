@@ -106,12 +106,26 @@ Commit trigger:
 
 ## Phase 4 - Check-In And Admin Operations
 
+Status: in progress on 2026-05-16
+
 Target outcome: checker and admin workflows are demonstrable.
 
 - Implement check-in verification by ticket code.
 - Reject duplicate, invalid, refunded, or wrong-time tickets with clear messages.
 - Implement minimum admin CRUD for shows, categories, halls, seats, schedules, orders, and announcements.
 - Implement schedule publishing and ticket-pool generation.
+
+Progress:
+
+- Added backend `POST /api/checkin/verify` endpoint.
+- Added role guard for checker/admin/sysadmin check-in authority.
+- Added ticket-code lookup and validation against paid order state.
+- Added one-time transition from `UNUSED` ticket to `CHECKED_IN`.
+- Added frontend `api/checkin.ts` and connected the scanner page to the backend endpoint.
+- Added `CheckInServiceTest` for successful check-in, duplicate rejection, and unauthorized role rejection.
+- Restored i18n keys removed by the latest UI edits so order/payment/ticket/admin pages keep rendering translated text.
+- Verified real API flow: login, seat selection, lock, order creation, mock payment, check-in, and duplicate check-in rejection.
+- Verified browser check-in UI with a paid ticket code and duplicate rejection message.
 
 Commit trigger:
 

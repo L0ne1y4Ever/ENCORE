@@ -7,6 +7,7 @@ export interface UserProfile {
   username: string
   role: UserRole
   displayName: string
+  nickname?: string
 }
 
 interface LoginResponse {

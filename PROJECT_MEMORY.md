@@ -1,6 +1,6 @@
 # ENCORE Project Memory
 
-Last updated: 2026-05-14
+Last updated: 2026-05-16
 
 ## Project Identity
 
@@ -60,10 +60,17 @@ Backend foundation added on 2026-05-14:
   - `ticket_order` stores pending/paid/expired order state.
   - `ticket_item` stores generated ticket codes and transitions from `RESERVED` to `UNUSED` after mock payment.
   - Frontend `api/seat.ts` and `api/order.ts` call backend APIs instead of mock data.
+- Phase 4 check-in backend started on 2026-05-16:
+  - Added `POST /api/checkin/verify` for ticket-code verification and one-time check-in.
+  - Check-in requires `checker`, `admin`, or `sysadmin` role.
+  - Valid `UNUSED` tickets on `PAID` orders transition to `CHECKED_IN`.
+  - Invalid, unpaid/expired, duplicate, or wrong-status tickets are rejected with business errors.
+  - Frontend check-in scanner now calls the backend API and displays accepted ticket context.
+  - Unit coverage exists for valid check-in, duplicate rejection, and role rejection.
+  - Real API/browser verification passed after Docker Desktop became available: user purchased seats, paid, checker checked in one ticket, and duplicate check-in was rejected.
 
 Important current limitation:
 
-- Check-in is still simulated in frontend memory/sessionStorage.
 - Admin schedule/order pages currently use frontend demo data and should be wired to backend APIs later.
 - Seat locking, order creation, mock payment, and ticket generation now have backend APIs, but the full browser purchase flow still needs visual verification after the user's latest frontend changes are committed.
 
@@ -193,6 +200,6 @@ git push origin main
 
 ## Next Recommended Work
 
-1. Commit or review the user's latest frontend UI optimizations.
-2. Visually verify the full browser purchase flow after those frontend edits are settled.
-3. Start Phase 4 check-in verification backend and replace the check-in mock screen.
+1. Continue Phase 4 by wiring admin schedule/order pages to backend APIs.
+2. Add wrong-schedule/time-window validation to check-in when schedule policy is finalized.
+3. Start minimum admin CRUD for schedules and ticket-pool preparation.

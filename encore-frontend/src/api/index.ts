@@ -33,12 +33,22 @@ apiClient.interceptors.request.use((config) => {
 })
 
 export async function requestData<T>(request: Promise<AxiosResponse<ApiResponse<T>>>): Promise<T> {
-  const response = await request
-  const body = response.data
-  if (body.code !== 0) {
-    throw new Error(body.msg || 'Request failed')
+  try {
+    const response = await request
+    const body = response.data
+    if (body.code !== 0) {
+      throw new Error(body.msg || 'Request failed')
+    }
+    return body.data
+  } catch (error) {
+    if (axios.isAxiosError<ApiResponse<unknown>>(error)) {
+      const message = error.response?.data?.msg
+      if (message) {
+        throw new Error(message)
+      }
+    }
+    throw error
   }
-  return body.data
 }
 
 export function saveAuthToken(tokenName: string, tokenValue: string) {

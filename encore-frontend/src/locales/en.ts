@@ -1,40 +1,59 @@
 export default {
   common: {
-    login: 'LOGIN',
-    register: 'REGISTER',
-    logout: 'EXIT',
-    username: 'USERNAME',
-    password: 'PASSWORD',
-    submit: 'SUBMIT',
-    back: 'BACK',
-    cancel: 'CANCEL',
-    confirm: 'CONFIRM',
+    login: 'Sign In',
+    register: 'Sign Up',
+    logout: 'Sign Out',
+    username: 'Username',
+    password: 'Password',
+    nickname: 'Nickname',
+    submit: 'Sign In',
+    save: 'Save',
+    back: 'Back',
+    cancel: 'Cancel',
+    confirm: 'Confirm',
     status: 'Status',
-    language: 'Language',
+    language: '中文',
     languageSwitch: 'Switch language',
     loading: 'Loading...',
-    processing: 'Processing...'
+    processing: 'Processing...',
+    newToEncore: 'New to ENCORE?',
+    signUpNow: 'Sign up now.',
+    alreadyHaveAccount: 'Already have an account?',
+    signInNow: 'Sign in.',
+    getStarted: 'Get Started'
   },
   home: {
     nowShowing: 'Now Showing',
+    comingSoon: 'Coming Soon',
+    comingSoonBadge: 'COMING SOON',
     brand: 'ENCORE',
+    tagline: 'Curated Experiences for the Cultured Mind',
+    all: 'All',
+    movie: 'Movie',
+    musical: 'Musical',
+    play: 'Play',
+    concert: 'Concert',
+    ballet: 'Ballet',
+    viewDetails: 'View Details',
+    noShows: 'No shows found in this category.',
     shows: 'Shows',
     profile: 'Profile'
   },
-  auth: {
-    registerSuccess: 'Registration placeholder completed. Please log in with a demo account.',
-    invalidCredentials: 'Invalid credentials. Try user/123, admin/123, checker/123, or sysadmin/123.'
+  login: {
+    heroTitle: 'Unlimited shows, concerts and more',
+    heroSubtitle: 'Book anywhere. Cancel anytime.',
+    heroPrompt: 'Ready to explore? Enter your email to get started.'
   },
   detail: {
     category: 'Category',
     duration: 'Duration',
-    minutes: 'Mins',
     tags: 'Tags',
     synopsis: 'Synopsis',
     selectSchedule: 'Select Schedule',
     book: 'Book Tickets',
     reserve: 'Reserve / Notify Me',
     unavailable: 'Unavailable',
+    minutes: 'Mins',
     emptySchedules: 'No schedules available for this show.'
   },
   reservation: {
@@ -87,6 +106,11 @@ export default {
     statusValid: 'Status: VALID',
     unused: 'Unused'
   },
+  profile: {
+    personalInfo: 'Personal Info',
+    editNickname: 'Edit Nickname',
+    successSave: 'Saved successfully'
+  },
   admin: {
     dashboard: 'Dashboard',
     shows: 'Shows',
@@ -107,6 +131,13 @@ export default {
     actions: 'Actions',
     edit: 'Edit',
     delete: 'Delete',
+    scheduleStatus: 'Status',
+    reservedCount: 'Reserved Count',
+    orderId: 'Order ID',
+    amount: 'Amount',
+    action: 'Action',
+    refund: 'Refund',
+    checkin: 'Force Checkin',
     weekdays: {
       mon: 'Mon',
       tue: 'Tue',
@@ -122,6 +153,8 @@ export default {
     placeholder: '...',
     online: 'ONLINE',
     offline: 'OFFLINE MODE (SYNC LATER)',
-    invalid: 'INVALID TICKET OR ALREADY USED'
+    invalid: 'INVALID TICKET OR ALREADY USED',
+    verify: 'Verify',
+    success: 'CHECK-IN ACCEPTED'
   }
 }

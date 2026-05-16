@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { checkInTicket } from '../../api/checkin'
+import type { CheckInResponse } from '../../api/checkin'
 
 const { t } = useI18n()
 const ticketCode = ref('')
@@ -9,23 +11,30 @@ const inputRef = ref<HTMLInputElement | null>(null)
 // 状态: 'idle' | 'success' | 'error'
 const scanStatus = ref<'idle' | 'success' | 'error'>('idle')
 const errorMessage = ref('')
+const loading = ref(false)
+const result = ref<CheckInResponse | null>(null)
 
-const handleScan = () => {
+const handleScan = async () => {
   const code = ticketCode.value.trim()
-  if (!code) return
+  if (!code || loading.value) return
 
-  // 模拟极简核销逻辑
-  if (code.endsWith('XYZ')) {
+  loading.value = true
+  errorMessage.value = ''
+  result.value = null
+  try {
+    result.value = await checkInTicket(code)
     scanStatus.value = 'success'
     setTimeout(() => {
       resetScanner()
-    }, 1500) // 保持 1.5s 后重置
-  } else {
+    }, 2600)
+  } catch (error) {
     scanStatus.value = 'error'
-    errorMessage.value = t('checkin.invalid')
+    errorMessage.value = error instanceof Error ? error.message : t('checkin.invalid')
     setTimeout(() => {
       resetScanner()
-    }, 2000)
+    }, 2400)
+  } finally {
+    loading.value = false
   }
 }
 
@@ -33,6 +42,7 @@ const resetScanner = () => {
   scanStatus.value = 'idle'
   ticketCode.value = ''
   errorMessage.value = ''
+  result.value = null
   nextTick(() => {
     inputRef.value?.focus()
   })
@@ -55,7 +65,7 @@ const isOffline = ref(false)
     </div>
 
     <div class="main-content">
-      <div class="status-icon" v-if="scanStatus !== 'idle'">
+      <div class="status-icon" v-if="scanStatus !== 'idle'" aria-live="polite">
         <span v-if="scanStatus === 'success'">✓</span>
         <span v-if="scanStatus === 'error'">✕</span>
       </div>
@@ -69,7 +79,17 @@ const isOffline = ref(false)
           type="text" 
           autofocus 
           :placeholder="t('checkin.placeholder')"
+          :disabled="loading"
         />
+        <button class="scan-btn" type="button" :disabled="loading || !ticketCode.trim()" @click="handleScan">
+          {{ loading ? t('common.processing') : t('checkin.verify') }}
+        </button>
+      </div>
+
+      <div class="success-card" v-if="scanStatus === 'success' && result">
+        <strong>{{ t('checkin.success') }}</strong>
+        <span>{{ result.showTitle }}</span>
+        <span>{{ result.theaterName }} · {{ result.seatId }}</span>
       </div>
       
       <div class="error-msg" v-if="scanStatus === 'error'">
@@ -169,6 +189,55 @@ const isOffline = ref(false)
     &::placeholder {
       color: rgba(255, 255, 255, 0.2);
     }
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+  }
+
+  .scan-btn {
+    min-width: 160px;
+    min-height: 44px;
+    margin-top: var(--spacing-4);
+    border: 1px solid #FFFFFF;
+    background: #FFFFFF;
+    color: #000000;
+    font-family: var(--font-family-sans);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0;
+    cursor: pointer;
+    transition: opacity 150ms ease, transform 150ms ease;
+
+    &:hover:not(:disabled),
+    &:focus-visible {
+      transform: translateY(-1px);
+    }
+
+    &:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+  }
+}
+
+.success-card {
+  display: grid;
+  gap: var(--spacing-1);
+  min-width: min(520px, calc(100vw - 48px));
+  padding: var(--spacing-4);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  background: rgba(0, 0, 0, 0.16);
+  font-family: var(--font-family-sans);
+  text-align: center;
+
+  strong {
+    font-size: 24px;
+  }
+
+  span {
+    font-size: 16px;
   }
 }
 
@@ -179,5 +248,16 @@ const isOffline = ref(false)
   font-weight: 700;
   letter-spacing: 0.05em;
   text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scanner-container,
+  .scan-btn {
+    transition: none;
+  }
+
+  .scanner-container.status-error {
+    animation: none;
+  }
 }
 </style>
