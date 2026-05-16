@@ -33,17 +33,20 @@ public class OrderService {
     private final TicketItemMapper ticketItemMapper;
     private final ScheduleSeatMapper scheduleSeatMapper;
     private final SeatService seatService;
+    private final SeatStatusPublisher seatStatusPublisher;
 
     public OrderService(
             TicketOrderMapper ticketOrderMapper,
             TicketItemMapper ticketItemMapper,
             ScheduleSeatMapper scheduleSeatMapper,
-            SeatService seatService
+            SeatService seatService,
+            SeatStatusPublisher seatStatusPublisher
     ) {
         this.ticketOrderMapper = ticketOrderMapper;
         this.ticketItemMapper = ticketItemMapper;
         this.scheduleSeatMapper = scheduleSeatMapper;
         this.seatService = seatService;
+        this.seatStatusPublisher = seatStatusPublisher;
     }
 
     @Transactional
@@ -135,7 +138,9 @@ public class OrderService {
         order.setStatus("PAID");
         order.setPaidAt(LocalDateTime.now());
         ticketOrderMapper.updateById(order);
-        seatService.releaseLocks(order.getScheduleId(), tickets.stream().map(TicketItem::getSeatId).toList());
+        List<String> seatIds = tickets.stream().map(TicketItem::getSeatId).toList();
+        seatService.releaseLocks(order.getScheduleId(), seatIds);
+        seatStatusPublisher.publishSeatStatus(order.getScheduleId(), "SOLD", "SOLD", seatIds);
         return true;
     }
 
@@ -160,7 +165,9 @@ public class OrderService {
             ticket.setStatus("VOID");
             ticketItemMapper.updateById(ticket);
         }
-        seatService.releaseLocks(order.getScheduleId(), tickets.stream().map(TicketItem::getSeatId).toList());
+        List<String> seatIds = tickets.stream().map(TicketItem::getSeatId).toList();
+        seatService.releaseLocks(order.getScheduleId(), seatIds);
+        seatStatusPublisher.publishSeatStatus(order.getScheduleId(), "EXPIRED", "AVAILABLE", seatIds);
     }
 
     private TicketItem createReservedTicket(String orderId, String scheduleId, String seatId) {

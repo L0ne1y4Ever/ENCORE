@@ -169,6 +169,11 @@ Progress:
 - Connected the frontend admin dashboard to real backend metrics while preserving the black-gold admin visual direction.
 - Added 7-day revenue/ticket chart, top-shows chart, check-in summary, refresh button, loading state, empty state, and localized Chinese/English copy.
 - Verified `admin/123` can read dashboard metrics, ordinary `user/123` is rejected, and the browser dashboard renders real data.
+- Added Spring WebSocket + STOMP live-seat updates with `/ws` and per-schedule topics.
+- Broadcast lock, sold, expired, refunded, and cancelled seat events from the backend business flow.
+- Connected the seat-selection page to realtime updates with lightweight connection feedback and stale-selection cleanup.
+- Added focused backend tests for `LOCKED`, `SOLD`, `EXPIRED -> AVAILABLE`, and `REFUNDED -> AVAILABLE` event publication.
+- Verified real STOMP/API flow for lock, payment, and refund seat-state events on `sch-101`.
 
 Commit trigger:
 

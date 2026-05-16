@@ -78,7 +78,14 @@ export default {
     row: 'Row',
     col: 'Col',
     locking: 'Locking...',
-    conflict: 'Seats are no longer available, please reselect.'
+    conflict: 'Seats are no longer available, please reselect.',
+    live: {
+      connecting: 'Connecting live updates',
+      connected: 'Live updates on',
+      disconnected: 'Live connection lost'
+    },
+    liveUpdated: 'Seat status updated',
+    scheduleCancelled: 'This schedule was cancelled. The seat map has been refreshed.'
   },
   order: {
     confirmation: 'Order Confirmation',

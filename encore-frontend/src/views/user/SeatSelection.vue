@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getSeatMap, lockSeats } from '../../api/seat'
+import { subscribeToSeatUpdates } from '../../api/seatRealtime'
+import type { SeatRealtimeConnectionState, SeatStatusEvent } from '../../api/seatRealtime'
 import type { Seat } from '../../mock/seats'
 import { useI18n } from 'vue-i18n'
 
@@ -14,10 +16,84 @@ const seats = ref<Seat[]>([])
 const selectedSeatIds = ref<Set<string>>(new Set())
 const loading = ref(true)
 const locking = ref(false)
+const realtimeState = ref<SeatRealtimeConnectionState>('connecting')
+const realtimeNotice = ref<string | null>(null)
+let disconnectRealtime: (() => void) | undefined
+let realtimeNoticeTimer: ReturnType<typeof setTimeout> | undefined
+
+const refreshSeatMap = async (showLoading = false) => {
+  if (showLoading) {
+    loading.value = true
+  }
+  try {
+    seats.value = await getSeatMap(scheduleId)
+  } finally {
+    loading.value = false
+  }
+}
+
+const showRealtimeNotice = (messageKey: string) => {
+  realtimeNotice.value = messageKey
+  if (realtimeNoticeTimer) {
+    clearTimeout(realtimeNoticeTimer)
+  }
+  realtimeNoticeTimer = setTimeout(() => {
+    realtimeNotice.value = null
+  }, 2500)
+}
+
+const applySeatStatusEvent = async (event: SeatStatusEvent) => {
+  if (event.reason === 'CANCELLED') {
+    selectedSeatIds.value.clear()
+    showRealtimeNotice('seat.scheduleCancelled')
+    await refreshSeatMap()
+    return
+  }
+
+  if (event.seats.length === 0) {
+    return
+  }
+
+  const nextStatusBySeat = new Map(event.seats.map((seat) => [seat.seatId, seat.status]))
+  seats.value = seats.value.map((seat) => {
+    const nextStatus = nextStatusBySeat.get(seat.id)
+    if (!nextStatus) {
+      return seat
+    }
+
+    if (
+      nextStatus !== 'AVAILABLE' &&
+      selectedSeatIds.value.has(seat.id) &&
+      !(event.reason === 'LOCKED' && locking.value)
+    ) {
+      selectedSeatIds.value.delete(seat.id)
+    }
+
+    return {
+      ...seat,
+      status: nextStatus
+    }
+  })
+  showRealtimeNotice('seat.liveUpdated')
+}
 
 onMounted(async () => {
-  seats.value = await getSeatMap(scheduleId)
-  loading.value = false
+  await refreshSeatMap(true)
+  disconnectRealtime = subscribeToSeatUpdates(scheduleId, {
+    onEvent: (event) => {
+      void applySeatStatusEvent(event)
+    },
+    onStateChange: (state) => {
+      realtimeState.value = state
+    }
+  })
+})
+
+onBeforeUnmount(() => {
+  disconnectRealtime?.()
+  if (realtimeNoticeTimer) {
+    clearTimeout(realtimeNoticeTimer)
+  }
 })
 
 const maxSelect = 6
@@ -105,6 +181,16 @@ const seatGrid = computed(() => {
 
     <aside class="side-panel">
       <h2>{{ t('seat.selection') }}</h2>
+
+      <div class="realtime-panel" aria-live="polite">
+        <div class="realtime-status" :class="`state-${realtimeState}`">
+          <span class="status-dot"></span>
+          <span>{{ t(`seat.live.${realtimeState}`) }}</span>
+        </div>
+        <div class="realtime-notice" v-if="realtimeNotice">
+          {{ t(realtimeNotice) }}
+        </div>
+      </div>
       
       <div class="legend">
         <div class="legend-item"><div class="box status-available"></div> {{ t('seat.available') }}</div>
@@ -265,6 +351,44 @@ const seatGrid = computed(() => {
     font-family: var(--font-family-display);
     font-size: 24px;
     margin-bottom: var(--spacing-4);
+  }
+
+  .realtime-panel {
+    min-height: 42px;
+    margin-bottom: var(--spacing-4);
+    font-family: var(--font-family-sans);
+    font-size: 12px;
+  }
+
+  .realtime-status {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    color: var(--color-text-secondary);
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background-color: var(--color-text-ghost);
+  }
+
+  .state-connected .status-dot {
+    background-color: var(--color-accent);
+  }
+
+  .state-connecting .status-dot {
+    background-color: var(--color-border-strong);
+  }
+
+  .state-disconnected .status-dot {
+    background-color: var(--color-text-ghost);
+  }
+
+  .realtime-notice {
+    margin-top: var(--spacing-1);
+    color: var(--color-text-ghost);
   }
 
   .legend {

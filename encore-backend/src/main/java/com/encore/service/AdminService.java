@@ -63,6 +63,7 @@ public class AdminService {
     private final TicketItemMapper ticketItemMapper;
     private final UserAccountMapper userAccountMapper;
     private final StringRedisTemplate redisTemplate;
+    private final SeatStatusPublisher seatStatusPublisher;
 
     public AdminService(
             ShowScheduleMapper showScheduleMapper,
@@ -71,7 +72,8 @@ public class AdminService {
             TicketOrderMapper ticketOrderMapper,
             TicketItemMapper ticketItemMapper,
             UserAccountMapper userAccountMapper,
-            StringRedisTemplate redisTemplate
+            StringRedisTemplate redisTemplate,
+            SeatStatusPublisher seatStatusPublisher
     ) {
         this.showScheduleMapper = showScheduleMapper;
         this.showMapper = showMapper;
@@ -80,6 +82,7 @@ public class AdminService {
         this.ticketItemMapper = ticketItemMapper;
         this.userAccountMapper = userAccountMapper;
         this.redisTemplate = redisTemplate;
+        this.seatStatusPublisher = seatStatusPublisher;
     }
 
     public AdminDashboardResponse dashboard() {
@@ -247,6 +250,7 @@ public class AdminService {
         showScheduleMapper.updateById(schedule);
         if ("CANCELLED".equals(schedule.getStatus())) {
             releaseScheduleLocks(scheduleId);
+            seatStatusPublisher.publishScheduleCancelled(scheduleId);
         }
         return toScheduleResponse(showScheduleMapper.selectById(scheduleId));
     }
@@ -260,6 +264,7 @@ public class AdminService {
         showScheduleMapper.updateById(schedule);
         if ("CANCELLED".equals(normalizedStatus)) {
             releaseScheduleLocks(scheduleId);
+            seatStatusPublisher.publishScheduleCancelled(scheduleId);
         }
         return toScheduleResponse(showScheduleMapper.selectById(scheduleId));
     }
@@ -271,6 +276,7 @@ public class AdminService {
         schedule.setStatus("CANCELLED");
         showScheduleMapper.updateById(schedule);
         releaseScheduleLocks(scheduleId);
+        seatStatusPublisher.publishScheduleCancelled(scheduleId);
         return toScheduleResponse(showScheduleMapper.selectById(scheduleId));
     }
 
@@ -307,6 +313,12 @@ public class AdminService {
             ticketItemMapper.updateById(ticket);
             markSeatAvailable(ticket.getScheduleId(), ticket.getSeatId());
         }
+        seatStatusPublisher.publishSeatStatus(
+                order.getScheduleId(),
+                "REFUNDED",
+                "AVAILABLE",
+                tickets.stream().map(TicketItem::getSeatId).toList()
+        );
         return toOrderResponse(getOrder(orderId));
     }
 

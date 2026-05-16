@@ -23,15 +23,18 @@ public class SeatService {
     private final ScheduleSeatMapper scheduleSeatMapper;
     private final ShowScheduleMapper showScheduleMapper;
     private final StringRedisTemplate redisTemplate;
+    private final SeatStatusPublisher seatStatusPublisher;
 
     public SeatService(
             ScheduleSeatMapper scheduleSeatMapper,
             ShowScheduleMapper showScheduleMapper,
-            StringRedisTemplate redisTemplate
+            StringRedisTemplate redisTemplate,
+            SeatStatusPublisher seatStatusPublisher
     ) {
         this.scheduleSeatMapper = scheduleSeatMapper;
         this.showScheduleMapper = showScheduleMapper;
         this.redisTemplate = redisTemplate;
+        this.seatStatusPublisher = seatStatusPublisher;
     }
 
     public List<SeatResponse> listSeats(String scheduleId) {
@@ -69,6 +72,7 @@ public class SeatService {
                     throw new BusinessException(ErrorCode.CONFLICT, "座位已被锁定，请重新选择");
                 }
             }
+            seatStatusPublisher.publishSeatStatus(scheduleId, "LOCKED", "LOCKED", normalizedSeatIds);
             return true;
         } catch (BusinessException exception) {
             acquiredKeys.forEach(redisTemplate::delete);

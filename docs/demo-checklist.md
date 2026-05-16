@@ -29,6 +29,7 @@ Use this checklist to prepare the final course defense.
 - User completes mock payment.
 - User opens electronic ticket and sees ticket code.
 - Seat selection, order creation, payment, and ticket generation use backend APIs.
+- Same-schedule seat state changes stream over WebSocket without manual refresh.
 - The generated ticket code can be submitted to the backend check-in endpoint.
 
 ## Check-In Flow
@@ -68,6 +69,7 @@ Use this checklist to prepare the final course defense.
 ## Differentiating Features
 
 - Real-time seat update across two browser sessions.
+- WebSocket seat events cover lock, sold, refund, expiry, and cancelled-schedule refresh paths.
 - three.js seat-stage preview on seat click.
 - Black-gold command-center dashboard.
 - Dashboard charts read backend aggregate data instead of static demo data.

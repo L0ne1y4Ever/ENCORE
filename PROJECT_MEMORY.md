@@ -99,6 +99,12 @@ Backend foundation added on 2026-05-14:
     - Added `docs/demo-evidence/2026-05-17-purchase-flow.md`.
     - Captured browser screenshots for login, home, show detail, seat selection, order confirmation, payment, and electronic ticket.
     - Real browser flow created paid order `ord-1e911c2c5bba466d` and ticket `TMP8LC0P51-9XYZ`.
+  - WebSocket live-seat updates continued on 2026-05-17:
+    - Added Spring WebSocket + STOMP at `/ws` with per-schedule topics under `/topic/schedules/{scheduleId}/seats`.
+    - Added backend seat-status events for lock, sold, expired, refunded, and cancelled transitions.
+    - Frontend seat selection now subscribes to realtime events, updates seat state in place, clears stale selections, and shows lightweight connection feedback.
+    - Focused unit coverage now verifies `LOCKED`, `SOLD`, `EXPIRED -> AVAILABLE`, and `REFUNDED -> AVAILABLE` event publication.
+    - Real STOMP/API verification passed for `LOCKED`, `SOLD`, and `REFUNDED -> AVAILABLE` events on `sch-101`.
 
 Important current limitation:
 
@@ -233,6 +239,6 @@ git push origin main
 
 ## Next Recommended Work
 
-1. Start the WebSocket differentiators: live seat updates first, then optional dashboard refresh events.
+1. Add optional WebSocket dashboard refresh events now that live seat updates are stable.
 2. Add scanner-station current-schedule binding if stricter wrong-schedule check-in is required for defense.
-3. Add three.js seat-stage preview after live seat updates are stable.
+3. Add three.js seat-stage preview after the realtime seat path remains stable in demo rehearsal.

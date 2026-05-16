@@ -78,7 +78,14 @@ export default {
     row: '排',
     col: '座',
     locking: '锁座中...',
-    conflict: '座位状态已变化，请重新选择。'
+    conflict: '座位状态已变化，请重新选择。',
+    live: {
+      connecting: '实时同步连接中',
+      connected: '实时同步中',
+      disconnected: '实时连接已断开'
+    },
+    liveUpdated: '座位状态已更新',
+    scheduleCancelled: '当前场次已取消，座位图已刷新'
   },
   order: {
     confirmation: '确认订单',
