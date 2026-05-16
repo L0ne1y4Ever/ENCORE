@@ -23,4 +23,4 @@ This file is a defense-friendly index of meaningful commits. It complements `git
 
 | Commit | Type | Summary | Verification | Push |
 | --- | --- | --- | --- | --- |
-| `TBD` | feat | Added ordinary check-in time-window and schedule-validity rules while keeping admin force-check-in available for correction. | `mvn test` passed; `npm run build` passed; real API rejected future-schedule scanner check-in and admin force-check-in still succeeded. | Pending push |
+| `6b0802d` | feat | Added ordinary check-in time-window and schedule-validity rules while keeping admin force-check-in available for correction. | `mvn test` passed; `npm run build` passed; real API rejected future-schedule scanner check-in and admin force-check-in still succeeded. | Pushed to `origin/main` |
