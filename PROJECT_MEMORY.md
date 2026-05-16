@@ -105,6 +105,7 @@ Backend foundation added on 2026-05-14:
     - Frontend seat selection now subscribes to realtime events, updates seat state in place, clears stale selections, and shows lightweight connection feedback.
     - Focused unit coverage now verifies `LOCKED`, `SOLD`, `EXPIRED -> AVAILABLE`, and `REFUNDED -> AVAILABLE` event publication.
     - Real STOMP/API verification passed for `LOCKED`, `SOLD`, and `REFUNDED -> AVAILABLE` events on `sch-101`.
+    - Two independent browser sessions verified live UI sync on `sch-101`: one page locked and paid a seat while the other page updated locked/sold counts without refresh.
 
 Important current limitation:
 

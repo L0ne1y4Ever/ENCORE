@@ -174,6 +174,7 @@ Progress:
 - Connected the seat-selection page to realtime updates with lightweight connection feedback and stale-selection cleanup.
 - Added focused backend tests for `LOCKED`, `SOLD`, `EXPIRED -> AVAILABLE`, and `REFUNDED -> AVAILABLE` event publication.
 - Verified real STOMP/API flow for lock, payment, and refund seat-state events on `sch-101`.
+- Verified two independent browser sessions stay in sync without refresh when one user locks and pays for a seat.
 
 Commit trigger:
 
