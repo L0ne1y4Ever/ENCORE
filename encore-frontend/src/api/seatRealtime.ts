@@ -1,8 +1,9 @@
 import { Client } from '@stomp/stompjs'
-import { apiClient } from './index'
+import { resolveWebSocketUrl } from './realtime'
+import type { RealtimeConnectionState } from './realtime'
 import type { SeatStatus } from '../mock/seats'
 
-export type SeatRealtimeConnectionState = 'connecting' | 'connected' | 'disconnected'
+export type SeatRealtimeConnectionState = RealtimeConnectionState
 
 export interface SeatStatusChange {
   seatId: string
@@ -19,15 +20,6 @@ export interface SeatStatusEvent {
 interface SeatRealtimeHandlers {
   onEvent: (event: SeatStatusEvent) => void
   onStateChange?: (state: SeatRealtimeConnectionState) => void
-}
-
-const resolveWebSocketUrl = () => {
-  const baseUrl = new URL(apiClient.defaults.baseURL || window.location.origin, window.location.origin)
-  baseUrl.protocol = baseUrl.protocol === 'https:' ? 'wss:' : 'ws:'
-  baseUrl.pathname = '/ws'
-  baseUrl.search = ''
-  baseUrl.hash = ''
-  return baseUrl.toString()
 }
 
 export function subscribeToSeatUpdates(

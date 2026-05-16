@@ -175,6 +175,11 @@ Progress:
 - Added focused backend tests for `LOCKED`, `SOLD`, `EXPIRED -> AVAILABLE`, and `REFUNDED -> AVAILABLE` event publication.
 - Verified real STOMP/API flow for lock, payment, and refund seat-state events on `sch-101`.
 - Verified two independent browser sessions stay in sync without refresh when one user locks and pays for a seat.
+- Added Dashboard WebSocket refresh events on `/topic/admin/dashboard`.
+- Published refresh events from payment, expiration, refund, force check-in, ordinary check-in, and show-change flows.
+- Connected the admin dashboard to realtime refresh events with live connection feedback and background reload of the existing metrics API.
+- Added focused tests for dashboard refresh routing and event hooks.
+- Verified real STOMP/API `ORDER_PAID` and `ORDER_REFUNDED` events, plus browser dashboard auto-refresh from 1 to 3 metric requests after live events.
 
 Commit trigger:
 

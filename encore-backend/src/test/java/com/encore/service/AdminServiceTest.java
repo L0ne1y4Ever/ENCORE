@@ -47,6 +47,8 @@ class AdminServiceTest {
     private StringRedisTemplate redisTemplate;
     @Mock
     private SeatStatusPublisher seatStatusPublisher;
+    @Mock
+    private DashboardRefreshPublisher dashboardRefreshPublisher;
 
     @Test
     void refundOrderPublishesAvailableEvent() {
@@ -75,6 +77,7 @@ class AdminServiceTest {
                 "AVAILABLE",
                 List.of("seat-1-1")
         );
+        verify(dashboardRefreshPublisher).publish("ORDER_REFUNDED", "ord-1");
     }
 
     private AdminService createService() {
@@ -86,7 +89,8 @@ class AdminServiceTest {
                 ticketItemMapper,
                 userAccountMapper,
                 redisTemplate,
-                seatStatusPublisher
+                seatStatusPublisher,
+                dashboardRefreshPublisher
         );
     }
 

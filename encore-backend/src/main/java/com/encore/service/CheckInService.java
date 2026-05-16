@@ -35,6 +35,7 @@ public class CheckInService {
     private final ShowMapper showMapper;
     private final UserAccountMapper userAccountMapper;
     private final Clock clock;
+    private final DashboardRefreshPublisher dashboardRefreshPublisher;
 
     public CheckInService(
             TicketItemMapper ticketItemMapper,
@@ -42,7 +43,8 @@ public class CheckInService {
             ShowScheduleMapper showScheduleMapper,
             ShowMapper showMapper,
             UserAccountMapper userAccountMapper,
-            Clock clock
+            Clock clock,
+            DashboardRefreshPublisher dashboardRefreshPublisher
     ) {
         this.ticketItemMapper = ticketItemMapper;
         this.ticketOrderMapper = ticketOrderMapper;
@@ -50,6 +52,7 @@ public class CheckInService {
         this.showMapper = showMapper;
         this.userAccountMapper = userAccountMapper;
         this.clock = clock;
+        this.dashboardRefreshPublisher = dashboardRefreshPublisher;
     }
 
     @Transactional
@@ -84,6 +87,7 @@ public class CheckInService {
         ticket.setStatus("CHECKED_IN");
         ticket.setUpdatedAt(checkedInAt);
         ticketItemMapper.updateById(ticket);
+        dashboardRefreshPublisher.publish("TICKET_CHECKED_IN", ticket.getId());
 
         ShowEntity show = schedule == null ? null : showMapper.selectById(schedule.getShowId());
         return toResponse(ticket, schedule, show, checkedInAt);

@@ -34,19 +34,22 @@ public class OrderService {
     private final ScheduleSeatMapper scheduleSeatMapper;
     private final SeatService seatService;
     private final SeatStatusPublisher seatStatusPublisher;
+    private final DashboardRefreshPublisher dashboardRefreshPublisher;
 
     public OrderService(
             TicketOrderMapper ticketOrderMapper,
             TicketItemMapper ticketItemMapper,
             ScheduleSeatMapper scheduleSeatMapper,
             SeatService seatService,
-            SeatStatusPublisher seatStatusPublisher
+            SeatStatusPublisher seatStatusPublisher,
+            DashboardRefreshPublisher dashboardRefreshPublisher
     ) {
         this.ticketOrderMapper = ticketOrderMapper;
         this.ticketItemMapper = ticketItemMapper;
         this.scheduleSeatMapper = scheduleSeatMapper;
         this.seatService = seatService;
         this.seatStatusPublisher = seatStatusPublisher;
+        this.dashboardRefreshPublisher = dashboardRefreshPublisher;
     }
 
     @Transactional
@@ -141,6 +144,7 @@ public class OrderService {
         List<String> seatIds = tickets.stream().map(TicketItem::getSeatId).toList();
         seatService.releaseLocks(order.getScheduleId(), seatIds);
         seatStatusPublisher.publishSeatStatus(order.getScheduleId(), "SOLD", "SOLD", seatIds);
+        dashboardRefreshPublisher.publish("ORDER_PAID", order.getId());
         return true;
     }
 
@@ -168,6 +172,7 @@ public class OrderService {
         List<String> seatIds = tickets.stream().map(TicketItem::getSeatId).toList();
         seatService.releaseLocks(order.getScheduleId(), seatIds);
         seatStatusPublisher.publishSeatStatus(order.getScheduleId(), "EXPIRED", "AVAILABLE", seatIds);
+        dashboardRefreshPublisher.publish("ORDER_EXPIRED", order.getId());
     }
 
     private TicketItem createReservedTicket(String orderId, String scheduleId, String seatId) {

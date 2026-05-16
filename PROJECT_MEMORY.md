@@ -106,12 +106,18 @@ Backend foundation added on 2026-05-14:
     - Focused unit coverage now verifies `LOCKED`, `SOLD`, `EXPIRED -> AVAILABLE`, and `REFUNDED -> AVAILABLE` event publication.
     - Real STOMP/API verification passed for `LOCKED`, `SOLD`, and `REFUNDED -> AVAILABLE` events on `sch-101`.
     - Two independent browser sessions verified live UI sync on `sch-101`: one page locked and paid a seat while the other page updated locked/sold counts without refresh.
+  - Dashboard WebSocket refresh continued on 2026-05-17:
+    - Added backend dashboard refresh events on `/topic/admin/dashboard`.
+    - Order payment, order expiration, refund, force check-in, ordinary check-in, and show changes now notify the admin dashboard to refresh.
+    - Frontend admin dashboard now subscribes to refresh events, shows live connection status, and reloads the existing dashboard API in the background.
+    - Focused unit coverage verifies dashboard refresh publisher routing and refresh hooks from order, refund, and check-in flows.
+    - Real STOMP/API verification passed for `ORDER_PAID` and `ORDER_REFUNDED`; browser verification showed dashboard API calls increasing from 1 to 3 after live events.
 
 Important current limitation:
 
 - Seat locking, order creation, mock payment, and ticket generation now have backend APIs, and the full browser purchase flow has screenshot evidence under `docs/demo-evidence/`.
 - Admin seat editing within an existing generated pool is not implemented yet; schedule creation generates the initial pool.
-- Dashboard refresh is query-based; WebSocket live refresh is still a later differentiator.
+- Dashboard metrics still come from query APIs; WebSocket only triggers refresh events and does not push aggregate metric payloads.
 - Check-in does not yet bind a scanner station to a selected current schedule; wrong-schedule rejection is currently represented by schedule existence, cancellation, and time-window validity.
 
 ## Target Technical Stack
@@ -240,6 +246,6 @@ git push origin main
 
 ## Next Recommended Work
 
-1. Add optional WebSocket dashboard refresh events now that live seat updates are stable.
-2. Add scanner-station current-schedule binding if stricter wrong-schedule check-in is required for defense.
-3. Add three.js seat-stage preview after the realtime seat path remains stable in demo rehearsal.
+1. Add scanner-station current-schedule binding if stricter wrong-schedule check-in is required for defense.
+2. Add three.js seat-stage preview after the realtime paths remain stable in demo rehearsal.
+3. Add Top 8 recommendation block or basic group-seat invitation flow as the next visible differentiator.

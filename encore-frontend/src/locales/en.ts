@@ -137,6 +137,13 @@ export default {
     unusedTickets: 'Unused Tickets',
     voidedTickets: 'Voided Tickets',
     noDashboardData: 'No dashboard data yet',
+    dashboardLive: {
+      connecting: 'Dashboard live connecting',
+      connected: 'Dashboard live refresh on',
+      disconnected: 'Dashboard live disconnected'
+    },
+    dashboardLiveUpdated: 'Data change detected',
+    dashboardRefreshing: 'Refreshing automatically',
     reservations: 'Reservations',
     showsManagement: 'Shows Management',
     addNewShow: 'Add New Show',

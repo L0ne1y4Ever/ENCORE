@@ -33,6 +33,8 @@ class OrderServiceTest {
     private SeatService seatService;
     @Mock
     private SeatStatusPublisher seatStatusPublisher;
+    @Mock
+    private DashboardRefreshPublisher dashboardRefreshPublisher;
 
     @Test
     void simulatePaymentPublishesSoldEvent() {
@@ -58,6 +60,7 @@ class OrderServiceTest {
                 "SOLD",
                 List.of("seat-1-1")
         );
+        verify(dashboardRefreshPublisher).publish("ORDER_PAID", "ord-1");
     }
 
     @Test
@@ -80,6 +83,7 @@ class OrderServiceTest {
                 "AVAILABLE",
                 List.of("seat-1-1")
         );
+        verify(dashboardRefreshPublisher).publish("ORDER_EXPIRED", "ord-1");
     }
 
     private OrderService createService() {
@@ -88,7 +92,8 @@ class OrderServiceTest {
                 ticketItemMapper,
                 scheduleSeatMapper,
                 seatService,
-                seatStatusPublisher
+                seatStatusPublisher,
+                dashboardRefreshPublisher
         );
     }
 

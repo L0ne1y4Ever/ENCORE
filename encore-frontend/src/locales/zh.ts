@@ -137,6 +137,13 @@ export default {
     unusedTickets: '未核销票',
     voidedTickets: '作废票',
     noDashboardData: '暂无看板数据',
+    dashboardLive: {
+      connecting: '看板实时连接中',
+      connected: '看板实时刷新中',
+      disconnected: '看板实时连接已断开'
+    },
+    dashboardLiveUpdated: '检测到数据变化',
+    dashboardRefreshing: '自动刷新中',
     reservations: '预约转化',
     showsManagement: '演出管理',
     addNewShow: '新增演出',

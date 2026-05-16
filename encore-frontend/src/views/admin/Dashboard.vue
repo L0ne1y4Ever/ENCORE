@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart, BarChart } from 'echarts/charts'
@@ -14,6 +14,8 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { getAdminDashboard } from '../../api/admin'
 import type { AdminDashboard } from '../../api/admin'
+import { subscribeToDashboardUpdates } from '../../api/adminRealtime'
+import type { RealtimeConnectionState } from '../../api/realtime'
 
 use([
   CanvasRenderer,
@@ -29,19 +31,71 @@ const { t } = useI18n()
 
 const dashboard = ref<AdminDashboard | null>(null)
 const loading = ref(false)
+const realtimeState = ref<RealtimeConnectionState>('connecting')
+const realtimeRefreshing = ref(false)
+const realtimeNotice = ref<string | null>(null)
+let disconnectDashboardRealtime: (() => void) | undefined
+let realtimeNoticeTimer: ReturnType<typeof setTimeout> | undefined
+let realtimeRefreshTimer: ReturnType<typeof setTimeout> | undefined
 
-const loadDashboard = async () => {
-  loading.value = true
+const showRealtimeNotice = (messageKey: string) => {
+  realtimeNotice.value = messageKey
+  if (realtimeNoticeTimer) {
+    clearTimeout(realtimeNoticeTimer)
+  }
+  realtimeNoticeTimer = setTimeout(() => {
+    realtimeNotice.value = null
+  }, 2800)
+}
+
+const loadDashboard = async (silent = false) => {
+  if (silent) {
+    realtimeRefreshing.value = true
+  } else {
+    loading.value = true
+  }
   try {
     dashboard.value = await getAdminDashboard()
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : t('admin.loadFailed'))
   } finally {
-    loading.value = false
+    if (silent) {
+      realtimeRefreshing.value = false
+    } else {
+      loading.value = false
+    }
   }
 }
 
-onMounted(loadDashboard)
+const queueRealtimeRefresh = () => {
+  showRealtimeNotice('admin.dashboardLiveUpdated')
+  if (realtimeRefreshTimer) {
+    clearTimeout(realtimeRefreshTimer)
+  }
+  realtimeRefreshTimer = setTimeout(() => {
+    void loadDashboard(true)
+  }, 300)
+}
+
+onMounted(() => {
+  void loadDashboard()
+  disconnectDashboardRealtime = subscribeToDashboardUpdates({
+    onEvent: queueRealtimeRefresh,
+    onStateChange: (state) => {
+      realtimeState.value = state
+    }
+  })
+})
+
+onBeforeUnmount(() => {
+  disconnectDashboardRealtime?.()
+  if (realtimeNoticeTimer) {
+    clearTimeout(realtimeNoticeTimer)
+  }
+  if (realtimeRefreshTimer) {
+    clearTimeout(realtimeRefreshTimer)
+  }
+})
 
 const formatAmount = (amount: number | string | undefined) => {
   return `$${Number(amount || 0).toFixed(2)}`
@@ -173,9 +227,17 @@ const topShowsOption = computed(() => ({
         <h1>{{ t('admin.dashboard') }}</h1>
         <p>{{ t('admin.dashboardSubtitle') }}</p>
       </div>
-      <el-button type="primary" plain :loading="loading" @click="loadDashboard">
-        {{ t('admin.refresh') }}
-      </el-button>
+      <div class="dashboard-actions">
+        <div class="realtime-pill" aria-live="polite">
+          <span class="status-dot" :class="`state-${realtimeState}`"></span>
+          <span>{{ t(`admin.dashboardLive.${realtimeState}`) }}</span>
+          <span v-if="realtimeRefreshing" class="realtime-extra">{{ t('admin.dashboardRefreshing') }}</span>
+          <span v-else-if="realtimeNotice" class="realtime-extra">{{ t(realtimeNotice) }}</span>
+        </div>
+        <el-button type="primary" plain :loading="loading" @click="loadDashboard()">
+          {{ t('admin.refresh') }}
+        </el-button>
+      </div>
     </div>
 
     <div class="stats-grid">
@@ -251,6 +313,51 @@ const topShowsOption = computed(() => ({
     font-family: var(--font-family-sans);
     font-size: 14px;
   }
+}
+
+.dashboard-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.realtime-pill {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-sans);
+  font-size: 12px;
+  background-color: rgba(240, 237, 232, 0.03);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background-color: var(--color-text-ghost);
+
+  &.state-connected {
+    background-color: var(--color-accent);
+  }
+
+  &.state-connecting {
+    background-color: var(--color-border-strong);
+  }
+
+  &.state-disconnected {
+    background-color: var(--color-text-ghost);
+  }
+}
+
+.realtime-extra {
+  color: var(--color-text-ghost);
 }
 
 .stats-grid {
@@ -399,6 +506,11 @@ const topShowsOption = computed(() => ({
 @media (max-width: 720px) {
   .dashboard-header {
     flex-direction: column;
+  }
+
+  .dashboard-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .stats-grid,

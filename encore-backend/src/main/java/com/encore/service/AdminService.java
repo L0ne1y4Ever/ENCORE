@@ -64,6 +64,7 @@ public class AdminService {
     private final UserAccountMapper userAccountMapper;
     private final StringRedisTemplate redisTemplate;
     private final SeatStatusPublisher seatStatusPublisher;
+    private final DashboardRefreshPublisher dashboardRefreshPublisher;
 
     public AdminService(
             ShowScheduleMapper showScheduleMapper,
@@ -73,7 +74,8 @@ public class AdminService {
             TicketItemMapper ticketItemMapper,
             UserAccountMapper userAccountMapper,
             StringRedisTemplate redisTemplate,
-            SeatStatusPublisher seatStatusPublisher
+            SeatStatusPublisher seatStatusPublisher,
+            DashboardRefreshPublisher dashboardRefreshPublisher
     ) {
         this.showScheduleMapper = showScheduleMapper;
         this.showMapper = showMapper;
@@ -83,6 +85,7 @@ public class AdminService {
         this.userAccountMapper = userAccountMapper;
         this.redisTemplate = redisTemplate;
         this.seatStatusPublisher = seatStatusPublisher;
+        this.dashboardRefreshPublisher = dashboardRefreshPublisher;
     }
 
     public AdminDashboardResponse dashboard() {
@@ -156,6 +159,7 @@ public class AdminService {
         show.setStatus(StringUtils.hasText(request.status()) ? normalizeShowStatus(request.status()) : "DRAFT");
         show.setSortOrder(request.sortOrder() == null ? nextShowSortOrder() : request.sortOrder());
         showMapper.insert(show);
+        dashboardRefreshPublisher.publish("SHOW_CHANGED", show.getId());
         return toShowResponse(showMapper.selectById(show.getId()));
     }
 
@@ -177,6 +181,7 @@ public class AdminService {
             show.setSortOrder(request.sortOrder());
         }
         showMapper.updateById(show);
+        dashboardRefreshPublisher.publish("SHOW_CHANGED", showId);
         return toShowResponse(showMapper.selectById(showId));
     }
 
@@ -186,6 +191,7 @@ public class AdminService {
         ShowEntity show = getShow(showId);
         show.setStatus(normalizeShowStatus(status));
         showMapper.updateById(show);
+        dashboardRefreshPublisher.publish("SHOW_CHANGED", showId);
         return toShowResponse(showMapper.selectById(showId));
     }
 
@@ -195,6 +201,7 @@ public class AdminService {
         ShowEntity show = getShow(showId);
         show.setStatus("ARCHIVED");
         showMapper.updateById(show);
+        dashboardRefreshPublisher.publish("SHOW_CHANGED", showId);
         return toShowResponse(showMapper.selectById(showId));
     }
 
@@ -319,6 +326,7 @@ public class AdminService {
                 "AVAILABLE",
                 tickets.stream().map(TicketItem::getSeatId).toList()
         );
+        dashboardRefreshPublisher.publish("ORDER_REFUNDED", orderId);
         return toOrderResponse(getOrder(orderId));
     }
 
@@ -339,6 +347,7 @@ public class AdminService {
                 ticketItemMapper.updateById(ticket);
             }
         }
+        dashboardRefreshPublisher.publish("ORDER_FORCE_CHECKED_IN", orderId);
         return toOrderResponse(getOrder(orderId));
     }
 

@@ -53,6 +53,8 @@ class CheckInServiceTest {
     private ShowMapper showMapper;
     @Mock
     private UserAccountMapper userAccountMapper;
+    @Mock
+    private DashboardRefreshPublisher dashboardRefreshPublisher;
 
     @Test
     void verifyMarksUnusedPaidTicketAsCheckedIn() {
@@ -80,6 +82,7 @@ class CheckInServiceTest {
             verify(ticketItemMapper).updateById(argThat((TicketItem updated) ->
                     "CHECKED_IN".equals(updated.getStatus()) && WINDOW_NOW.equals(updated.getUpdatedAt())
             ));
+            verify(dashboardRefreshPublisher).publish("TICKET_CHECKED_IN", ticket.getId());
         }
     }
 
@@ -266,7 +269,8 @@ class CheckInServiceTest {
                 showScheduleMapper,
                 showMapper,
                 userAccountMapper,
-                Clock.fixed(now.atZone(TEST_ZONE).toInstant(), TEST_ZONE)
+                Clock.fixed(now.atZone(TEST_ZONE).toInstant(), TEST_ZONE),
+                dashboardRefreshPublisher
         );
     }
 
