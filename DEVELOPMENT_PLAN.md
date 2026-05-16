@@ -143,6 +143,11 @@ Progress:
 - Added ordinary check-in rejection for missing schedules, cancelled schedules, too-early tickets, and ended schedules.
 - Kept admin force-check-in independent from the ordinary check-in window for operational correction.
 - Expanded `CheckInServiceTest` to cover success, boundaries, early/ended/cancelled/missing schedule rejection, duplicate rejection, and unauthorized role rejection.
+- Added optional current-schedule binding to `POST /api/checkin/verify` through `scheduleId`.
+- Added `GET /api/checkin/schedules` for `checker`, `admin`, and `sysadmin`, sorted with currently open check-in windows first.
+- Connected the check-in scanner page to the schedule list, persisted the selected current schedule in `localStorage`, and submitted it with ticket verification.
+- Added wrong-schedule rejection with fixed message `票据不属于当前检票场次` while preserving old no-`scheduleId` compatibility.
+- Verified real API flow for wrong-schedule rejection and correct-schedule check-in; browser verification confirmed schedule selection persistence and request payload binding.
 
 Commit trigger:
 

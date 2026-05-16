@@ -243,6 +243,14 @@ export default {
     offline: 'OFFLINE MODE (SYNC LATER)',
     invalid: 'INVALID TICKET OR ALREADY USED',
     verify: 'Verify',
-    success: 'CHECK-IN ACCEPTED'
+    success: 'CHECK-IN ACCEPTED',
+    currentSchedule: 'Current Check-in Schedule',
+    selectSchedule: 'Select schedule',
+    loadingSchedules: 'Loading check-in schedules...',
+    reloadSchedules: 'Refresh',
+    noSchedules: 'No check-in schedules',
+    scheduleOpen: 'Check-in window open',
+    scheduleNotOpen: 'Outside check-in window',
+    scheduleLoadFailed: 'Failed to load check-in schedules'
   }
 }

@@ -112,13 +112,19 @@ Backend foundation added on 2026-05-14:
     - Frontend admin dashboard now subscribes to refresh events, shows live connection status, and reloads the existing dashboard API in the background.
     - Focused unit coverage verifies dashboard refresh publisher routing and refresh hooks from order, refund, and check-in flows.
     - Real STOMP/API verification passed for `ORDER_PAID` and `ORDER_REFUNDED`; browser verification showed dashboard API calls increasing from 1 to 3 after live events.
+  - Check-in station schedule binding continued on 2026-05-17:
+    - `CheckInRequest` now accepts optional `scheduleId`; old callers that only submit `ticketCode` remain compatible.
+    - `POST /api/checkin/verify` validates the selected current schedule before ticket lookup when `scheduleId` is provided, then rejects mismatched tickets with `票据不属于当前检票场次`.
+    - Added `GET /api/checkin/schedules` for `checker`, `admin`, and `sysadmin`; ordinary `user` is rejected.
+    - The scanner page now loads real check-in schedules, stores the selected current schedule in `localStorage`, submits it with verification, and keeps backend error messages visible.
+    - Real API verification passed for wrong-schedule rejection and correct-schedule success on a newly created in-window schedule pair.
 
 Important current limitation:
 
 - Seat locking, order creation, mock payment, and ticket generation now have backend APIs, and the full browser purchase flow has screenshot evidence under `docs/demo-evidence/`.
 - Admin seat editing within an existing generated pool is not implemented yet; schedule creation generates the initial pool.
 - Dashboard metrics still come from query APIs; WebSocket only triggers refresh events and does not push aggregate metric payloads.
-- Check-in does not yet bind a scanner station to a selected current schedule; wrong-schedule rejection is currently represented by schedule existence, cancellation, and time-window validity.
+- Check-in station binding is intentionally lightweight: the selected current schedule is stored in the browser only, and there is no separate managed check-in-station entity yet.
 
 ## Target Technical Stack
 

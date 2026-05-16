@@ -35,11 +35,15 @@ Use this checklist to prepare the final course defense.
 ## Check-In Flow
 
 - Checker logs in with `checker / 123`.
+- Checker selects the current check-in schedule before scanning.
+- The selected check-in schedule persists after page refresh.
 - Checker enters or scans ticket code.
 - Valid ticket is checked in successfully.
 - Repeated check-in is rejected.
 - Invalid ticket is rejected.
 - Check-in page uses backend `POST /api/checkin/verify`.
+- Check-in page loads available current schedules through `GET /api/checkin/schedules`.
+- Tickets from another schedule are rejected with `票据不属于当前检票场次`.
 - Tickets before the 2-hour pre-show check-in window are rejected.
 - Tickets after schedule end or for cancelled/missing schedules are rejected.
 - Admin force-check-in remains available for operational correction outside the ordinary scanner window.

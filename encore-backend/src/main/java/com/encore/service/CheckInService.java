@@ -4,6 +4,7 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.encore.common.ErrorCode;
 import com.encore.dto.CheckInResponse;
+import com.encore.dto.CheckInScheduleResponse;
 import com.encore.entity.ShowEntity;
 import com.encore.entity.ShowSchedule;
 import com.encore.entity.TicketItem;
@@ -22,6 +23,8 @@ import org.springframework.util.StringUtils;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Set;
 
 @Service
@@ -57,9 +60,20 @@ public class CheckInService {
 
     @Transactional
     public CheckInResponse verify(String ticketCode) {
+        return verify(ticketCode, null);
+    }
+
+    @Transactional
+    public CheckInResponse verify(String ticketCode, String currentScheduleId) {
         ensureCheckInRole();
         if (!StringUtils.hasText(ticketCode)) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "票码不能为空");
+        }
+
+        ShowSchedule boundSchedule = null;
+        if (StringUtils.hasText(currentScheduleId)) {
+            boundSchedule = showScheduleMapper.selectById(currentScheduleId.trim());
+            validateScheduleForCheckIn(boundSchedule);
         }
 
         TicketItem ticket = ticketItemMapper.selectOne(new LambdaQueryWrapper<TicketItem>()
@@ -80,8 +94,14 @@ public class CheckInService {
             throw new BusinessException(ErrorCode.CONFLICT, "票据状态不可核销");
         }
 
-        ShowSchedule schedule = showScheduleMapper.selectById(ticket.getScheduleId());
-        validateScheduleForCheckIn(schedule);
+        if (boundSchedule != null && !boundSchedule.getId().equals(ticket.getScheduleId())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "票据不属于当前检票场次");
+        }
+
+        ShowSchedule schedule = boundSchedule == null ? showScheduleMapper.selectById(ticket.getScheduleId()) : boundSchedule;
+        if (boundSchedule == null) {
+            validateScheduleForCheckIn(schedule);
+        }
 
         LocalDateTime checkedInAt = LocalDateTime.now(clock);
         ticket.setStatus("CHECKED_IN");
@@ -91,6 +111,21 @@ public class CheckInService {
 
         ShowEntity show = schedule == null ? null : showMapper.selectById(schedule.getShowId());
         return toResponse(ticket, schedule, show, checkedInAt);
+    }
+
+    public List<CheckInScheduleResponse> listCheckInSchedules() {
+        ensureCheckInRole();
+        return showScheduleMapper.selectList(new LambdaQueryWrapper<ShowSchedule>()
+                        .ne(ShowSchedule::getStatus, "CANCELLED"))
+                .stream()
+                .sorted(Comparator
+                        .comparing((ShowSchedule schedule) -> !isCheckInOpen(schedule))
+                        .thenComparing(
+                                ShowSchedule::getStartTime,
+                                Comparator.nullsLast(Comparator.naturalOrder())
+                        ))
+                .map(this::toScheduleResponse)
+                .toList();
     }
 
     private void validateScheduleForCheckIn(ShowSchedule schedule) {
@@ -114,12 +149,37 @@ public class CheckInService {
         }
     }
 
+    private boolean isCheckInOpen(ShowSchedule schedule) {
+        if (schedule == null
+                || "CANCELLED".equals(schedule.getStatus())
+                || schedule.getStartTime() == null
+                || schedule.getEndTime() == null) {
+            return false;
+        }
+        LocalDateTime now = LocalDateTime.now(clock);
+        LocalDateTime checkInStart = schedule.getStartTime().minus(CHECKIN_OPEN_BEFORE_START);
+        return !now.isBefore(checkInStart) && !now.isAfter(schedule.getEndTime());
+    }
+
     private void ensureCheckInRole() {
         String userId = StpUtil.getLoginIdAsString();
         UserAccount user = userAccountMapper.selectById(userId);
         if (user == null || !CHECKIN_ROLES.contains(user.getRole())) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "当前账号无检票权限");
         }
+    }
+
+    private CheckInScheduleResponse toScheduleResponse(ShowSchedule schedule) {
+        ShowEntity show = showMapper.selectById(schedule.getShowId());
+        return new CheckInScheduleResponse(
+                schedule.getId(),
+                show == null ? "Unknown Show" : show.getTitle(),
+                schedule.getTheaterName(),
+                schedule.getStartTime(),
+                schedule.getEndTime(),
+                schedule.getStatus(),
+                isCheckInOpen(schedule)
+        );
     }
 
     private CheckInResponse toResponse(

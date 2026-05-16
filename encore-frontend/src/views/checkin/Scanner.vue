@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
+import { computed, ref, nextTick, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { checkInTicket } from '../../api/checkin'
-import type { CheckInResponse } from '../../api/checkin'
+import { checkInTicket, getCheckInSchedules } from '../../api/checkin'
+import type { CheckInResponse, CheckInSchedule } from '../../api/checkin'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
+const SCHEDULE_STORAGE_KEY = 'encore.checkin.scheduleId'
 const ticketCode = ref('')
 const inputRef = ref<HTMLInputElement | null>(null)
 
@@ -13,16 +14,77 @@ const scanStatus = ref<'idle' | 'success' | 'error'>('idle')
 const errorMessage = ref('')
 const loading = ref(false)
 const result = ref<CheckInResponse | null>(null)
+const schedules = ref<CheckInSchedule[]>([])
+const selectedScheduleId = ref('')
+const scheduleLoading = ref(false)
+const scheduleError = ref('')
+
+const selectedSchedule = computed(() => {
+  return schedules.value.find((schedule) => schedule.id === selectedScheduleId.value) || null
+})
+
+const canScan = computed(() => {
+  return Boolean(ticketCode.value.trim()) &&
+    Boolean(selectedScheduleId.value) &&
+    schedules.value.length > 0 &&
+    !loading.value &&
+    !scheduleLoading.value
+})
+
+const loadSchedules = async () => {
+  scheduleLoading.value = true
+  scheduleError.value = ''
+  try {
+    const data = await getCheckInSchedules()
+    schedules.value = data
+    const savedScheduleId = localStorage.getItem(SCHEDULE_STORAGE_KEY)
+    const savedSchedule = savedScheduleId
+      ? data.find((schedule) => schedule.id === savedScheduleId)
+      : null
+    const defaultSchedule = savedSchedule || data.find((schedule) => schedule.checkInOpen) || data[0] || null
+    selectedScheduleId.value = defaultSchedule?.id || ''
+    persistScheduleSelection()
+  } catch (error) {
+    scheduleError.value = error instanceof Error ? error.message : t('checkin.scheduleLoadFailed')
+  } finally {
+    scheduleLoading.value = false
+    nextTick(() => {
+      inputRef.value?.focus()
+    })
+  }
+}
+
+const persistScheduleSelection = () => {
+  if (selectedScheduleId.value) {
+    localStorage.setItem(SCHEDULE_STORAGE_KEY, selectedScheduleId.value)
+  } else {
+    localStorage.removeItem(SCHEDULE_STORAGE_KEY)
+  }
+}
+
+const formatDateTime = (value: string | null) => {
+  if (!value) return '--'
+  return new Intl.DateTimeFormat(locale.value === 'zh' ? 'zh-CN' : 'en-US', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(new Date(value))
+}
+
+const formatScheduleRange = (schedule: CheckInSchedule) => {
+  return `${formatDateTime(schedule.startTime)} - ${formatDateTime(schedule.endTime)}`
+}
 
 const handleScan = async () => {
   const code = ticketCode.value.trim()
-  if (!code || loading.value) return
+  if (!code || !canScan.value) return
 
   loading.value = true
   errorMessage.value = ''
   result.value = null
   try {
-    result.value = await checkInTicket(code)
+    result.value = await checkInTicket(code, selectedScheduleId.value)
     scanStatus.value = 'success'
     setTimeout(() => {
       resetScanner()
@@ -50,6 +112,10 @@ const resetScanner = () => {
 
 // 模拟离线状态
 const isOffline = ref(false)
+
+onMounted(() => {
+  loadSchedules()
+})
 </script>
 
 <template>
@@ -63,6 +129,47 @@ const isOffline = ref(false)
     <div class="network-badge" :class="{ offline: isOffline }" @click="isOffline = !isOffline">
       {{ isOffline ? t('checkin.offline') : t('checkin.online') }}
     </div>
+
+    <section class="schedule-panel" v-if="scanStatus === 'idle'">
+      <label for="checkin-schedule">{{ t('checkin.currentSchedule') }}</label>
+      <div class="schedule-controls">
+        <select
+          id="checkin-schedule"
+          v-model="selectedScheduleId"
+          :disabled="scheduleLoading || schedules.length === 0"
+          @change="persistScheduleSelection"
+        >
+          <option value="" disabled>{{ t('checkin.selectSchedule') }}</option>
+          <option v-for="schedule in schedules" :key="schedule.id" :value="schedule.id">
+            {{ schedule.showTitle }} · {{ schedule.theaterName }} · {{ formatDateTime(schedule.startTime) }}
+          </option>
+        </select>
+        <button
+          class="reload-btn"
+          type="button"
+          :disabled="scheduleLoading"
+          @click="loadSchedules"
+        >
+          {{ t('checkin.reloadSchedules') }}
+        </button>
+      </div>
+      <div v-if="scheduleLoading" class="schedule-note">
+        {{ t('checkin.loadingSchedules') }}
+      </div>
+      <div v-else-if="scheduleError" class="schedule-note error">
+        {{ scheduleError }}
+      </div>
+      <div v-else-if="selectedSchedule" class="schedule-meta">
+        <span class="schedule-state" :class="{ open: selectedSchedule.checkInOpen }">
+          {{ selectedSchedule.checkInOpen ? t('checkin.scheduleOpen') : t('checkin.scheduleNotOpen') }}
+        </span>
+        <span>{{ selectedSchedule.status }}</span>
+        <span>{{ formatScheduleRange(selectedSchedule) }}</span>
+      </div>
+      <div v-else class="schedule-note">
+        {{ t('checkin.noSchedules') }}
+      </div>
+    </section>
 
     <div class="main-content">
       <div class="status-icon" v-if="scanStatus !== 'idle'" aria-live="polite">
@@ -81,7 +188,7 @@ const isOffline = ref(false)
           :placeholder="t('checkin.placeholder')"
           :disabled="loading"
         />
-        <button class="scan-btn" type="button" :disabled="loading || !ticketCode.trim()" @click="handleScan">
+        <button class="scan-btn" type="button" :disabled="!canScan" @click="handleScan">
           {{ loading ? t('common.processing') : t('checkin.verify') }}
         </button>
       </div>
@@ -142,6 +249,89 @@ const isOffline = ref(false)
   &.offline {
     color: var(--color-warning);
     border-color: var(--color-warning);
+  }
+}
+
+.schedule-panel {
+  position: absolute;
+  top: var(--spacing-6);
+  left: 50%;
+  width: min(560px, calc(100vw - 240px));
+  min-width: 360px;
+  transform: translateX(-50%);
+  padding: var(--spacing-3);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(0, 0, 0, 0.72);
+  font-family: var(--font-family-sans);
+  color: #FFFFFF;
+
+  label {
+    display: block;
+    margin-bottom: var(--spacing-2);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.62);
+  }
+}
+
+.schedule-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--spacing-2);
+
+  select,
+  button {
+    min-height: 38px;
+    border: 1px solid rgba(255, 255, 255, 0.44);
+    border-radius: 0;
+    font-family: var(--font-family-sans);
+    font-size: 13px;
+  }
+
+  select {
+    width: 100%;
+    min-width: 0;
+    padding: 0 var(--spacing-2);
+    background: #070707;
+    color: #FFFFFF;
+  }
+
+  button {
+    padding: 0 var(--spacing-3);
+    background: #FFFFFF;
+    color: #000000;
+    font-weight: 700;
+    cursor: pointer;
+
+    &:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+  }
+}
+
+.schedule-meta,
+.schedule-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+  margin-top: var(--spacing-2);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.schedule-note.error {
+  color: var(--color-error);
+}
+
+.schedule-state {
+  font-weight: 700;
+  color: var(--color-warning);
+
+  &.open {
+    color: var(--color-success);
   }
 }
 
@@ -258,6 +448,18 @@ const isOffline = ref(false)
 
   .scanner-container.status-error {
     animation: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .schedule-panel {
+    top: calc(var(--spacing-6) + 36px);
+    width: calc(100vw - 32px);
+    min-width: 0;
+  }
+
+  .schedule-controls {
+    grid-template-columns: 1fr;
   }
 }
 </style>

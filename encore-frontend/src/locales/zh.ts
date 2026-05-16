@@ -243,6 +243,14 @@ export default {
     offline: '离线模式 (稍后同步)',
     invalid: '无效票据或已核销',
     verify: '核销',
-    success: '核销通过'
+    success: '核销通过',
+    currentSchedule: '当前检票场次',
+    selectSchedule: '选择当前场次',
+    loadingSchedules: '正在加载可检票场次...',
+    reloadSchedules: '刷新',
+    noSchedules: '暂无可检票场次',
+    scheduleOpen: '检票窗口已开放',
+    scheduleNotOpen: '未到检票窗口',
+    scheduleLoadFailed: '检票场次加载失败'
   }
 }
