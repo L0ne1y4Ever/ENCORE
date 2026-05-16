@@ -45,6 +45,7 @@ Use this checklist to prepare the final course defense.
 
 - Admin logs in with `admin / 123`.
 - Admin views dashboard metrics.
+- Dashboard shows real paid revenue, sold tickets, active shows, attendance, 7-day sales trend, top shows, and check-in summary.
 - Admin manages shows through backend CRUD APIs.
 - Admin creates a draft show.
 - Admin edits show title/category/duration.
@@ -67,6 +68,7 @@ Use this checklist to prepare the final course defense.
 - Real-time seat update across two browser sessions.
 - three.js seat-stage preview on seat click.
 - Black-gold command-center dashboard.
+- Dashboard charts read backend aggregate data instead of static demo data.
 - Top 8 recommendation block.
 - Basic group-seat invitation flow.
 

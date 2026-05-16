@@ -145,6 +145,8 @@ Commit trigger:
 
 ## Phase 5 - Dashboard And Differentiators
 
+Status: in progress on 2026-05-16
+
 Target outcome: defense demo has visible highlights beyond CRUD.
 
 - Implement dashboard metrics API.
@@ -154,6 +156,14 @@ Target outcome: defense demo has visible highlights beyond CRUD.
 - Add three.js seat-stage preview with fallback.
 - Add Top 8 recommendation API and homepage section.
 - Add basic group-seat invitation flow.
+
+Progress:
+
+- Added backend `GET /api/admin/dashboard` with the same admin/sysadmin access policy as other admin APIs.
+- Aggregated total paid revenue, valid sold tickets, published show count, average attendance, 7-day sales trend, top 5 shows, and check-in summary from the existing schema.
+- Connected the frontend admin dashboard to real backend metrics while preserving the black-gold admin visual direction.
+- Added 7-day revenue/ticket chart, top-shows chart, check-in summary, refresh button, loading state, empty state, and localized Chinese/English copy.
+- Verified `admin/123` can read dashboard metrics, ordinary `user/123` is rejected, and the browser dashboard renders real data.
 
 Commit trigger:
 

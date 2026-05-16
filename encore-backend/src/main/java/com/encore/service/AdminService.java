@@ -3,6 +3,7 @@ package com.encore.service;
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.encore.common.ErrorCode;
+import com.encore.dto.AdminDashboardResponse;
 import com.encore.dto.AdminOrderResponse;
 import com.encore.dto.AdminScheduleResponse;
 import com.encore.dto.AdminShowResponse;
@@ -29,11 +30,18 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 public class AdminService {
@@ -72,6 +80,52 @@ public class AdminService {
         this.ticketItemMapper = ticketItemMapper;
         this.userAccountMapper = userAccountMapper;
         this.redisTemplate = redisTemplate;
+    }
+
+    public AdminDashboardResponse dashboard() {
+        ensureAdminRole();
+        List<TicketOrder> paidOrders = ticketOrderMapper.selectList(new LambdaQueryWrapper<TicketOrder>()
+                .eq(TicketOrder::getStatus, "PAID"));
+        Set<String> paidOrderIds = paidOrders.stream()
+                .map(TicketOrder::getId)
+                .collect(Collectors.toSet());
+        List<TicketItem> tickets = ticketItemMapper.selectList(new LambdaQueryWrapper<>());
+        List<TicketItem> validTickets = tickets.stream()
+                .filter(ticket -> paidOrderIds.contains(ticket.getOrderId()))
+                .filter(ticket -> "UNUSED".equals(ticket.getStatus()) || "CHECKED_IN".equals(ticket.getStatus()))
+                .toList();
+
+        BigDecimal totalRevenue = paidOrders.stream()
+                .map(TicketOrder::getTotalAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        long checkedIn = validTickets.stream()
+                .filter(ticket -> "CHECKED_IN".equals(ticket.getStatus()))
+                .count();
+        long unused = validTickets.stream()
+                .filter(ticket -> "UNUSED".equals(ticket.getStatus()))
+                .count();
+        long voided = tickets.stream()
+                .filter(ticket -> "VOID".equals(ticket.getStatus()))
+                .count();
+        BigDecimal avgAttendance = validTickets.isEmpty()
+                ? BigDecimal.ZERO
+                : BigDecimal.valueOf(checkedIn)
+                .multiply(BigDecimal.valueOf(100))
+                .divide(BigDecimal.valueOf(validTickets.size()), 1, RoundingMode.HALF_UP);
+        long activeShows = showMapper.selectCount(new LambdaQueryWrapper<ShowEntity>()
+                .eq(ShowEntity::getStatus, "PUBLISHED"));
+
+        Map<String, TicketOrder> paidOrderById = paidOrders.stream()
+                .collect(Collectors.toMap(TicketOrder::getId, Function.identity()));
+        return new AdminDashboardResponse(
+                totalRevenue,
+                validTickets.size(),
+                activeShows,
+                avgAttendance,
+                buildSalesTrend(paidOrders, validTickets, paidOrderById),
+                buildTopShows(paidOrders, validTickets),
+                new AdminDashboardResponse.CheckInSummary(checkedIn, unused, voided)
+        );
     }
 
     public List<AdminShowResponse> listShows() {
@@ -447,6 +501,99 @@ public class AdminService {
         if (lockKeys != null && !lockKeys.isEmpty()) {
             redisTemplate.delete(lockKeys);
         }
+    }
+
+    private List<AdminDashboardResponse.SalesTrendItem> buildSalesTrend(
+            List<TicketOrder> paidOrders,
+            List<TicketItem> validTickets,
+            Map<String, TicketOrder> paidOrderById
+    ) {
+        LocalDate startDate = LocalDate.now().minusDays(6);
+        Map<LocalDate, BigDecimal> revenueByDate = new LinkedHashMap<>();
+        Map<LocalDate, Long> ticketsByDate = new LinkedHashMap<>();
+        for (int offset = 0; offset < 7; offset++) {
+            LocalDate date = startDate.plusDays(offset);
+            revenueByDate.put(date, BigDecimal.ZERO);
+            ticketsByDate.put(date, 0L);
+        }
+
+        for (TicketOrder order : paidOrders) {
+            if (order.getPaidAt() == null) {
+                continue;
+            }
+            LocalDate paidDate = order.getPaidAt().toLocalDate();
+            if (revenueByDate.containsKey(paidDate)) {
+                revenueByDate.compute(paidDate, (date, revenue) -> revenue.add(order.getTotalAmount()));
+            }
+        }
+
+        for (TicketItem ticket : validTickets) {
+            TicketOrder order = paidOrderById.get(ticket.getOrderId());
+            if (order == null || order.getPaidAt() == null) {
+                continue;
+            }
+            LocalDate paidDate = order.getPaidAt().toLocalDate();
+            if (ticketsByDate.containsKey(paidDate)) {
+                ticketsByDate.compute(paidDate, (date, count) -> count + 1);
+            }
+        }
+
+        return revenueByDate.keySet().stream()
+                .map(date -> new AdminDashboardResponse.SalesTrendItem(
+                        date,
+                        revenueByDate.get(date),
+                        ticketsByDate.get(date)
+                ))
+                .toList();
+    }
+
+    private List<AdminDashboardResponse.TopShowItem> buildTopShows(
+            List<TicketOrder> paidOrders,
+            List<TicketItem> validTickets
+    ) {
+        Map<String, ShowSchedule> scheduleById = showScheduleMapper.selectList(new LambdaQueryWrapper<ShowSchedule>())
+                .stream()
+                .collect(Collectors.toMap(ShowSchedule::getId, Function.identity()));
+        Map<String, ShowEntity> showById = showMapper.selectList(new LambdaQueryWrapper<ShowEntity>())
+                .stream()
+                .collect(Collectors.toMap(ShowEntity::getId, Function.identity()));
+        Map<String, Long> ticketsByShow = new HashMap<>();
+        Map<String, BigDecimal> revenueByShow = new HashMap<>();
+
+        for (TicketItem ticket : validTickets) {
+            ShowSchedule schedule = scheduleById.get(ticket.getScheduleId());
+            if (schedule != null) {
+                ticketsByShow.merge(schedule.getShowId(), 1L, Long::sum);
+            }
+        }
+
+        for (TicketOrder order : paidOrders) {
+            ShowSchedule schedule = scheduleById.get(order.getScheduleId());
+            if (schedule != null) {
+                revenueByShow.merge(schedule.getShowId(), order.getTotalAmount(), BigDecimal::add);
+            }
+        }
+
+        return ticketsByShow.entrySet().stream()
+                .sorted((left, right) -> {
+                    int ticketCompare = Long.compare(right.getValue(), left.getValue());
+                    if (ticketCompare != 0) {
+                        return ticketCompare;
+                    }
+                    return revenueByShow.getOrDefault(right.getKey(), BigDecimal.ZERO)
+                            .compareTo(revenueByShow.getOrDefault(left.getKey(), BigDecimal.ZERO));
+                })
+                .limit(5)
+                .map(entry -> {
+                    ShowEntity show = showById.get(entry.getKey());
+                    return new AdminDashboardResponse.TopShowItem(
+                            entry.getKey(),
+                            show == null ? "Unknown Show" : show.getTitle(),
+                            entry.getValue(),
+                            revenueByShow.getOrDefault(entry.getKey(), BigDecimal.ZERO)
+                    );
+                })
+                .toList();
     }
 
     private AdminShowResponse toShowResponse(ShowEntity show) {

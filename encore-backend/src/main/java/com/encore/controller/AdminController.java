@@ -1,6 +1,7 @@
 package com.encore.controller;
 
 import com.encore.common.ApiResponse;
+import com.encore.dto.AdminDashboardResponse;
 import com.encore.dto.AdminOrderResponse;
 import com.encore.dto.AdminScheduleResponse;
 import com.encore.dto.AdminShowResponse;
@@ -31,6 +32,11 @@ public class AdminController {
 
     public AdminController(AdminService adminService) {
         this.adminService = adminService;
+    }
+
+    @GetMapping("/dashboard")
+    public ApiResponse<AdminDashboardResponse> dashboard() {
+        return ApiResponse.ok(adminService.dashboard());
     }
 
     @GetMapping("/shows")

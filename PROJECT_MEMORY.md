@@ -85,11 +85,17 @@ Backend foundation added on 2026-05-14:
     - Schedule deletion is implemented as `CANCELLED` soft delete and releases existing Redis seat locks.
     - Frontend admin schedule management now has create/edit dialogs, schedule cancellation, status changes, and localized form validation.
     - Real API verification passed for create, edit, publish, generated-seat query/lock, cancel, lock rejection after cancellation, and ordinary-user access rejection.
+  - Admin dashboard metrics integration continued on 2026-05-16:
+    - Added `/api/admin/dashboard` for `admin` and `sysadmin` users.
+    - Dashboard aggregates paid revenue, valid sold tickets, published shows, attendance, 7-day paid sales trend, top shows, and check-in status counts from existing order/ticket/schedule/show tables.
+    - Frontend admin dashboard now loads real backend metrics, shows the existing stats cards, a 7-day revenue/ticket chart, top-shows chart, check-in summary, refresh control, loading state, and localized empty/error text.
+    - Real API/browser verification passed for `admin/123` dashboard access, `user/123` rejection, and visible admin dashboard metrics.
 
 Important current limitation:
 
 - Seat locking, order creation, mock payment, and ticket generation now have backend APIs, but the full browser purchase flow still needs visual verification after the user's latest frontend changes are committed.
 - Admin seat editing within an existing generated pool is not implemented yet; schedule creation generates the initial pool.
+- Dashboard refresh is query-based; WebSocket live refresh is still a later differentiator.
 
 ## Target Technical Stack
 
@@ -217,6 +223,6 @@ git push origin main
 
 ## Next Recommended Work
 
-1. Start dashboard metrics API and visible demo analytics.
-2. Add wrong-schedule/time-window validation to check-in when schedule policy is finalized.
-3. Add admin seat-pool adjustment tools if needed for the defense demo.
+1. Add wrong-schedule/time-window validation to check-in when schedule policy is finalized.
+2. Add full browser purchase-flow regression screenshots after the admin analytics commits are pushed.
+3. Start the WebSocket differentiators: live seat updates first, then optional dashboard refresh events.

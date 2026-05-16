@@ -4,6 +4,35 @@ export type ScheduleStatus = 'COMING_SOON' | 'PREPARING' | 'ON_SALE' | 'SOLD_OUT
 export type AdminOrderStatus = 'PENDING_PAYMENT' | 'PAID' | 'EXPIRED' | 'REFUNDED'
 export type AdminShowStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
 
+export interface AdminDashboardTrendItem {
+  date: string
+  revenue: number | string
+  ticketCount: number
+}
+
+export interface AdminDashboardTopShow {
+  showId: string
+  showTitle: string
+  ticketCount: number
+  revenue: number | string
+}
+
+export interface AdminDashboardCheckInSummary {
+  checkedIn: number
+  unused: number
+  voided: number
+}
+
+export interface AdminDashboard {
+  totalRevenue: number | string
+  ticketsSold: number
+  activeShows: number
+  avgAttendance: number | string
+  salesTrend: AdminDashboardTrendItem[]
+  topShows: AdminDashboardTopShow[]
+  checkInSummary: AdminDashboardCheckInSummary
+}
+
 export interface AdminShow {
   id: string
   title: string
@@ -85,6 +114,10 @@ export interface AdminOrder {
   checkedInCount: number
   createdAt: string
   paidAt: string | null
+}
+
+export function getAdminDashboard(): Promise<AdminDashboard> {
+  return requestData<AdminDashboard>(apiClient.get('/api/admin/dashboard'))
 }
 
 export function getAdminShows(): Promise<AdminShow[]> {
