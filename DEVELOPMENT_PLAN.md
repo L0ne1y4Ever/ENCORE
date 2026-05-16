@@ -99,6 +99,7 @@ Progress:
 - Implemented order detail, timeout expiration, mock payment, seat sale finalization, and ticket status transition.
 - Switched frontend seat/order API layer from mock data to backend APIs without changing the optimized page layouts.
 - Verified lock -> order -> payment -> ticket flow against Docker MySQL and Redis.
+- Captured browser evidence for the full user purchase flow from login through electronic ticket and saved it under `docs/demo-evidence/`.
 
 Commit trigger:
 

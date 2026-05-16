@@ -95,10 +95,14 @@ Backend foundation added on 2026-05-14:
     - The check-in window is inclusive from 2 hours before `show_schedule.start_time` through `show_schedule.end_time`.
     - `AdminService.forceCheckInOrder` intentionally remains unrestricted by the check-in window for administrator correction.
     - Unit coverage now fixes service time through an injected `Clock` and covers window boundaries plus early, ended, cancelled, and missing-schedule rejection.
+  - Purchase-flow evidence capture continued on 2026-05-17:
+    - Added `docs/demo-evidence/2026-05-17-purchase-flow.md`.
+    - Captured browser screenshots for login, home, show detail, seat selection, order confirmation, payment, and electronic ticket.
+    - Real browser flow created paid order `ord-1e911c2c5bba466d` and ticket `TMP8LC0P51-9XYZ`.
 
 Important current limitation:
 
-- Seat locking, order creation, mock payment, and ticket generation now have backend APIs, but the full browser purchase flow still needs visual verification after the user's latest frontend changes are committed.
+- Seat locking, order creation, mock payment, and ticket generation now have backend APIs, and the full browser purchase flow has screenshot evidence under `docs/demo-evidence/`.
 - Admin seat editing within an existing generated pool is not implemented yet; schedule creation generates the initial pool.
 - Dashboard refresh is query-based; WebSocket live refresh is still a later differentiator.
 - Check-in does not yet bind a scanner station to a selected current schedule; wrong-schedule rejection is currently represented by schedule existence, cancellation, and time-window validity.
@@ -229,6 +233,6 @@ git push origin main
 
 ## Next Recommended Work
 
-1. Add full browser purchase-flow regression screenshots now that check-in timing rules are in place.
-2. Start the WebSocket differentiators: live seat updates first, then optional dashboard refresh events.
-3. Add scanner-station current-schedule binding if stricter wrong-schedule check-in is required for defense.
+1. Start the WebSocket differentiators: live seat updates first, then optional dashboard refresh events.
+2. Add scanner-station current-schedule binding if stricter wrong-schedule check-in is required for defense.
+3. Add three.js seat-stage preview after live seat updates are stable.

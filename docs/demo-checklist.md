@@ -77,6 +77,7 @@ Use this checklist to prepare the final course defense.
 ## Evidence To Capture
 
 - Screenshots of each major page.
+- User purchase-flow screenshots are stored in `docs/demo-evidence/2026-05-17-purchase-flow.md`.
 - Screenshots of successful and failed check-in.
 - Screenshot or recording of real-time seat update.
 - Screenshot of dashboard charts.
