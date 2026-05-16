@@ -134,10 +134,14 @@ Progress:
 - Connected frontend admin show management to `/api/admin/shows` with a dialog form, status buttons, delete confirmation, loading/disabled states, and localized backend error display.
 - Verified public `/api/shows` still only returns `PUBLISHED` shows after draft/archive transitions.
 - Verified ordinary `user/123` cannot access `/api/admin/shows`.
+- Added backend admin schedule create/update/cancel APIs.
+- Added automatic seat-pool generation for new schedules with configurable rows, columns, and VIP/A/B prices.
+- Connected frontend admin schedule management to create/edit/cancel flows with a dialog form, status controls, confirmation, and localized validation.
+- Verified generated schedule seats can be queried and locked while `ON_SALE`, and are blocked after the schedule is cancelled.
 
 Commit trigger:
 
-- A paid ticket can be checked in once, admin can prepare an ON_SALE schedule, and admin can publish/unpublish shows from backend state.
+- A paid ticket can be checked in once, admin can prepare an ON_SALE schedule, publish/unpublish shows, and create schedules with generated seat pools.
 
 ## Phase 5 - Dashboard And Differentiators
 

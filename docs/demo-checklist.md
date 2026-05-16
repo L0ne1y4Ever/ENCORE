@@ -52,11 +52,15 @@ Use this checklist to prepare the final course defense.
 - Admin archives a show through soft delete.
 - Public show list only displays `PUBLISHED` shows.
 - Admin manages schedules through backend data.
+- Admin creates a schedule for an existing show.
+- Admin-generated schedules create a seat pool.
+- Admin edits schedule theater, time, status, and price range.
 - Admin changes schedule status through backend API.
+- Admin cancels a schedule through soft delete.
 - Admin views backend orders.
 - Admin can refund eligible paid orders through backend API.
 - Admin can force-check-in eligible paid orders through backend API.
-- Admin can publish an ON_SALE schedule after full show/schedule CRUD is added.
+- Admin can publish an ON_SALE schedule.
 
 ## Differentiating Features
 

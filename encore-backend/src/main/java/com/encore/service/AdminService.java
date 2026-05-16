@@ -6,7 +6,9 @@ import com.encore.common.ErrorCode;
 import com.encore.dto.AdminOrderResponse;
 import com.encore.dto.AdminScheduleResponse;
 import com.encore.dto.AdminShowResponse;
+import com.encore.dto.CreateScheduleRequest;
 import com.encore.dto.CreateShowRequest;
+import com.encore.dto.UpdateScheduleRequest;
 import com.encore.dto.UpdateShowRequest;
 import com.encore.entity.ScheduleSeat;
 import com.encore.entity.ShowEntity;
@@ -26,6 +28,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
@@ -34,6 +37,11 @@ import java.util.UUID;
 
 @Service
 public class AdminService {
+    private static final int DEFAULT_SEAT_ROWS = 10;
+    private static final int DEFAULT_SEAT_COLS = 15;
+    private static final BigDecimal DEFAULT_VIP_PRICE = BigDecimal.valueOf(150);
+    private static final BigDecimal DEFAULT_STANDARD_PRICE = BigDecimal.valueOf(100);
+    private static final BigDecimal DEFAULT_ECONOMY_PRICE = BigDecimal.valueOf(50);
     private static final Set<String> ADMIN_ROLES = Set.of("admin", "sysadmin");
     private static final Set<String> SCHEDULE_STATUSES = Set.of(
             "COMING_SOON", "PREPARING", "ON_SALE", "SOLD_OUT", "CANCELLED"
@@ -143,13 +151,73 @@ public class AdminService {
     }
 
     @Transactional
+    public AdminScheduleResponse createSchedule(CreateScheduleRequest request) {
+        ensureAdminRole();
+        ensureSchedulableShow(request.showId());
+        validateScheduleTime(request.startTime(), request.endTime());
+
+        ShowSchedule schedule = new ShowSchedule();
+        schedule.setId(generateScheduleId());
+        schedule.setShowId(clean(request.showId()));
+        schedule.setTheaterName(clean(request.theaterName()));
+        schedule.setStartTime(request.startTime());
+        schedule.setEndTime(request.endTime());
+        schedule.setStatus(StringUtils.hasText(request.status()) ? normalizeScheduleStatus(request.status()) : "PREPARING");
+        schedule.setPriceRange(clean(request.priceRange()));
+        showScheduleMapper.insert(schedule);
+
+        generateSeatPool(
+                schedule.getId(),
+                request.seatRows() == null ? DEFAULT_SEAT_ROWS : request.seatRows(),
+                request.seatCols() == null ? DEFAULT_SEAT_COLS : request.seatCols(),
+                request.vipPrice() == null ? DEFAULT_VIP_PRICE : request.vipPrice(),
+                request.standardPrice() == null ? DEFAULT_STANDARD_PRICE : request.standardPrice(),
+                request.economyPrice() == null ? DEFAULT_ECONOMY_PRICE : request.economyPrice()
+        );
+        return toScheduleResponse(showScheduleMapper.selectById(schedule.getId()));
+    }
+
+    @Transactional
+    public AdminScheduleResponse updateSchedule(String scheduleId, UpdateScheduleRequest request) {
+        ensureAdminRole();
+        ShowSchedule schedule = getSchedule(scheduleId);
+        ensureSchedulableShow(request.showId());
+        validateScheduleTime(request.startTime(), request.endTime());
+
+        schedule.setShowId(clean(request.showId()));
+        schedule.setTheaterName(clean(request.theaterName()));
+        schedule.setStartTime(request.startTime());
+        schedule.setEndTime(request.endTime());
+        schedule.setStatus(normalizeScheduleStatus(request.status()));
+        schedule.setPriceRange(clean(request.priceRange()));
+        showScheduleMapper.updateById(schedule);
+        if ("CANCELLED".equals(schedule.getStatus())) {
+            releaseScheduleLocks(scheduleId);
+        }
+        return toScheduleResponse(showScheduleMapper.selectById(scheduleId));
+    }
+
+    @Transactional
     public AdminScheduleResponse updateScheduleStatus(String scheduleId, String status) {
         ensureAdminRole();
         String normalizedStatus = normalizeScheduleStatus(status);
         ShowSchedule schedule = getSchedule(scheduleId);
         schedule.setStatus(normalizedStatus);
         showScheduleMapper.updateById(schedule);
-        return toScheduleResponse(schedule);
+        if ("CANCELLED".equals(normalizedStatus)) {
+            releaseScheduleLocks(scheduleId);
+        }
+        return toScheduleResponse(showScheduleMapper.selectById(scheduleId));
+    }
+
+    @Transactional
+    public AdminScheduleResponse cancelSchedule(String scheduleId) {
+        ensureAdminRole();
+        ShowSchedule schedule = getSchedule(scheduleId);
+        schedule.setStatus("CANCELLED");
+        showScheduleMapper.updateById(schedule);
+        releaseScheduleLocks(scheduleId);
+        return toScheduleResponse(showScheduleMapper.selectById(scheduleId));
     }
 
     public List<AdminOrderResponse> listOrders() {
@@ -227,6 +295,12 @@ public class AdminService {
         return normalized;
     }
 
+    private void validateScheduleTime(LocalDateTime startTime, LocalDateTime endTime) {
+        if (!startTime.isBefore(endTime)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "场次结束时间必须晚于开始时间");
+        }
+    }
+
     private String normalizeShowStatus(String status) {
         if (!StringUtils.hasText(status)) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "演出状态不能为空");
@@ -236,6 +310,13 @@ public class AdminService {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "不支持的演出状态");
         }
         return normalized;
+    }
+
+    private void ensureSchedulableShow(String showId) {
+        ShowEntity show = getShow(showId);
+        if ("ARCHIVED".equals(show.getStatus())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "已归档演出不可新增或绑定场次");
+        }
     }
 
     private ShowSchedule getSchedule(String scheduleId) {
@@ -267,6 +348,14 @@ public class AdminService {
         do {
             id = "s-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         } while (showMapper.selectById(id) != null);
+        return id;
+    }
+
+    private String generateScheduleId() {
+        String id;
+        do {
+            id = "sch-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        } while (showScheduleMapper.selectById(id) != null);
         return id;
     }
 
@@ -313,6 +402,50 @@ public class AdminService {
         if (seat != null && "SOLD".equals(seat.getStatus())) {
             seat.setStatus("AVAILABLE");
             scheduleSeatMapper.updateById(seat);
+        }
+    }
+
+    private void generateSeatPool(
+            String scheduleId,
+            int rows,
+            int cols,
+            BigDecimal vipPrice,
+            BigDecimal standardPrice,
+            BigDecimal economyPrice
+    ) {
+        int vipRows = Math.max(1, (int) Math.ceil(rows * 0.3));
+        int standardRows = Math.max(vipRows, (int) Math.ceil(rows * 0.7));
+        int centerCol = (cols + 1) / 2;
+
+        for (int row = 1; row <= rows; row++) {
+            for (int col = 1; col <= cols; col++) {
+                ScheduleSeat seat = new ScheduleSeat();
+                seat.setId("%s:seat-%d-%d".formatted(scheduleId, row, col));
+                seat.setScheduleId(scheduleId);
+                seat.setSeatCode("seat-%d-%d".formatted(row, col));
+                seat.setRowNo(row);
+                seat.setColNo(col);
+                boolean disabled = cols >= 6 && row % 4 == 1 && col == centerCol;
+                seat.setStatus(disabled ? "DISABLED" : "AVAILABLE");
+                if (row <= vipRows) {
+                    seat.setSection("VIP");
+                    seat.setPrice(vipPrice);
+                } else if (row <= standardRows) {
+                    seat.setSection("A");
+                    seat.setPrice(standardPrice);
+                } else {
+                    seat.setSection("B");
+                    seat.setPrice(economyPrice);
+                }
+                scheduleSeatMapper.insert(seat);
+            }
+        }
+    }
+
+    private void releaseScheduleLocks(String scheduleId) {
+        Set<String> lockKeys = redisTemplate.keys("encore:seat-lock:%s:*".formatted(scheduleId));
+        if (lockKeys != null && !lockKeys.isEmpty()) {
+            redisTemplate.delete(lockKeys);
         }
     }
 

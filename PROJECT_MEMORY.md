@@ -79,11 +79,17 @@ Backend foundation added on 2026-05-14:
     - Admin show responses include `scheduleCount`; public `/api/shows` still returns only `PUBLISHED` shows.
     - Frontend admin show management now uses backend CRUD APIs with dialog forms, loading states, confirmations, and localized success/error feedback.
     - Real API verification passed for create, edit, publish, unpublish, archive, public-list filtering, and ordinary-user access rejection.
+  - Admin schedule CRUD and ticket-pool generation continued on 2026-05-16:
+    - Added `/api/admin/schedules` create, update, and soft-delete endpoints in addition to list/status update.
+    - New schedules generate a `schedule_seat` pool with configurable rows, columns, and VIP/A/B prices.
+    - Schedule deletion is implemented as `CANCELLED` soft delete and releases existing Redis seat locks.
+    - Frontend admin schedule management now has create/edit dialogs, schedule cancellation, status changes, and localized form validation.
+    - Real API verification passed for create, edit, publish, generated-seat query/lock, cancel, lock rejection after cancellation, and ordinary-user access rejection.
 
 Important current limitation:
 
 - Seat locking, order creation, mock payment, and ticket generation now have backend APIs, but the full browser purchase flow still needs visual verification after the user's latest frontend changes are committed.
-- Admin schedule CRUD and ticket-pool generation are not implemented yet; existing admin schedule support currently covers listing and status changes.
+- Admin seat editing within an existing generated pool is not implemented yet; schedule creation generates the initial pool.
 
 ## Target Technical Stack
 
@@ -211,6 +217,6 @@ git push origin main
 
 ## Next Recommended Work
 
-1. Add admin schedule CRUD and ticket-pool generation.
+1. Start dashboard metrics API and visible demo analytics.
 2. Add wrong-schedule/time-window validation to check-in when schedule policy is finalized.
-3. Start dashboard metrics API and visible demo analytics.
+3. Add admin seat-pool adjustment tools if needed for the defense demo.

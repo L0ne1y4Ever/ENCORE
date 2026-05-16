@@ -4,7 +4,9 @@ import com.encore.common.ApiResponse;
 import com.encore.dto.AdminOrderResponse;
 import com.encore.dto.AdminScheduleResponse;
 import com.encore.dto.AdminShowResponse;
+import com.encore.dto.CreateScheduleRequest;
 import com.encore.dto.CreateShowRequest;
+import com.encore.dto.UpdateScheduleRequest;
 import com.encore.dto.UpdateScheduleStatusRequest;
 import com.encore.dto.UpdateShowRequest;
 import com.encore.dto.UpdateShowStatusRequest;
@@ -67,12 +69,30 @@ public class AdminController {
         return ApiResponse.ok(adminService.listSchedules());
     }
 
+    @PostMapping("/schedules")
+    public ApiResponse<AdminScheduleResponse> createSchedule(@Valid @RequestBody CreateScheduleRequest request) {
+        return ApiResponse.ok(adminService.createSchedule(request));
+    }
+
+    @PutMapping("/schedules/{id}")
+    public ApiResponse<AdminScheduleResponse> updateSchedule(
+            @PathVariable String id,
+            @Valid @RequestBody UpdateScheduleRequest request
+    ) {
+        return ApiResponse.ok(adminService.updateSchedule(id, request));
+    }
+
     @PatchMapping("/schedules/{id}/status")
     public ApiResponse<AdminScheduleResponse> updateScheduleStatus(
             @PathVariable String id,
             @Valid @RequestBody UpdateScheduleStatusRequest request
     ) {
         return ApiResponse.ok(adminService.updateScheduleStatus(id, request.status()));
+    }
+
+    @DeleteMapping("/schedules/{id}")
+    public ApiResponse<AdminScheduleResponse> deleteSchedule(@PathVariable String id) {
+        return ApiResponse.ok(adminService.cancelSchedule(id));
     }
 
     @GetMapping("/orders")

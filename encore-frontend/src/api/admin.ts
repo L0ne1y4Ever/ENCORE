@@ -48,6 +48,29 @@ export interface AdminSchedule {
   checkedInTickets: number
 }
 
+export interface CreateAdminSchedulePayload {
+  showId: string
+  theaterName: string
+  startTime: string
+  endTime: string
+  status?: ScheduleStatus
+  priceRange: string
+  seatRows?: number
+  seatCols?: number
+  vipPrice?: number
+  standardPrice?: number
+  economyPrice?: number
+}
+
+export interface UpdateAdminSchedulePayload {
+  showId: string
+  theaterName: string
+  startTime: string
+  endTime: string
+  status: ScheduleStatus
+  priceRange: string
+}
+
 export interface AdminOrder {
   id: string
   userId: string
@@ -88,10 +111,22 @@ export function getAdminSchedules(): Promise<AdminSchedule[]> {
   return requestData<AdminSchedule[]>(apiClient.get('/api/admin/schedules'))
 }
 
+export function createAdminSchedule(payload: CreateAdminSchedulePayload): Promise<AdminSchedule> {
+  return requestData<AdminSchedule>(apiClient.post('/api/admin/schedules', payload))
+}
+
+export function updateAdminSchedule(scheduleId: string, payload: UpdateAdminSchedulePayload): Promise<AdminSchedule> {
+  return requestData<AdminSchedule>(apiClient.put(`/api/admin/schedules/${scheduleId}`, payload))
+}
+
 export function updateAdminScheduleStatus(scheduleId: string, status: ScheduleStatus): Promise<AdminSchedule> {
   return requestData<AdminSchedule>(
     apiClient.patch(`/api/admin/schedules/${scheduleId}/status`, { status })
   )
+}
+
+export function cancelAdminSchedule(scheduleId: string): Promise<AdminSchedule> {
+  return requestData<AdminSchedule>(apiClient.delete(`/api/admin/schedules/${scheduleId}`))
 }
 
 export function getAdminOrders(): Promise<AdminOrder[]> {
