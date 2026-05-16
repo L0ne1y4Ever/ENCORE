@@ -46,8 +46,12 @@ Use this checklist to prepare the final course defense.
 - Admin logs in with `admin / 123`.
 - Admin views dashboard metrics.
 - Admin manages shows.
-- Admin manages schedules after backend is added.
-- Admin can publish an ON_SALE schedule after backend is added.
+- Admin manages schedules through backend data.
+- Admin changes schedule status through backend API.
+- Admin views backend orders.
+- Admin can refund eligible paid orders through backend API.
+- Admin can force-check-in eligible paid orders through backend API.
+- Admin can publish an ON_SALE schedule after full show/schedule CRUD is added.
 
 ## Differentiating Features
 

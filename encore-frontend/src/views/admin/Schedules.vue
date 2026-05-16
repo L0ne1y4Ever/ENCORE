@@ -1,44 +1,61 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { mockSchedules, mockShows } from '../../mock/shows'
-import type { Schedule } from '../../mock/shows'
+import { ElMessage } from 'element-plus'
+import { getAdminSchedules, updateAdminScheduleStatus } from '../../api/admin'
+import type { AdminSchedule, ScheduleStatus } from '../../api/admin'
 
 const { t } = useI18n()
 
-interface ScheduleVM extends Schedule {
-  showTitle: string
-  reservedCount: number
+const tableData = ref<AdminSchedule[]>([])
+const loading = ref(false)
+const updatingId = ref('')
+
+const loadSchedules = async () => {
+  loading.value = true
+  try {
+    tableData.value = await getAdminSchedules()
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : t('admin.loadFailed'))
+  } finally {
+    loading.value = false
+  }
 }
 
-const tableData = ref<ScheduleVM[]>([])
-
-onMounted(() => {
-  const data: ScheduleVM[] = []
-  for (const showId in mockSchedules) {
-    const show = mockShows.find(s => s.id === showId)
-    const schs = mockSchedules[showId]
-    schs.forEach(sch => {
-      data.push({
-        ...sch,
-        showTitle: show?.title || 'Unknown Show',
-        // Mock a reserved count based on status
-        reservedCount: sch.status === 'PREPARING' || sch.status === 'COMING_SOON' ? Math.floor(Math.random() * 10000) : 0
-      })
-    })
-  }
-  tableData.value = data
-})
+onMounted(loadSchedules)
 
 const formatDate = (dateStr: string) => {
   return new Date(dateStr).toLocaleString()
 }
 
-const toggleStatus = (row: ScheduleVM) => {
-  if (row.status === 'COMING_SOON') row.status = 'PREPARING'
-  else if (row.status === 'PREPARING') row.status = 'ON_SALE'
-  else if (row.status === 'ON_SALE') row.status = 'SOLD_OUT'
-  else row.status = 'COMING_SOON'
+const statusFlow: ScheduleStatus[] = ['COMING_SOON', 'PREPARING', 'ON_SALE', 'SOLD_OUT']
+
+const nextStatus = (status: ScheduleStatus): ScheduleStatus => {
+  const currentIndex = statusFlow.indexOf(status)
+  if (currentIndex === -1 || currentIndex === statusFlow.length - 1) return 'COMING_SOON'
+  return statusFlow[currentIndex + 1]
+}
+
+const statusTagType = (status: ScheduleStatus) => {
+  if (status === 'ON_SALE') return 'success'
+  if (status === 'SOLD_OUT' || status === 'CANCELLED') return 'danger'
+  if (status === 'PREPARING') return 'warning'
+  return 'info'
+}
+
+const toggleStatus = async (row: AdminSchedule) => {
+  const status = nextStatus(row.status)
+  updatingId.value = row.id
+  try {
+    const updated = await updateAdminScheduleStatus(row.id, status)
+    const index = tableData.value.findIndex(item => item.id === row.id)
+    if (index >= 0) tableData.value[index] = updated
+    ElMessage.success(t('admin.statusUpdated'))
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : t('admin.operationFailed'))
+  } finally {
+    updatingId.value = ''
+  }
 }
 </script>
 
@@ -46,28 +63,45 @@ const toggleStatus = (row: ScheduleVM) => {
   <div class="schedules-page">
     <div class="page-header">
       <h1>{{ t('admin.schedules') }}</h1>
+      <el-button type="primary" plain :loading="loading" @click="loadSchedules">
+        {{ t('admin.refresh') }}
+      </el-button>
     </div>
 
     <div class="table-container">
-      <el-table :data="tableData" style="width: 100%" :empty-text="'No Data'">
+      <el-table :data="tableData" style="width: 100%" :empty-text="t('admin.empty')" v-loading="loading">
         <el-table-column prop="id" label="ID" width="100" />
         <el-table-column prop="showTitle" :label="t('admin.shows')" min-width="200" />
-        <el-table-column prop="theaterName" label="Theater" width="150" />
-        <el-table-column :label="'Time'" min-width="180">
+        <el-table-column prop="theaterName" :label="t('admin.theater')" width="150" />
+        <el-table-column :label="t('admin.time')" min-width="180">
           <template #default="{ row }">
             {{ formatDate(row.startTime) }}
           </template>
         </el-table-column>
-        <el-table-column :label="t('admin.reservedCount')" width="150">
+        <el-table-column :label="t('admin.totalSeats')" width="120">
           <template #default="{ row }">
-            <span v-if="row.reservedCount > 0" class="reserved-count">{{ row.reservedCount }}</span>
-            <span v-else>-</span>
+            {{ row.totalSeats }}
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('admin.availableSeats')" width="120">
+          <template #default="{ row }">
+            <span class="available-count">{{ row.availableSeats }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('admin.soldSeats')" width="120">
+          <template #default="{ row }">
+            <span class="sold-count">{{ row.soldSeats }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('admin.checkedInTickets')" width="120">
+          <template #default="{ row }">
+            {{ row.checkedInTickets }} / {{ row.paidTickets }}
           </template>
         </el-table-column>
         <el-table-column :label="t('admin.scheduleStatus')" width="150">
           <template #default="{ row }">
-            <el-tag 
-              :type="row.status === 'ON_SALE' ? 'success' : (row.status === 'SOLD_OUT' ? 'danger' : 'info')"
+            <el-tag
+              :type="statusTagType(row.status)"
               effect="dark"
             >
               {{ row.status }}
@@ -76,7 +110,14 @@ const toggleStatus = (row: ScheduleVM) => {
         </el-table-column>
         <el-table-column :label="t('admin.action')" width="120" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="toggleStatus(row)">Toggle</el-button>
+            <el-button
+              link
+              type="primary"
+              :loading="updatingId === row.id"
+              @click="toggleStatus(row)"
+            >
+              {{ t('admin.statusNext') }}
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -91,6 +132,10 @@ const toggleStatus = (row: ScheduleVM) => {
 
 .page-header {
   margin-bottom: var(--spacing-6);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-4);
 
   h1 {
     font-family: var(--font-family-display);
@@ -130,6 +175,16 @@ const toggleStatus = (row: ScheduleVM) => {
   .reserved-count {
     color: var(--color-accent);
     font-weight: bold;
+  }
+
+  .available-count {
+    color: var(--color-success);
+    font-weight: 700;
+  }
+
+  .sold-count {
+    color: var(--color-warning);
+    font-weight: 700;
   }
 }
 </style>

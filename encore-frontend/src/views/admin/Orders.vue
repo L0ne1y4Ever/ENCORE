@@ -1,33 +1,88 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { forceCheckInAdminOrder, getAdminOrders, refundAdminOrder } from '../../api/admin'
+import type { AdminOrder } from '../../api/admin'
 
 const { t } = useI18n()
 
-interface OrderVM {
-  id: string
-  userId: string
-  showName: string
-  amount: string
-  status: 'PAID' | 'REFUNDED' | 'USED'
-  date: string
-}
+const tableData = ref<AdminOrder[]>([])
+const loading = ref(false)
+const operatingId = ref('')
 
-const tableData = ref<OrderVM[]>([
-  { id: 'ORD-10001', userId: 'u-101', showName: 'THE PHANTOM OF THE OPERA', amount: '$150', status: 'PAID', date: '2026-05-14 10:30' },
-  { id: 'ORD-10002', userId: 'u-102', showName: 'SWAN LAKE', amount: '$80', status: 'USED', date: '2026-05-13 14:20' },
-  { id: 'ORD-10003', userId: 'u-103', showName: 'HAMILTON', amount: '$300', status: 'REFUNDED', date: '2026-05-12 09:15' },
-  { id: 'ORD-10004', userId: 'u-101', showName: 'DUNE: PART TWO', amount: '$25', status: 'PAID', date: '2026-05-14 11:00' },
-])
-
-const handleRefund = (row: OrderVM) => {
-  if (confirm(`Refund order ${row.id}?`)) {
-    row.status = 'REFUNDED'
+const loadOrders = async () => {
+  loading.value = true
+  try {
+    tableData.value = await getAdminOrders()
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : t('admin.loadFailed'))
+  } finally {
+    loading.value = false
   }
 }
 
-const handleCheckin = (row: OrderVM) => {
-  row.status = 'USED'
+onMounted(loadOrders)
+
+const formatDate = (dateStr: string | null) => {
+  return dateStr ? new Date(dateStr).toLocaleString() : '-'
+}
+
+const formatAmount = (amount: number | string) => {
+  return `$${Number(amount).toFixed(2)}`
+}
+
+const displayStatus = (row: AdminOrder) => {
+  if (row.status === 'PAID' && row.ticketCount > 0 && row.checkedInCount >= row.ticketCount) {
+    return 'CHECKED_IN'
+  }
+  return row.status
+}
+
+const statusTagType = (row: AdminOrder) => {
+  const status = displayStatus(row)
+  if (status === 'PAID') return 'success'
+  if (status === 'REFUNDED' || status === 'EXPIRED') return 'info'
+  if (status === 'CHECKED_IN') return 'warning'
+  return 'danger'
+}
+
+const replaceOrder = (updated: AdminOrder) => {
+  const index = tableData.value.findIndex(item => item.id === updated.id)
+  if (index >= 0) tableData.value[index] = updated
+}
+
+const handleRefund = async (row: AdminOrder) => {
+  try {
+    await ElMessageBox.confirm(t('admin.refundConfirm', { id: row.id }), t('admin.refund'), {
+      confirmButtonText: t('common.confirm'),
+      cancelButtonText: t('common.cancel'),
+      type: 'warning'
+    })
+  } catch {
+    return
+  }
+  operatingId.value = row.id
+  try {
+    replaceOrder(await refundAdminOrder(row.id))
+    ElMessage.success(t('admin.refundSuccess'))
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : t('admin.operationFailed'))
+  } finally {
+    operatingId.value = ''
+  }
+}
+
+const handleCheckin = async (row: AdminOrder) => {
+  operatingId.value = row.id
+  try {
+    replaceOrder(await forceCheckInAdminOrder(row.id))
+    ElMessage.success(t('admin.checkinSuccess'))
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : t('admin.operationFailed'))
+  } finally {
+    operatingId.value = ''
+  }
 }
 </script>
 
@@ -35,22 +90,39 @@ const handleCheckin = (row: OrderVM) => {
   <div class="orders-page">
     <div class="page-header">
       <h1>{{ t('admin.orders') }}</h1>
+      <el-button type="primary" plain :loading="loading" @click="loadOrders">
+        {{ t('admin.refresh') }}
+      </el-button>
     </div>
 
     <div class="table-container">
-      <el-table :data="tableData" style="width: 100%">
+      <el-table :data="tableData" style="width: 100%" :empty-text="t('admin.empty')" v-loading="loading">
         <el-table-column prop="id" :label="t('admin.orderId')" width="120" />
-        <el-table-column prop="userId" label="User ID" width="100" />
+        <el-table-column prop="username" :label="t('admin.user')" width="120" />
         <el-table-column prop="showName" :label="t('admin.shows')" min-width="200" />
-        <el-table-column prop="amount" :label="t('admin.amount')" width="100" />
-        <el-table-column prop="date" label="Date" width="160" />
+        <el-table-column prop="theaterName" :label="t('admin.theater')" width="140" />
+        <el-table-column :label="t('admin.amount')" width="110">
+          <template #default="{ row }">
+            {{ formatAmount(row.totalAmount) }}
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('admin.time')" width="180">
+          <template #default="{ row }">
+            {{ formatDate(row.createdAt) }}
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('admin.tickets')" width="120">
+          <template #default="{ row }">
+            {{ row.checkedInCount }} / {{ row.ticketCount }}
+          </template>
+        </el-table-column>
         <el-table-column :label="t('admin.scheduleStatus')" width="120">
           <template #default="{ row }">
-            <el-tag 
-              :type="row.status === 'PAID' ? 'success' : (row.status === 'REFUNDED' ? 'info' : 'warning')"
+            <el-tag
+              :type="statusTagType(row)"
               effect="plain"
             >
-              {{ row.status }}
+              {{ displayStatus(row) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -59,7 +131,8 @@ const handleCheckin = (row: OrderVM) => {
             <el-button 
               link 
               type="danger" 
-              :disabled="row.status !== 'PAID'"
+              :loading="operatingId === row.id"
+              :disabled="row.status !== 'PAID' || row.checkedInCount > 0"
               @click="handleRefund(row)"
             >
               {{ t('admin.refund') }}
@@ -67,10 +140,11 @@ const handleCheckin = (row: OrderVM) => {
             <el-button 
               link 
               type="primary" 
-              :disabled="row.status !== 'PAID'"
+              :loading="operatingId === row.id"
+              :disabled="row.status !== 'PAID' || row.checkedInCount >= row.ticketCount"
               @click="handleCheckin(row)"
             >
-              {{ t('admin.checkin') }}
+              {{ t('admin.forceCheckin') }}
             </el-button>
           </template>
         </el-table-column>
@@ -86,6 +160,10 @@ const handleCheckin = (row: OrderVM) => {
 
 .page-header {
   margin-bottom: var(--spacing-6);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-4);
 
   h1 {
     font-family: var(--font-family-display);

@@ -68,10 +68,15 @@ Backend foundation added on 2026-05-14:
   - Frontend check-in scanner now calls the backend API and displays accepted ticket context.
   - Unit coverage exists for valid check-in, duplicate rejection, and role rejection.
   - Real API/browser verification passed after Docker Desktop became available: user purchased seats, paid, checker checked in one ticket, and duplicate check-in was rejected.
+  - Admin schedule/order backend integration continued on 2026-05-16:
+    - Added `/api/admin/schedules` and schedule status update API.
+    - Added `/api/admin/orders`, refund, and force-check-in APIs.
+    - Admin schedule/order pages now load backend data instead of frontend demo arrays.
+    - Real API verification passed for schedule status update/restore, order force check-in, and order refund.
 
 Important current limitation:
 
-- Admin schedule/order pages currently use frontend demo data and should be wired to backend APIs later.
+- Admin show management is still a frontend demo table and should be wired to backend APIs later.
 - Seat locking, order creation, mock payment, and ticket generation now have backend APIs, but the full browser purchase flow still needs visual verification after the user's latest frontend changes are committed.
 
 ## Target Technical Stack
@@ -200,6 +205,6 @@ git push origin main
 
 ## Next Recommended Work
 
-1. Continue Phase 4 by wiring admin schedule/order pages to backend APIs.
+1. Wire admin show management to backend APIs.
 2. Add wrong-schedule/time-window validation to check-in when schedule policy is finalized.
-3. Start minimum admin CRUD for schedules and ticket-pool preparation.
+3. Start minimum admin CRUD for show publishing and ticket-pool preparation.

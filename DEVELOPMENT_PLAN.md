@@ -1,6 +1,6 @@
 # ENCORE Development Plan
 
-Updated: 2026-05-14
+Updated: 2026-05-16
 
 ## Goal
 
@@ -126,6 +126,10 @@ Progress:
 - Restored i18n keys removed by the latest UI edits so order/payment/ticket/admin pages keep rendering translated text.
 - Verified real API flow: login, seat selection, lock, order creation, mock payment, check-in, and duplicate check-in rejection.
 - Verified browser check-in UI with a paid ticket code and duplicate rejection message.
+- Added backend admin schedule list and schedule status update APIs.
+- Added backend admin order list, refund, and force-check-in APIs.
+- Connected frontend admin schedule/order pages to backend APIs with loading, refresh, success, and error feedback.
+- Verified real admin API flow: schedule status update/restore, paid order force check-in, and paid order refund.
 
 Commit trigger:
 
