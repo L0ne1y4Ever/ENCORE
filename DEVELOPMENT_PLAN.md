@@ -130,10 +130,14 @@ Progress:
 - Added backend admin order list, refund, and force-check-in APIs.
 - Connected frontend admin schedule/order pages to backend APIs with loading, refresh, success, and error feedback.
 - Verified real admin API flow: schedule status update/restore, paid order force check-in, and paid order refund.
+- Added backend admin show CRUD APIs for all-status listing, draft creation, editing, status changes, and soft delete to `ARCHIVED`.
+- Connected frontend admin show management to `/api/admin/shows` with a dialog form, status buttons, delete confirmation, loading/disabled states, and localized backend error display.
+- Verified public `/api/shows` still only returns `PUBLISHED` shows after draft/archive transitions.
+- Verified ordinary `user/123` cannot access `/api/admin/shows`.
 
 Commit trigger:
 
-- A paid ticket can be checked in once, and admin can prepare an ON_SALE schedule.
+- A paid ticket can be checked in once, admin can prepare an ON_SALE schedule, and admin can publish/unpublish shows from backend state.
 
 ## Phase 5 - Dashboard And Differentiators
 

@@ -3,13 +3,19 @@ package com.encore.controller;
 import com.encore.common.ApiResponse;
 import com.encore.dto.AdminOrderResponse;
 import com.encore.dto.AdminScheduleResponse;
+import com.encore.dto.AdminShowResponse;
+import com.encore.dto.CreateShowRequest;
 import com.encore.dto.UpdateScheduleStatusRequest;
+import com.encore.dto.UpdateShowRequest;
+import com.encore.dto.UpdateShowStatusRequest;
 import com.encore.service.AdminService;
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -23,6 +29,37 @@ public class AdminController {
 
     public AdminController(AdminService adminService) {
         this.adminService = adminService;
+    }
+
+    @GetMapping("/shows")
+    public ApiResponse<List<AdminShowResponse>> listShows() {
+        return ApiResponse.ok(adminService.listShows());
+    }
+
+    @PostMapping("/shows")
+    public ApiResponse<AdminShowResponse> createShow(@Valid @RequestBody CreateShowRequest request) {
+        return ApiResponse.ok(adminService.createShow(request));
+    }
+
+    @PutMapping("/shows/{id}")
+    public ApiResponse<AdminShowResponse> updateShow(
+            @PathVariable String id,
+            @Valid @RequestBody UpdateShowRequest request
+    ) {
+        return ApiResponse.ok(adminService.updateShow(id, request));
+    }
+
+    @PatchMapping("/shows/{id}/status")
+    public ApiResponse<AdminShowResponse> updateShowStatus(
+            @PathVariable String id,
+            @Valid @RequestBody UpdateShowStatusRequest request
+    ) {
+        return ApiResponse.ok(adminService.updateShowStatus(id, request.status()));
+    }
+
+    @DeleteMapping("/shows/{id}")
+    public ApiResponse<AdminShowResponse> deleteShow(@PathVariable String id) {
+        return ApiResponse.ok(adminService.archiveShow(id));
     }
 
     @GetMapping("/schedules")

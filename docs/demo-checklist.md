@@ -45,7 +45,12 @@ Use this checklist to prepare the final course defense.
 
 - Admin logs in with `admin / 123`.
 - Admin views dashboard metrics.
-- Admin manages shows.
+- Admin manages shows through backend CRUD APIs.
+- Admin creates a draft show.
+- Admin edits show title/category/duration.
+- Admin publishes and unpublishes a show.
+- Admin archives a show through soft delete.
+- Public show list only displays `PUBLISHED` shows.
 - Admin manages schedules through backend data.
 - Admin changes schedule status through backend API.
 - Admin views backend orders.

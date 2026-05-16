@@ -5,6 +5,9 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.encore.common.ErrorCode;
 import com.encore.dto.AdminOrderResponse;
 import com.encore.dto.AdminScheduleResponse;
+import com.encore.dto.AdminShowResponse;
+import com.encore.dto.CreateShowRequest;
+import com.encore.dto.UpdateShowRequest;
 import com.encore.entity.ScheduleSeat;
 import com.encore.entity.ShowEntity;
 import com.encore.entity.ShowSchedule;
@@ -27,6 +30,7 @@ import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 @Service
 public class AdminService {
@@ -34,6 +38,7 @@ public class AdminService {
     private static final Set<String> SCHEDULE_STATUSES = Set.of(
             "COMING_SOON", "PREPARING", "ON_SALE", "SOLD_OUT", "CANCELLED"
     );
+    private static final Set<String> SHOW_STATUSES = Set.of("DRAFT", "PUBLISHED", "ARCHIVED");
 
     private final ShowScheduleMapper showScheduleMapper;
     private final ShowMapper showMapper;
@@ -59,6 +64,73 @@ public class AdminService {
         this.ticketItemMapper = ticketItemMapper;
         this.userAccountMapper = userAccountMapper;
         this.redisTemplate = redisTemplate;
+    }
+
+    public List<AdminShowResponse> listShows() {
+        ensureAdminRole();
+        return showMapper.selectList(new LambdaQueryWrapper<ShowEntity>()
+                        .orderByAsc(ShowEntity::getSortOrder)
+                        .orderByDesc(ShowEntity::getCreatedAt))
+                .stream()
+                .map(this::toShowResponse)
+                .toList();
+    }
+
+    @Transactional
+    public AdminShowResponse createShow(CreateShowRequest request) {
+        ensureAdminRole();
+        ShowEntity show = new ShowEntity();
+        show.setId(generateShowId());
+        show.setTitle(clean(request.title()));
+        show.setSubtitle(clean(request.subtitle()));
+        show.setCoverUrl(clean(request.coverUrl()));
+        show.setDescription(clean(request.description()));
+        show.setDuration(request.duration());
+        show.setCategory(clean(request.category()));
+        show.setTags(normalizeTags(request.tags()));
+        show.setStatus(StringUtils.hasText(request.status()) ? normalizeShowStatus(request.status()) : "DRAFT");
+        show.setSortOrder(request.sortOrder() == null ? nextShowSortOrder() : request.sortOrder());
+        showMapper.insert(show);
+        return toShowResponse(showMapper.selectById(show.getId()));
+    }
+
+    @Transactional
+    public AdminShowResponse updateShow(String showId, UpdateShowRequest request) {
+        ensureAdminRole();
+        ShowEntity show = getShow(showId);
+        show.setTitle(clean(request.title()));
+        show.setSubtitle(clean(request.subtitle()));
+        show.setCoverUrl(clean(request.coverUrl()));
+        show.setDescription(clean(request.description()));
+        show.setDuration(request.duration());
+        show.setCategory(clean(request.category()));
+        show.setTags(normalizeTags(request.tags()));
+        if (StringUtils.hasText(request.status())) {
+            show.setStatus(normalizeShowStatus(request.status()));
+        }
+        if (request.sortOrder() != null) {
+            show.setSortOrder(request.sortOrder());
+        }
+        showMapper.updateById(show);
+        return toShowResponse(showMapper.selectById(showId));
+    }
+
+    @Transactional
+    public AdminShowResponse updateShowStatus(String showId, String status) {
+        ensureAdminRole();
+        ShowEntity show = getShow(showId);
+        show.setStatus(normalizeShowStatus(status));
+        showMapper.updateById(show);
+        return toShowResponse(showMapper.selectById(showId));
+    }
+
+    @Transactional
+    public AdminShowResponse archiveShow(String showId) {
+        ensureAdminRole();
+        ShowEntity show = getShow(showId);
+        show.setStatus("ARCHIVED");
+        showMapper.updateById(show);
+        return toShowResponse(showMapper.selectById(showId));
     }
 
     public List<AdminScheduleResponse> listSchedules() {
@@ -155,6 +227,17 @@ public class AdminService {
         return normalized;
     }
 
+    private String normalizeShowStatus(String status) {
+        if (!StringUtils.hasText(status)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "演出状态不能为空");
+        }
+        String normalized = status.trim().toUpperCase();
+        if (!SHOW_STATUSES.contains(normalized)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "不支持的演出状态");
+        }
+        return normalized;
+    }
+
     private ShowSchedule getSchedule(String scheduleId) {
         ShowSchedule schedule = showScheduleMapper.selectById(scheduleId);
         if (schedule == null) {
@@ -163,12 +246,52 @@ public class AdminService {
         return schedule;
     }
 
+    private ShowEntity getShow(String showId) {
+        ShowEntity show = showMapper.selectById(showId);
+        if (show == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "演出不存在");
+        }
+        return show;
+    }
+
     private TicketOrder getOrder(String orderId) {
         TicketOrder order = ticketOrderMapper.selectById(orderId);
         if (order == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "订单不存在");
         }
         return order;
+    }
+
+    private String generateShowId() {
+        String id;
+        do {
+            id = "s-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        } while (showMapper.selectById(id) != null);
+        return id;
+    }
+
+    private int nextShowSortOrder() {
+        List<ShowEntity> shows = showMapper.selectList(new LambdaQueryWrapper<ShowEntity>()
+                .orderByDesc(ShowEntity::getSortOrder)
+                .last("limit 1"));
+        if (shows.isEmpty() || shows.get(0).getSortOrder() == null) {
+            return 10;
+        }
+        return shows.get(0).getSortOrder() + 10;
+    }
+
+    private List<String> normalizeTags(List<String> tags) {
+        if (tags == null) {
+            return List.of();
+        }
+        return tags.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .toList();
+    }
+
+    private String clean(String value) {
+        return value.trim();
     }
 
     private List<TicketItem> listTickets(String orderId) {
@@ -191,6 +314,24 @@ public class AdminService {
             seat.setStatus("AVAILABLE");
             scheduleSeatMapper.updateById(seat);
         }
+    }
+
+    private AdminShowResponse toShowResponse(ShowEntity show) {
+        long scheduleCount = showScheduleMapper.selectCount(new LambdaQueryWrapper<ShowSchedule>()
+                .eq(ShowSchedule::getShowId, show.getId()));
+        return new AdminShowResponse(
+                show.getId(),
+                show.getTitle(),
+                show.getSubtitle(),
+                show.getCoverUrl(),
+                show.getDescription(),
+                show.getDuration(),
+                show.getCategory(),
+                show.getTags(),
+                show.getStatus(),
+                show.getSortOrder(),
+                scheduleCount
+        );
     }
 
     private AdminScheduleResponse toScheduleResponse(ShowSchedule schedule) {

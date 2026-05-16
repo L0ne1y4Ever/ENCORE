@@ -2,6 +2,33 @@ import { apiClient, requestData } from './index'
 
 export type ScheduleStatus = 'COMING_SOON' | 'PREPARING' | 'ON_SALE' | 'SOLD_OUT' | 'CANCELLED'
 export type AdminOrderStatus = 'PENDING_PAYMENT' | 'PAID' | 'EXPIRED' | 'REFUNDED'
+export type AdminShowStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
+
+export interface AdminShow {
+  id: string
+  title: string
+  subtitle: string
+  coverUrl: string
+  description: string
+  duration: number
+  category: string
+  tags: string[]
+  status: AdminShowStatus
+  sortOrder: number
+  scheduleCount: number
+}
+
+export interface AdminShowPayload {
+  title: string
+  subtitle: string
+  coverUrl: string
+  description: string
+  duration: number
+  category: string
+  tags: string[]
+  status?: AdminShowStatus
+  sortOrder?: number
+}
 
 export interface AdminSchedule {
   id: string
@@ -35,6 +62,26 @@ export interface AdminOrder {
   checkedInCount: number
   createdAt: string
   paidAt: string | null
+}
+
+export function getAdminShows(): Promise<AdminShow[]> {
+  return requestData<AdminShow[]>(apiClient.get('/api/admin/shows'))
+}
+
+export function createAdminShow(payload: AdminShowPayload): Promise<AdminShow> {
+  return requestData<AdminShow>(apiClient.post('/api/admin/shows', payload))
+}
+
+export function updateAdminShow(showId: string, payload: AdminShowPayload): Promise<AdminShow> {
+  return requestData<AdminShow>(apiClient.put(`/api/admin/shows/${showId}`, payload))
+}
+
+export function updateAdminShowStatus(showId: string, status: AdminShowStatus): Promise<AdminShow> {
+  return requestData<AdminShow>(apiClient.patch(`/api/admin/shows/${showId}/status`, { status }))
+}
+
+export function archiveAdminShow(showId: string): Promise<AdminShow> {
+  return requestData<AdminShow>(apiClient.delete(`/api/admin/shows/${showId}`))
 }
 
 export function getAdminSchedules(): Promise<AdminSchedule[]> {
