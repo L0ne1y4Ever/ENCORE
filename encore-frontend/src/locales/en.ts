@@ -37,7 +37,12 @@ export default {
     viewDetails: 'View Details',
     noShows: 'No shows found in this category.',
     shows: 'Shows',
-    profile: 'Profile'
+    profile: 'Profile',
+    topRecommended: 'Top 8 Recommended',
+    hotPick: 'Hot Pick',
+    ticketsSold: 'tickets sold',
+    onSaleSchedules: 'on-sale schedules',
+    recommendationsEmpty: 'No recommendations yet.'
   },
   login: {
     heroTitle: 'Unlimited shows, concerts and more',

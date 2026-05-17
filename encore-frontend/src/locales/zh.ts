@@ -37,7 +37,12 @@ export default {
     viewDetails: '查看详情',
     noShows: '该分类下暂无演出。',
     shows: '演出',
-    profile: '我的'
+    profile: '我的',
+    topRecommended: 'Top 8 推荐',
+    hotPick: '热门推荐',
+    ticketsSold: '张有效票',
+    onSaleSchedules: '个可售场次',
+    recommendationsEmpty: '暂无推荐演出。'
   },
   login: {
     heroTitle: '无限演出、音乐会等你探索',

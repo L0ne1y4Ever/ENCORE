@@ -124,6 +124,12 @@ Backend foundation added on 2026-05-14:
     - Clicking an available 3D seat reuses the existing seat-selection flow; the 2D map, right-side summary, lock, and order confirmation path remain the source of purchase control.
     - WebSocket seat events update the shared `seats` state, so the 3D view and 2D map stay synchronized.
     - Browser verification covered desktop and mobile canvas nonblank pixel checks, drag movement, 3D click selection, lock-to-confirm flow, and realtime redraw after a `LOCKED` event.
+  - Top 8 recommendations continued on 2026-05-17:
+    - Added public `GET /api/shows/recommendations/top8`.
+    - Recommendations return only `PUBLISHED` shows and rank by ON_SALE availability, valid paid tickets, paid revenue, `sortOrder`, and creation time.
+    - Frontend home now shows a Top 8 recommendation rail below the hero and above category tabs; category filtering still only affects the regular show list.
+    - Recommendation API failure falls back to the current public show list first 8 items so browsing remains available.
+    - Browser verification confirmed the home page calls the real recommendation API, renders ticket/schedule metrics, and opens the existing show detail page from a recommendation card.
 
 Important current limitation:
 
@@ -131,6 +137,7 @@ Important current limitation:
 - Admin seat editing within an existing generated pool is not implemented yet; schedule creation generates the initial pool.
 - Dashboard metrics still come from query APIs; WebSocket only triggers refresh events and does not push aggregate metric payloads.
 - Check-in station binding is intentionally lightweight: the selected current schedule is stored in the browser only, and there is no separate managed check-in-station entity yet.
+- Top 8 recommendations are global and refresh on page/API reload; they are not personalized and are not pushed through WebSocket yet.
 
 ## Target Technical Stack
 
@@ -207,7 +214,7 @@ Differentiating demo features:
 - Real-time seat updates through WebSocket.
 - three.js seat-stage preview.
 - Black-gold command-center dashboard.
-- Top 8 recommendation block.
+- Backend-backed Top 8 recommendation block.
 - Basic group-seat invitation demo.
 
 Out of scope for course acceptance:
@@ -258,6 +265,6 @@ git push origin main
 
 ## Next Recommended Work
 
-1. Add Top 8 recommendation block or basic group-seat invitation flow as the next visible differentiator.
+1. Add the basic group-seat invitation flow as the next visible differentiator.
 2. Start Phase 6 delivery packaging: README startup guide, Docker Compose refinements, and test report.
 3. Consider admin seat editing only if defense feedback asks for seat-pool maintenance beyond schedule creation.

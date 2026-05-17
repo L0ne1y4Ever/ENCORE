@@ -21,6 +21,9 @@ Use this checklist to prepare the final course defense.
 
 - User logs in with `user / 123`.
 - User browses show list.
+- Home page shows the backend-ranked Top 8 recommendation rail above category tabs.
+- Recommendation cards show rank, valid ticket count, and on-sale schedule count.
+- User can click a recommendation card and open the existing show detail page.
 - User opens show detail.
 - User selects an ON_SALE schedule.
 - User sees the Three.js stage-seat preview above the 2D seat map.
@@ -81,7 +84,7 @@ Use this checklist to prepare the final course defense.
 - Three.js seat-stage preview is visible on the user seat-selection page and stays synced with realtime seat events.
 - Black-gold command-center dashboard.
 - Dashboard charts read backend aggregate data instead of static demo data.
-- Top 8 recommendation block.
+- Top 8 recommendation block reads real backend ranking data and degrades to the public show list on API failure.
 - Basic group-seat invitation flow.
 
 ## Evidence To Capture
@@ -91,5 +94,6 @@ Use this checklist to prepare the final course defense.
 - Screenshots of successful and failed check-in.
 - Screenshot or recording of real-time seat update.
 - Screenshot of dashboard charts.
+- Screenshot of homepage Top 8 recommendations.
 - Terminal output for frontend build and backend tests.
 - GitHub commit history showing staged progress.

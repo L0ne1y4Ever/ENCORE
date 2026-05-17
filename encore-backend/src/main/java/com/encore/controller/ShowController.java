@@ -2,6 +2,7 @@ package com.encore.controller;
 
 import com.encore.common.ApiResponse;
 import com.encore.dto.ScheduleResponse;
+import com.encore.dto.ShowRecommendationResponse;
 import com.encore.dto.ShowResponse;
 import com.encore.service.ShowService;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,6 +28,11 @@ public class ShowController {
             @RequestParam(required = false) String category
     ) {
         return ApiResponse.ok(showService.listShows(keyword, category));
+    }
+
+    @GetMapping("/recommendations/top8")
+    public ApiResponse<List<ShowRecommendationResponse>> listTopRecommendations() {
+        return ApiResponse.ok(showService.listTopRecommendations());
     }
 
     @GetMapping("/{id}")

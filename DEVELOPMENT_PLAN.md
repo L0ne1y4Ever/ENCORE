@@ -189,6 +189,12 @@ Progress:
 - Rendered real backend seats in 3D with stage geometry, status colors, selected-seat highlight, drag rotation, and WebGL fallback.
 - Kept the 2D seat map and right-side checkout panel as the stable purchase path while allowing 3D clicks to reuse the same selection logic.
 - Verified desktop/mobile 3D canvas rendering, drag movement, 3D click-to-select, lock-to-confirm flow, and realtime redraw after a WebSocket seat update.
+- Added public `GET /api/shows/recommendations/top8` for backend-ranked homepage recommendations.
+- Ranked recommendations by ON_SALE availability first, then valid paid ticket count, paid revenue, `sortOrder`, and creation time while excluding non-published shows.
+- Added focused `ShowServiceTest` coverage for ON_SALE priority, ticket-count ordering, revenue tie-breaks, unpublished filtering, invalid ticket/order exclusion, sort-order fallback, and top-8 limiting.
+- Added a home-page Top 8 recommendation rail below the hero, with rank, ticket count, and on-sale schedule count from the real backend API.
+- Kept category tabs scoped to the regular show list and added a public-show fallback when the recommendation API fails.
+- Verified the browser home page calls the real recommendation API and recommendation cards open the existing show detail route.
 
 Commit trigger:
 
