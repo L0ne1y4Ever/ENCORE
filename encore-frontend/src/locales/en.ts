@@ -72,6 +72,8 @@ export default {
     locked: 'Locked',
     sold: 'Sold',
     yourSelection: 'Your Selection',
+    stagePreview: 'Stage Seat Preview',
+    previewUnavailable: '3D preview is unavailable in this browser. Use the seat map below to continue.',
     total: 'Total',
     checkout: 'Checkout',
     noSeats: 'No seats selected',

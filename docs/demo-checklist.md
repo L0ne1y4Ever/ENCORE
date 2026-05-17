@@ -23,6 +23,8 @@ Use this checklist to prepare the final course defense.
 - User browses show list.
 - User opens show detail.
 - User selects an ON_SALE schedule.
+- User sees the Three.js stage-seat preview above the 2D seat map.
+- User can select an available seat from the 3D preview and see it reflected in the 2D map and order summary.
 - User selects seats from the visual seat map.
 - Seat states show AVAILABLE / LOCKED / SOLD / DISABLED.
 - User creates an order and sees countdown.
@@ -76,7 +78,7 @@ Use this checklist to prepare the final course defense.
 - Real-time seat update across two browser sessions.
 - WebSocket seat events cover lock, sold, refund, expiry, and cancelled-schedule refresh paths.
 - Dashboard WebSocket refresh event updates admin metrics without manual refresh.
-- three.js seat-stage preview on seat click.
+- Three.js seat-stage preview is visible on the user seat-selection page and stays synced with realtime seat events.
 - Black-gold command-center dashboard.
 - Dashboard charts read backend aggregate data instead of static demo data.
 - Top 8 recommendation block.

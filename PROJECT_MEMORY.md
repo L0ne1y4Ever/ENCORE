@@ -118,6 +118,12 @@ Backend foundation added on 2026-05-14:
     - Added `GET /api/checkin/schedules` for `checker`, `admin`, and `sysadmin`; ordinary `user` is rejected.
     - The scanner page now loads real check-in schedules, stores the selected current schedule in `localStorage`, submits it with verification, and keeps backend error messages visible.
     - Real API verification passed for wrong-schedule rejection and correct-schedule success on a newly created in-window schedule pair.
+  - Three.js seat-stage preview continued on 2026-05-17:
+    - Added a standalone `SeatStagePreview` component above the existing 2D seat map.
+    - The 3D view renders the current backend seat pool, stage, status colors, selected-seat highlight, and a WebGL fallback without changing the seat API.
+    - Clicking an available 3D seat reuses the existing seat-selection flow; the 2D map, right-side summary, lock, and order confirmation path remain the source of purchase control.
+    - WebSocket seat events update the shared `seats` state, so the 3D view and 2D map stay synchronized.
+    - Browser verification covered desktop and mobile canvas nonblank pixel checks, drag movement, 3D click selection, lock-to-confirm flow, and realtime redraw after a `LOCKED` event.
 
 Important current limitation:
 
@@ -252,6 +258,6 @@ git push origin main
 
 ## Next Recommended Work
 
-1. Add scanner-station current-schedule binding if stricter wrong-schedule check-in is required for defense.
-2. Add three.js seat-stage preview after the realtime paths remain stable in demo rehearsal.
-3. Add Top 8 recommendation block or basic group-seat invitation flow as the next visible differentiator.
+1. Add Top 8 recommendation block or basic group-seat invitation flow as the next visible differentiator.
+2. Start Phase 6 delivery packaging: README startup guide, Docker Compose refinements, and test report.
+3. Consider admin seat editing only if defense feedback asks for seat-pool maintenance beyond schedule creation.

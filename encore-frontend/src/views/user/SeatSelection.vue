@@ -6,6 +6,7 @@ import { subscribeToSeatUpdates } from '../../api/seatRealtime'
 import type { SeatRealtimeConnectionState, SeatStatusEvent } from '../../api/seatRealtime'
 import type { Seat } from '../../mock/seats'
 import { useI18n } from 'vue-i18n'
+import SeatStagePreview from '../../components/SeatStagePreview.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -154,6 +155,17 @@ const seatGrid = computed(() => {
 <template>
   <div class="seat-selection">
     <div class="main-area">
+      <SeatStagePreview
+        v-if="!loading"
+        :seats="seats"
+        :selected-seat-ids="selectedSeatIds"
+        :stage-label="t('seat.stagePreview')"
+        :unavailable-label="t('seat.previewUnavailable')"
+        :row-label="t('seat.row')"
+        :col-label="t('seat.col')"
+        @toggle-seat="toggleSeat"
+      />
+
       <header class="stage-header">
         <div class="stage-bar">{{ t('seat.stage') }}</div>
       </header>
@@ -247,7 +259,7 @@ const seatGrid = computed(() => {
 .stage-header {
   display: flex;
   justify-content: center;
-  margin-bottom: var(--spacing-8);
+  margin-bottom: var(--spacing-5);
 
   .stage-bar {
     width: 60%;

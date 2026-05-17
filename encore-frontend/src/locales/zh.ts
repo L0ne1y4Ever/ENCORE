@@ -72,6 +72,8 @@ export default {
     locked: '锁定',
     sold: '已售',
     yourSelection: '您的选择',
+    stagePreview: '舞台座位预览',
+    previewUnavailable: '当前浏览器无法显示 3D 预览，仍可使用下方座位图选座。',
     total: '合计',
     checkout: '去结算',
     noSeats: '暂未选择座位',

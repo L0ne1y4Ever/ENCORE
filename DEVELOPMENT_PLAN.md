@@ -185,6 +185,10 @@ Progress:
 - Connected the admin dashboard to realtime refresh events with live connection feedback and background reload of the existing metrics API.
 - Added focused tests for dashboard refresh routing and event hooks.
 - Verified real STOMP/API `ORDER_PAID` and `ORDER_REFUNDED` events, plus browser dashboard auto-refresh from 1 to 3 metric requests after live events.
+- Added a Three.js seat-stage preview above the existing 2D seat map.
+- Rendered real backend seats in 3D with stage geometry, status colors, selected-seat highlight, drag rotation, and WebGL fallback.
+- Kept the 2D seat map and right-side checkout panel as the stable purchase path while allowing 3D clicks to reuse the same selection logic.
+- Verified desktop/mobile 3D canvas rendering, drag movement, 3D click-to-select, lock-to-confirm flow, and realtime redraw after a WebSocket seat update.
 
 Commit trigger:
 
