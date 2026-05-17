@@ -1,15 +1,26 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getSeatMap, lockSeats } from '../../api/seat'
+import {
+  cancelGroupOrder,
+  checkoutGroupOrder,
+  createGroupOrder,
+  getGroupOrder,
+  joinGroupOrder,
+  leaveGroupOrder
+} from '../../api/groupOrder'
+import type { GroupOrder, GroupOrderMember } from '../../api/groupOrder'
 import { subscribeToSeatUpdates } from '../../api/seatRealtime'
 import type { SeatRealtimeConnectionState, SeatStatusEvent } from '../../api/seatRealtime'
 import type { Seat } from '../../mock/seats'
 import { useI18n } from 'vue-i18n'
 import SeatStagePreview from '../../components/SeatStagePreview.vue'
+import { useAuthStore } from '../../stores/auth'
 
 const route = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()
 const { t } = useI18n()
 const scheduleId = route.params.id as string
 
@@ -17,10 +28,44 @@ const seats = ref<Seat[]>([])
 const selectedSeatIds = ref<Set<string>>(new Set())
 const loading = ref(true)
 const locking = ref(false)
+const groupBusy = ref(false)
+const groupLoading = ref(false)
+const groupError = ref('')
+const groupCopied = ref(false)
+const groupOrder = ref<GroupOrder | null>(null)
+const now = ref(Date.now())
 const realtimeState = ref<SeatRealtimeConnectionState>('connecting')
 const realtimeNotice = ref<string | null>(null)
 let disconnectRealtime: (() => void) | undefined
 let realtimeNoticeTimer: ReturnType<typeof setTimeout> | undefined
+let groupPollTimer: ReturnType<typeof setInterval> | undefined
+let groupCountdownTimer: ReturnType<typeof setInterval> | undefined
+
+const groupInviteCode = computed(() => {
+  return typeof route.query.group === 'string' ? route.query.group : ''
+})
+const isGroupMode = computed(() => Boolean(groupInviteCode.value))
+const currentUserId = computed(() => authStore.currentUser?.id || '')
+const currentMember = computed(() => {
+  return groupOrder.value?.members.find(member => member.userId === currentUserId.value) || null
+})
+const isGroupHost = computed(() => {
+  return Boolean(groupOrder.value && groupOrder.value.hostUserId === currentUserId.value)
+})
+const groupInviteUrl = computed(() => {
+  if (!groupInviteCode.value) return ''
+  return `${window.location.origin}${route.path}?group=${groupInviteCode.value}`
+})
+function formatTime(secs: number) {
+  const minutes = Math.floor(secs / 60).toString().padStart(2, '0')
+  const seconds = (secs % 60).toString().padStart(2, '0')
+  return `${minutes}:${seconds}`
+}
+const groupExpiresIn = computed(() => {
+  if (!groupOrder.value?.expiresAt) return '--:--'
+  const diff = Math.max(0, Math.floor((new Date(groupOrder.value.expiresAt).getTime() - now.value) / 1000))
+  return formatTime(diff)
+})
 
 const refreshSeatMap = async (showLoading = false) => {
   if (showLoading) {
@@ -65,7 +110,7 @@ const applySeatStatusEvent = async (event: SeatStatusEvent) => {
     if (
       nextStatus !== 'AVAILABLE' &&
       selectedSeatIds.value.has(seat.id) &&
-      !(event.reason === 'LOCKED' && locking.value)
+      !(event.reason === 'LOCKED' && (locking.value || groupBusy.value || currentMember.value?.seatIds.includes(seat.id)))
     ) {
       selectedSeatIds.value.delete(seat.id)
     }
@@ -88,27 +133,193 @@ onMounted(async () => {
       realtimeState.value = state
     }
   })
+  groupCountdownTimer = setInterval(() => {
+    now.value = Date.now()
+  }, 1000)
+  if (groupInviteCode.value) {
+    await loadGroupOrder(true)
+    startGroupPolling()
+  }
 })
 
 onBeforeUnmount(() => {
   disconnectRealtime?.()
+  stopGroupPolling()
   if (realtimeNoticeTimer) {
     clearTimeout(realtimeNoticeTimer)
+  }
+  if (groupCountdownTimer) {
+    clearInterval(groupCountdownTimer)
   }
 })
 
 const maxSelect = 6
 
 const toggleSeat = (seat: Seat) => {
-  if (seat.status !== 'AVAILABLE') return
-  
   if (selectedSeatIds.value.has(seat.id)) {
     selectedSeatIds.value.delete(seat.id)
-  } else {
-    if (selectedSeatIds.value.size < maxSelect) {
-      selectedSeatIds.value.add(seat.id)
-    }
+    return
   }
+
+  if (seat.status !== 'AVAILABLE') return
+
+  if (selectedSeatIds.value.size < maxSelect) {
+    selectedSeatIds.value.add(seat.id)
+  }
+}
+
+watch(groupInviteCode, async (nextCode, previousCode) => {
+  if (nextCode === previousCode) return
+  stopGroupPolling()
+  groupOrder.value = null
+  groupError.value = ''
+  groupCopied.value = false
+  selectedSeatIds.value.clear()
+  if (nextCode) {
+    await loadGroupOrder(true)
+    startGroupPolling()
+  }
+})
+
+const syncSelectionFromGroup = (order: GroupOrder | null) => {
+  const member = order?.members.find(item => item.userId === currentUserId.value)
+  selectedSeatIds.value = new Set(member?.seatIds || [])
+}
+
+const loadGroupOrder = async (syncSelection = false) => {
+  if (!groupInviteCode.value) return
+  groupLoading.value = true
+  try {
+    const data = await getGroupOrder(groupInviteCode.value)
+    groupOrder.value = data
+    groupError.value = ''
+    if (syncSelection) {
+      syncSelectionFromGroup(data)
+    }
+  } catch (error) {
+    groupOrder.value = null
+    groupError.value = error instanceof Error ? error.message : t('seat.group.loadFailed')
+  } finally {
+    groupLoading.value = false
+  }
+}
+
+const startGroupPolling = () => {
+  stopGroupPolling()
+  groupPollTimer = setInterval(() => {
+    void loadGroupOrder(false)
+  }, 5000)
+}
+
+const stopGroupPolling = () => {
+  if (groupPollTimer) {
+    clearInterval(groupPollTimer)
+    groupPollTimer = undefined
+  }
+}
+
+const startGroupOrder = async () => {
+  if (selectedSeatIds.value.size === 0) return
+  groupBusy.value = true
+  groupError.value = ''
+  try {
+    const data = await createGroupOrder(scheduleId, Array.from(selectedSeatIds.value))
+    groupOrder.value = data
+    syncSelectionFromGroup(data)
+    await router.replace({ path: route.path, query: { ...route.query, group: data.inviteCode } })
+    startGroupPolling()
+  } catch (error) {
+    groupError.value = error instanceof Error ? error.message : t('seat.group.actionFailed')
+    await refreshSeatMap()
+  } finally {
+    groupBusy.value = false
+  }
+}
+
+const joinCurrentGroup = async () => {
+  if (!groupInviteCode.value || selectedSeatIds.value.size === 0) return
+  groupBusy.value = true
+  groupError.value = ''
+  try {
+    const data = await joinGroupOrder(groupInviteCode.value, Array.from(selectedSeatIds.value))
+    groupOrder.value = data
+    syncSelectionFromGroup(data)
+    await refreshSeatMap()
+  } catch (error) {
+    groupError.value = error instanceof Error ? error.message : t('seat.group.actionFailed')
+    await refreshSeatMap()
+  } finally {
+    groupBusy.value = false
+  }
+}
+
+const leaveCurrentGroup = async () => {
+  if (!groupInviteCode.value) return
+  groupBusy.value = true
+  groupError.value = ''
+  try {
+    const data = await leaveGroupOrder(groupInviteCode.value)
+    groupOrder.value = data
+    selectedSeatIds.value.clear()
+    await refreshSeatMap()
+  } catch (error) {
+    groupError.value = error instanceof Error ? error.message : t('seat.group.actionFailed')
+  } finally {
+    groupBusy.value = false
+  }
+}
+
+const cancelCurrentGroup = async () => {
+  if (!groupInviteCode.value) return
+  groupBusy.value = true
+  groupError.value = ''
+  try {
+    const data = await cancelGroupOrder(groupInviteCode.value)
+    groupOrder.value = data
+    selectedSeatIds.value.clear()
+    stopGroupPolling()
+    await refreshSeatMap()
+  } catch (error) {
+    groupError.value = error instanceof Error ? error.message : t('seat.group.actionFailed')
+  } finally {
+    groupBusy.value = false
+  }
+}
+
+const checkoutCurrentGroup = async () => {
+  if (!groupInviteCode.value) return
+  groupBusy.value = true
+  groupError.value = ''
+  try {
+    const orderId = await checkoutGroupOrder(groupInviteCode.value)
+    router.push(`/payment?id=${orderId}`)
+  } catch (error) {
+    groupError.value = error instanceof Error ? error.message : t('seat.group.actionFailed')
+  } finally {
+    groupBusy.value = false
+  }
+}
+
+const copyGroupInvite = async () => {
+  if (!groupInviteUrl.value) return
+  try {
+    await navigator.clipboard.writeText(groupInviteUrl.value)
+    groupCopied.value = true
+    setTimeout(() => {
+      groupCopied.value = false
+    }, 1600)
+  } catch {
+    groupError.value = t('seat.group.copyFailed')
+  }
+}
+
+const memberSeatLabel = (member: GroupOrderMember) => {
+  if (member.seatIds.length === 0) return t('seat.group.noMemberSeats')
+  return member.seatIds.map(seatId => {
+    const seat = seats.value.find(item => item.id === seatId)
+    if (!seat) return seatId
+    return `${t('seat.row')} ${seat.row} ${t('seat.col')} ${seat.col}`
+  }).join(' / ')
 }
 
 const selectedSeats = computed(() => {
@@ -203,6 +414,44 @@ const seatGrid = computed(() => {
           {{ t(realtimeNotice) }}
         </div>
       </div>
+
+      <section class="group-panel" v-if="isGroupMode || groupOrder" aria-live="polite">
+        <div class="group-header">
+          <div>
+            <p class="group-kicker">{{ t('seat.group.kicker') }}</p>
+            <h3>{{ t('seat.group.title') }}</h3>
+          </div>
+          <span class="group-timer">{{ groupExpiresIn }}</span>
+        </div>
+
+        <div class="group-loading" v-if="groupLoading">{{ t('common.loading') }}</div>
+        <div class="group-error" v-if="groupError">{{ groupError }}</div>
+
+        <template v-if="groupOrder">
+          <div class="invite-box" v-if="groupInviteUrl">
+            <div class="invite-url">{{ groupInviteUrl }}</div>
+            <button class="btn-small" type="button" @click="copyGroupInvite">
+              {{ groupCopied ? t('seat.group.copied') : t('seat.group.copyInvite') }}
+            </button>
+          </div>
+
+          <div class="group-meta">
+            <span>{{ t('seat.group.host') }} {{ groupOrder.hostDisplayName }}</span>
+            <span>{{ t('seat.group.totalSeats') }} {{ groupOrder.members.reduce((sum, member) => sum + member.seatIds.length, 0) }}/{{ groupOrder.maxSeats }}</span>
+            <span>{{ t('seat.group.groupTotal') }} ${{ groupOrder.totalAmount }}</span>
+          </div>
+
+          <div class="member-list">
+            <div class="member-row" v-for="member in groupOrder.members" :key="member.userId">
+              <div>
+                <strong>{{ member.displayName }}</strong>
+                <p>{{ memberSeatLabel(member) }}</p>
+              </div>
+              <span>${{ member.amount }}</span>
+            </div>
+          </div>
+        </template>
+      </section>
       
       <div class="legend">
         <div class="legend-item"><div class="box status-available"></div> {{ t('seat.available') }}</div>
@@ -224,13 +473,57 @@ const seatGrid = computed(() => {
         <span class="amount">${{ totalAmount }}</span>
       </div>
 
-      <button 
+      <button
+        v-if="!isGroupMode"
         class="btn-checkout" 
         :disabled="selectedSeatIds.size === 0 || locking"
         @click="submitLock"
       >
         {{ locking ? t('seat.locking') : t('seat.checkout') }}
       </button>
+
+      <button
+        v-if="!isGroupMode"
+        class="btn-secondary"
+        :disabled="selectedSeatIds.size === 0 || groupBusy"
+        @click="startGroupOrder"
+      >
+        {{ groupBusy ? t('common.processing') : t('seat.group.start') }}
+      </button>
+
+      <div class="group-actions" v-else>
+        <button
+          class="btn-checkout"
+          :disabled="selectedSeatIds.size === 0 || groupBusy || groupOrder?.status !== 'OPEN'"
+          @click="joinCurrentGroup"
+        >
+          {{ groupBusy ? t('common.processing') : t('seat.group.joinOrUpdate') }}
+        </button>
+        <button
+          v-if="isGroupHost"
+          class="btn-checkout"
+          :disabled="groupBusy || !groupOrder || groupOrder.status !== 'OPEN'"
+          @click="checkoutCurrentGroup"
+        >
+          {{ t('seat.group.hostCheckout') }}
+        </button>
+        <button
+          v-if="isGroupHost"
+          class="btn-secondary danger"
+          :disabled="groupBusy || !groupOrder || groupOrder.status !== 'OPEN'"
+          @click="cancelCurrentGroup"
+        >
+          {{ t('seat.group.cancel') }}
+        </button>
+        <button
+          v-else
+          class="btn-secondary"
+          :disabled="groupBusy || !currentMember || groupOrder?.status !== 'OPEN'"
+          @click="leaveCurrentGroup"
+        >
+          {{ t('seat.group.leave') }}
+        </button>
+      </div>
     </aside>
   </div>
 </template>
@@ -403,6 +696,135 @@ const seatGrid = computed(() => {
     color: var(--color-text-ghost);
   }
 
+  .group-panel {
+    margin-bottom: var(--spacing-5);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: var(--spacing-4);
+    background: rgba(0, 0, 0, 0.16);
+    font-family: var(--font-family-sans);
+  }
+
+  .group-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--spacing-3);
+    margin-bottom: var(--spacing-3);
+
+    h3 {
+      margin: 0;
+      font-family: var(--font-family-display);
+      font-size: 20px;
+      line-height: 1.2;
+    }
+  }
+
+  .group-kicker {
+    margin-bottom: 4px;
+    color: var(--color-accent);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .group-timer {
+    flex: 0 0 auto;
+    border: 1px solid rgba(212, 175, 55, 0.35);
+    border-radius: 6px;
+    color: var(--color-accent);
+    font-weight: 700;
+    line-height: 1;
+    padding: 8px 10px;
+  }
+
+  .group-loading,
+  .group-error {
+    margin-bottom: var(--spacing-3);
+    font-size: 13px;
+  }
+
+  .group-error {
+    color: #f0a86b;
+  }
+
+  .invite-box {
+    display: grid;
+    gap: var(--spacing-2);
+    margin-bottom: var(--spacing-3);
+  }
+
+  .invite-url {
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    padding: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .btn-small {
+    min-height: 38px;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-primary);
+    cursor: pointer;
+    font-family: var(--font-family-sans);
+    font-size: 13px;
+    font-weight: 700;
+    transition: border-color 150ms ease, color 150ms ease;
+
+    &:hover {
+      border-color: var(--color-accent);
+      color: var(--color-accent);
+    }
+  }
+
+  .group-meta {
+    display: grid;
+    gap: 6px;
+    margin-bottom: var(--spacing-3);
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .member-list {
+    display: grid;
+    gap: var(--spacing-2);
+  }
+
+  .member-row {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--spacing-3);
+    border-top: 1px solid var(--color-border);
+    padding-top: var(--spacing-2);
+
+    strong {
+      display: block;
+      margin-bottom: 3px;
+      color: var(--color-text-primary);
+      font-size: 13px;
+    }
+
+    p {
+      color: var(--color-text-secondary);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    span {
+      flex: 0 0 auto;
+      color: var(--color-accent);
+      font-weight: 700;
+    }
+  }
+
   .legend {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -477,6 +899,46 @@ const seatGrid = computed(() => {
       background-color: var(--color-border-strong);
       color: var(--color-text-ghost);
       cursor: not-allowed;
+    }
+  }
+
+  .btn-secondary {
+    width: 100%;
+    min-height: 48px;
+    margin-top: var(--spacing-3);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-primary);
+    cursor: pointer;
+    font-family: var(--font-family-sans);
+    font-size: 15px;
+    font-weight: 700;
+    transition: border-color 150ms ease, color 150ms ease;
+
+    &:hover:not(:disabled) {
+      border-color: var(--color-accent);
+      color: var(--color-accent);
+    }
+
+    &:disabled {
+      border-color: var(--color-border);
+      color: var(--color-text-ghost);
+      cursor: not-allowed;
+    }
+
+    &.danger:hover:not(:disabled) {
+      border-color: #f0a86b;
+      color: #f0a86b;
+    }
+  }
+
+  .group-actions {
+    display: grid;
+    gap: var(--spacing-3);
+
+    .btn-secondary {
+      margin-top: 0;
     }
   }
 }

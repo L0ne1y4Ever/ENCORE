@@ -3,6 +3,7 @@ USE encore;
 INSERT INTO user_account (id, username, password, role, display_name, status)
 VALUES
   ('u-101', 'user', '123', 'user', '普通用户', 'ACTIVE'),
+  ('u-102', 'friend', '123', 'user', '拼座好友', 'ACTIVE'),
   ('u-901', 'admin', '123', 'admin', '票务管理员', 'ACTIVE'),
   ('u-801', 'checker', '123', 'checker', '检票员', 'ACTIVE'),
   ('u-701', 'sysadmin', '123', 'sysadmin', '系统管理员', 'ACTIVE')

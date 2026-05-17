@@ -92,7 +92,25 @@ export default {
       disconnected: 'Live connection lost'
     },
     liveUpdated: 'Seat status updated',
-    scheduleCancelled: 'This schedule was cancelled. The seat map has been refreshed.'
+    scheduleCancelled: 'This schedule was cancelled. The seat map has been refreshed.',
+    group: {
+      kicker: 'Group Seats',
+      title: 'Group Invitation',
+      start: 'Start Group Seats',
+      copyInvite: 'Copy Invite Link',
+      copied: 'Copied',
+      joinOrUpdate: 'Join / Update Seats',
+      leave: 'Leave Group',
+      cancel: 'Cancel Group',
+      hostCheckout: 'Host Checkout',
+      host: 'Host',
+      totalSeats: 'Claimed',
+      groupTotal: 'Group Total',
+      loadFailed: 'Failed to load group session',
+      actionFailed: 'Group action failed',
+      copyFailed: 'Copy failed. Please copy the link manually.',
+      noMemberSeats: 'No seats claimed'
+    }
   },
   order: {
     confirmation: 'Order Confirmation',

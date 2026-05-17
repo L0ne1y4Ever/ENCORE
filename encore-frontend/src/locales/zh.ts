@@ -92,7 +92,25 @@ export default {
       disconnected: '实时连接已断开'
     },
     liveUpdated: '座位状态已更新',
-    scheduleCancelled: '当前场次已取消，座位图已刷新'
+    scheduleCancelled: '当前场次已取消，座位图已刷新',
+    group: {
+      kicker: '多人拼座',
+      title: '拼座邀请',
+      start: '发起拼座',
+      copyInvite: '复制邀请链接',
+      copied: '已复制',
+      joinOrUpdate: '加入/更新座位',
+      leave: '退出拼座',
+      cancel: '取消拼座',
+      hostCheckout: '发起人结算',
+      host: '发起人',
+      totalSeats: '已认领',
+      groupTotal: '拼座合计',
+      loadFailed: '拼座会话加载失败',
+      actionFailed: '拼座操作失败',
+      copyFailed: '复制失败，请手动复制链接',
+      noMemberSeats: '暂未认领座位'
+    }
   },
   order: {
     confirmation: '确认订单',

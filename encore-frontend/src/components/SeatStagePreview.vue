@@ -275,7 +275,7 @@ const pickSeat = (event: PointerEvent) => {
   const hit = raycaster.intersectObjects(clickableMeshes, false)[0]
   const seatId = hit?.object.userData.seatId as string | undefined
   const seat = seatId ? props.seats.find((item) => item.id === seatId) : undefined
-  if (seat?.status === 'AVAILABLE') {
+  if (seat && (seat.status === 'AVAILABLE' || props.selectedSeatIds.has(seat.id))) {
     emit('toggle-seat', seat)
   }
 }

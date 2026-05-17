@@ -195,6 +195,12 @@ Progress:
 - Added a home-page Top 8 recommendation rail below the hero, with rank, ticket count, and on-sale schedule count from the real backend API.
 - Kept category tabs scoped to the regular show list and added a public-show fallback when the recommendation API fails.
 - Verified the browser home page calls the real recommendation API and recommendation cards open the existing show detail route.
+- Added Redis-backed group-seat sessions with create, read, join/update, leave, cancel, and host checkout APIs.
+- Extended seat locks so group seats use `group:{inviteCode}` as owner, then transfer to the real order id during host checkout.
+- Added `friend/123` seed data for two-user demos.
+- Connected the user seat-selection page to group mode through `?group={inviteCode}`, with invite link copying, member list polling, selected-seat claims, host checkout, and cancellation.
+- Added focused group-order service tests covering create, join replacement, seat-limit rejection, non-host checkout rejection, missing invite rejection, and host checkout.
+- Verified real API and browser flows where `user/123` hosts, `friend/123` joins, the host checks out, pays, and receives electronic tickets.
 
 Commit trigger:
 

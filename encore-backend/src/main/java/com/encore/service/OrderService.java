@@ -97,6 +97,41 @@ public class OrderService {
         return orderId;
     }
 
+    @Transactional
+    public String createGroupOrder(String scheduleId, List<String> requestedSeatIds, String lockOwner) {
+        String userId = StpUtil.getLoginIdAsString();
+        seatService.ensureOnSaleSchedule(scheduleId);
+        List<String> seatIds = normalizeSeatIds(requestedSeatIds);
+        List<ScheduleSeat> seats = seatService.findSeats(scheduleId, seatIds);
+        seats.forEach(seat -> seatService.ensureSeatAvailableForOrder(scheduleId, seat));
+        seatService.ensureLocksOwnedBy(scheduleId, seatIds, lockOwner);
+
+        BigDecimal totalAmount = seats.stream()
+                .map(ScheduleSeat::getPrice)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime expiresAt = now.plus(PAYMENT_TTL);
+        String orderId = "ord-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+
+        TicketOrder order = new TicketOrder();
+        order.setId(orderId);
+        order.setUserId(userId);
+        order.setScheduleId(scheduleId);
+        order.setTotalAmount(totalAmount);
+        order.setStatus("PENDING_PAYMENT");
+        order.setCreatedAt(now);
+        order.setExpiresAt(expiresAt);
+        ticketOrderMapper.insert(order);
+
+        List<TicketItem> tickets = seatIds.stream()
+                .sorted()
+                .map(seatId -> createReservedTicket(orderId, scheduleId, seatId))
+                .toList();
+        tickets.forEach(ticketItemMapper::insert);
+        seatService.transferLocksOwner(scheduleId, seatIds, lockOwner, orderId, PAYMENT_TTL);
+        return orderId;
+    }
+
     public OrderResponse getOrderDetail(String orderId) {
         TicketOrder order = getOrder(orderId);
         expireIfNeeded(order);

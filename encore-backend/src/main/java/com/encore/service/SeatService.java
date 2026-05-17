@@ -50,6 +50,10 @@ public class SeatService {
 
     public boolean lockSeats(String scheduleId, List<String> seatIds) {
         String userId = StpUtil.getLoginIdAsString();
+        return lockSeatsForOwner(scheduleId, seatIds, userId, SEAT_LOCK_TTL, true);
+    }
+
+    public boolean lockSeatsForOwner(String scheduleId, List<String> seatIds, String owner, Duration ttl, boolean publishLocked) {
         ensureOnSaleSchedule(scheduleId);
         List<String> normalizedSeatIds = normalizeSeatIds(seatIds);
         List<ScheduleSeat> seats = findSeats(scheduleId, normalizedSeatIds);
@@ -57,22 +61,24 @@ public class SeatService {
 
         try {
             for (ScheduleSeat seat : seats) {
-                ensureSeatAvailableForLock(scheduleId, seat);
+                ensureSeatAvailableForLock(scheduleId, seat, owner);
                 String key = lockKey(scheduleId, seat.getSeatCode());
-                String owner = redisTemplate.opsForValue().get(key);
-                if (owner == null) {
-                    Boolean acquired = redisTemplate.opsForValue().setIfAbsent(key, userId, SEAT_LOCK_TTL);
+                String currentOwner = redisTemplate.opsForValue().get(key);
+                if (currentOwner == null) {
+                    Boolean acquired = redisTemplate.opsForValue().setIfAbsent(key, owner, ttl);
                     if (!Boolean.TRUE.equals(acquired)) {
                         throw new BusinessException(ErrorCode.CONFLICT, "座位已被锁定，请重新选择");
                     }
                     acquiredKeys.add(key);
-                } else if (userId.equals(owner)) {
-                    redisTemplate.expire(key, SEAT_LOCK_TTL);
+                } else if (owner.equals(currentOwner)) {
+                    redisTemplate.expire(key, ttl);
                 } else {
                     throw new BusinessException(ErrorCode.CONFLICT, "座位已被锁定，请重新选择");
                 }
             }
-            seatStatusPublisher.publishSeatStatus(scheduleId, "LOCKED", "LOCKED", normalizedSeatIds);
+            if (publishLocked) {
+                seatStatusPublisher.publishSeatStatus(scheduleId, "LOCKED", "LOCKED", normalizedSeatIds);
+            }
             return true;
         } catch (BusinessException exception) {
             acquiredKeys.forEach(redisTemplate::delete);
@@ -123,6 +129,36 @@ public class SeatService {
         normalizeSeatIds(seatIds).forEach(seatId -> redisTemplate.delete(lockKey(scheduleId, seatId)));
     }
 
+    public void releaseLocksOwnedBy(String scheduleId, List<String> seatIds, String owner, boolean publishAvailable) {
+        List<String> releasedSeatIds = new ArrayList<>();
+        for (String seatId : normalizeSeatIds(seatIds)) {
+            String key = lockKey(scheduleId, seatId);
+            if (owner.equals(redisTemplate.opsForValue().get(key))) {
+                redisTemplate.delete(key);
+                releasedSeatIds.add(seatId);
+            }
+        }
+        if (publishAvailable && !releasedSeatIds.isEmpty()) {
+            seatStatusPublisher.publishSeatStatus(scheduleId, "GROUP_RELEASED", "AVAILABLE", releasedSeatIds);
+        }
+    }
+
+    public void ensureLocksOwnedBy(String scheduleId, List<String> seatIds, String owner) {
+        for (String seatId : normalizeSeatIds(seatIds)) {
+            if (!owner.equals(redisTemplate.opsForValue().get(lockKey(scheduleId, seatId)))) {
+                throw new BusinessException(ErrorCode.CONFLICT, "拼座锁已失效，请重新发起拼座");
+            }
+        }
+    }
+
+    public void transferLocksOwner(String scheduleId, List<String> seatIds, String expectedOwner, String nextOwner, Duration ttl) {
+        List<String> normalizedSeatIds = normalizeSeatIds(seatIds);
+        ensureLocksOwnedBy(scheduleId, normalizedSeatIds, expectedOwner);
+        for (String seatId : normalizedSeatIds) {
+            redisTemplate.opsForValue().set(lockKey(scheduleId, seatId), nextOwner, ttl);
+        }
+    }
+
     public String lockKey(String scheduleId, String seatId) {
         return "encore:seat-lock:%s:%s".formatted(scheduleId, seatId);
     }
@@ -135,12 +171,12 @@ public class SeatService {
         return schedule;
     }
 
-    private void ensureSeatAvailableForLock(String scheduleId, ScheduleSeat seat) {
+    private void ensureSeatAvailableForLock(String scheduleId, ScheduleSeat seat, String owner) {
         if (!"AVAILABLE".equals(seat.getStatus())) {
             throw new BusinessException(ErrorCode.CONFLICT, "座位不可售，请重新选择");
         }
-        String owner = redisTemplate.opsForValue().get(lockKey(scheduleId, seat.getSeatCode()));
-        if (owner != null && !StpUtil.getLoginIdAsString().equals(owner)) {
+        String currentOwner = redisTemplate.opsForValue().get(lockKey(scheduleId, seat.getSeatCode()));
+        if (currentOwner != null && !owner.equals(currentOwner)) {
             throw new BusinessException(ErrorCode.CONFLICT, "座位已被锁定，请重新选择");
         }
     }

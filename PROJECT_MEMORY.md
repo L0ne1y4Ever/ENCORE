@@ -130,6 +130,13 @@ Backend foundation added on 2026-05-14:
     - Frontend home now shows a Top 8 recommendation rail below the hero and above category tabs; category filtering still only affects the regular show list.
     - Recommendation API failure falls back to the current public show list first 8 items so browsing remains available.
     - Browser verification confirmed the home page calls the real recommendation API, renders ticket/schedule metrics, and opens the existing show detail page from a recommendation card.
+  - Basic group-seat invitation continued on 2026-05-17:
+    - Added Redis-backed temporary group order sessions under `encore:group-order:{inviteCode}` with 15-minute TTL.
+    - Group seat locks use owner `group:{inviteCode}` and convert to the real order id when the host checks out.
+    - Added `/api/group-orders` create/read/join/leave/cancel/checkout APIs.
+    - The user seat-selection page now supports `?group={inviteCode}`, invite copying, member seat claims, polling, host checkout, and group cancellation.
+    - Added demo account `friend / 123` for two-browser group-seat verification.
+    - Real API and browser verification passed for `user/123` hosting, `friend/123` joining, host checkout, mock payment, and electronic ticket generation.
 
 Important current limitation:
 
@@ -138,6 +145,7 @@ Important current limitation:
 - Dashboard metrics still come from query APIs; WebSocket only triggers refresh events and does not push aggregate metric payloads.
 - Check-in station binding is intentionally lightweight: the selected current schedule is stored in the browser only, and there is no separate managed check-in-station entity yet.
 - Top 8 recommendations are global and refresh on page/API reload; they are not personalized and are not pushed through WebSocket yet.
+- Group-seat sessions are temporary Redis state. Paid orders and tickets persist after checkout, but unpurchased group sessions disappear on Redis expiry/restart.
 
 ## Target Technical Stack
 
@@ -172,6 +180,7 @@ Backend target:
 Current frontend mock accounts:
 
 - `user / 123` -> registered user
+- `friend / 123` -> registered user for group-seat invitation demos
 - `admin / 123` -> ticket administrator
 - `checker / 123` -> check-in staff
 - `sysadmin / 123` -> system administrator
@@ -215,7 +224,7 @@ Differentiating demo features:
 - three.js seat-stage preview.
 - Black-gold command-center dashboard.
 - Backend-backed Top 8 recommendation block.
-- Basic group-seat invitation demo.
+- Redis-backed group-seat invitation demo with host checkout.
 
 Out of scope for course acceptance:
 
@@ -265,6 +274,6 @@ git push origin main
 
 ## Next Recommended Work
 
-1. Add the basic group-seat invitation flow as the next visible differentiator.
-2. Start Phase 6 delivery packaging: README startup guide, Docker Compose refinements, and test report.
-3. Consider admin seat editing only if defense feedback asks for seat-pool maintenance beyond schedule creation.
+1. Start Phase 6 delivery packaging: README startup guide, Docker Compose refinements, and test report.
+2. Consider admin seat editing only if defense feedback asks for seat-pool maintenance beyond schedule creation.
+3. Polish defense evidence for realtime seats, group-seat invitation, and dashboard refresh if time allows.

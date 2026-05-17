@@ -30,6 +30,10 @@ Use this checklist to prepare the final course defense.
 - User can select an available seat from the 3D preview and see it reflected in the 2D map and order summary.
 - User selects seats from the visual seat map.
 - Seat states show AVAILABLE / LOCKED / SOLD / DISABLED.
+- User can start a group-seat invitation from selected seats.
+- Friend logs in with `friend / 123`, opens the invite link, and joins with another seat.
+- Host sees the friend in the group member list without leaving the seat page.
+- Host checks out the group seats into one pending order and completes mock payment.
 - User creates an order and sees countdown.
 - User completes mock payment.
 - User opens electronic ticket and sees ticket code.
@@ -85,7 +89,7 @@ Use this checklist to prepare the final course defense.
 - Black-gold command-center dashboard.
 - Dashboard charts read backend aggregate data instead of static demo data.
 - Top 8 recommendation block reads real backend ranking data and degrades to the public show list on API failure.
-- Basic group-seat invitation flow.
+- Basic group-seat invitation flow uses Redis temporary sessions and host checkout.
 
 ## Evidence To Capture
 
@@ -95,5 +99,6 @@ Use this checklist to prepare the final course defense.
 - Screenshot or recording of real-time seat update.
 - Screenshot of dashboard charts.
 - Screenshot of homepage Top 8 recommendations.
+- Screenshot or recording of group-seat invitation with `user/123` and `friend/123`.
 - Terminal output for frontend build and backend tests.
 - GitHub commit history showing staged progress.
