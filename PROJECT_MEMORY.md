@@ -137,6 +137,13 @@ Backend foundation added on 2026-05-14:
     - The user seat-selection page now supports `?group={inviteCode}`, invite copying, member seat claims, polling, host checkout, and group cancellation.
     - Added demo account `friend / 123` for two-browser group-seat verification.
     - Real API and browser verification passed for `user/123` hosting, `friend/123` joining, host checkout, mock payment, and electronic ticket generation.
+  - Phase 6 delivery packaging started on 2026-05-17:
+    - Added root `README.md` with full-stack local startup, optional full Docker Compose preview, demo accounts, and verification commands.
+    - Added frontend/backend Dockerfiles and `docker-compose.full.yml` for a containerized frontend + backend + MySQL + Redis preview.
+    - Added Nginx frontend proxy config for `/api` and `/ws` in container mode.
+    - Added `docs/user-manual.md` for user, group-seat, check-in, and admin demo flows.
+    - Added `docs/test-report.md` with automated checks, manual verification matrix, and recommended final evidence.
+    - Verified `docker compose -f docker-compose.full.yml config`, backend tests, and frontend build.
 
 Important current limitation:
 
@@ -146,6 +153,7 @@ Important current limitation:
 - Check-in station binding is intentionally lightweight: the selected current schedule is stored in the browser only, and there is no separate managed check-in-station entity yet.
 - Top 8 recommendations are global and refresh on page/API reload; they are not personalized and are not pushed through WebSocket yet.
 - Group-seat sessions are temporary Redis state. Paid orders and tickets persist after checkout, but unpurchased group sessions disappear on Redis expiry/restart.
+- Full Docker Compose preview has been configuration-validated; local development still uses the default MySQL/Redis-only compose plus separate backend/frontend dev servers.
 
 ## Target Technical Stack
 
@@ -255,6 +263,19 @@ Before each push:
 
 ## Useful Commands
 
+Full local development startup:
+
+```powershell
+cd D:\ENCORE
+docker compose up -d mysql redis
+
+cd D:\ENCORE\encore-backend
+mvn spring-boot:run
+
+cd D:\ENCORE\encore-frontend
+npm run dev
+```
+
 Frontend:
 
 ```powershell
@@ -274,6 +295,6 @@ git push origin main
 
 ## Next Recommended Work
 
-1. Start Phase 6 delivery packaging: README startup guide, Docker Compose refinements, and test report.
-2. Consider admin seat editing only if defense feedback asks for seat-pool maintenance beyond schedule creation.
-3. Polish defense evidence for realtime seats, group-seat invitation, and dashboard refresh if time allows.
+1. Polish defense evidence for realtime seats, group-seat invitation, and dashboard refresh with screenshots or short recordings.
+2. Add a final deployment note for cloud-server environment variables and port exposure.
+3. Consider admin seat editing only if defense feedback asks for seat-pool maintenance beyond schedule creation.

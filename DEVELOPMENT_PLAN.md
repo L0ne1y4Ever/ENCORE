@@ -208,6 +208,8 @@ Commit trigger:
 
 ## Phase 6 - Delivery Package
 
+Status: in progress on 2026-05-17
+
 Target outcome: final course submission can be started, tested, and explained.
 
 - Add Docker Compose for frontend, backend, MySQL, Redis, and Nginx if needed.
@@ -217,6 +219,16 @@ Target outcome: final course submission can be started, tested, and explained.
 - Add JMeter baseline scripts or documented manual performance evidence.
 - Export or reference Knife4j API docs.
 - Update final demo checklist and defense summary.
+
+Progress:
+
+- Added root `README.md` with local startup, optional full Docker Compose preview, demo accounts, and verification commands.
+- Added backend and frontend Dockerfiles plus `docker-compose.full.yml` for a full container preview with MySQL, Redis, backend, and Nginx-served frontend.
+- Added Nginx proxy config so containerized frontend routes `/api` and `/ws` to the backend service.
+- Replaced the Vite template frontend README with ENCORE-specific startup/build guidance and updated the backend README with `friend/123` plus Docker preview notes.
+- Added `docs/user-manual.md` for user purchase, group-seat invitation, check-in, and admin flows.
+- Added `docs/test-report.md` with automated command results, manual verification matrix, and final evidence recommendations.
+- Verified `docker compose -f docker-compose.full.yml config`, `mvn test`, and `npm run build`.
 
 Commit trigger:
 

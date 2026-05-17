@@ -35,6 +35,20 @@ Useful endpoints:
 Demo accounts:
 
 - `user / 123`
+- `friend / 123`
 - `admin / 123`
 - `checker / 123`
 - `sysadmin / 123`
+
+## Docker Preview
+
+The backend Docker image is normally built through the root full compose file:
+
+```powershell
+cd D:\ENCORE
+docker compose -f docker-compose.full.yml up --build backend
+```
+
+In container mode, the backend reads MySQL and Redis settings from environment variables and connects to `mysql:3306` and `redis:6379`.
+
+See the root [README](../README.md) for full-stack startup and verification instructions.

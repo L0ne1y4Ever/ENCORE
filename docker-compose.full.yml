@@ -1,0 +1,75 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: encore-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${ENCORE_MYSQL_ROOT_PASSWORD:-root123}
+      MYSQL_DATABASE: ${ENCORE_DB_NAME:-encore}
+      MYSQL_USER: ${ENCORE_DB_USER:-encore}
+      MYSQL_PASSWORD: ${ENCORE_DB_PASSWORD:-encore123}
+      TZ: Asia/Shanghai
+    ports:
+      - "${ENCORE_DB_PORT:-3307}:3306"
+    volumes:
+      - encore-mysql-data:/var/lib/mysql
+      - ./encore-backend/src/main/resources/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${ENCORE_MYSQL_ROOT_PASSWORD:-root123}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: encore-redis
+    restart: unless-stopped
+    ports:
+      - "${ENCORE_REDIS_PORT:-6379}:6379"
+    volumes:
+      - encore-redis-data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./encore-backend
+    container_name: encore-backend
+    restart: unless-stopped
+    environment:
+      ENCORE_DB_HOST: mysql
+      ENCORE_DB_PORT: 3306
+      ENCORE_DB_NAME: ${ENCORE_DB_NAME:-encore}
+      ENCORE_DB_USER: ${ENCORE_DB_USER:-encore}
+      ENCORE_DB_PASSWORD: ${ENCORE_DB_PASSWORD:-encore123}
+      ENCORE_REDIS_HOST: redis
+      ENCORE_REDIS_PORT: 6379
+      ENCORE_REDIS_DATABASE: ${ENCORE_REDIS_DATABASE:-0}
+      ENCORE_REDIS_PASSWORD: ${ENCORE_REDIS_PASSWORD:-}
+    ports:
+      - "${ENCORE_BACKEND_PORT:-8080}:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./encore-frontend
+      args:
+        VITE_API_BASE_URL: /
+    container_name: encore-frontend
+    restart: unless-stopped
+    ports:
+      - "${ENCORE_FRONTEND_PORT:-5173}:80"
+    depends_on:
+      - backend
+
+volumes:
+  encore-mysql-data:
+  encore-redis-data:

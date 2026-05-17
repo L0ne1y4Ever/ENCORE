@@ -1,5 +1,41 @@
-# Vue 3 + TypeScript + Vite
+# ENCORE Frontend
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+Vue 3 + Vite + TypeScript frontend for ENCORE.
 
-Learn more about the recommended Project Setup and IDE Support in the [Vue Docs TypeScript Guide](https://vuejs.org/guide/typescript/overview.html#project-setup).
+## Local Development
+
+```powershell
+cd D:\ENCORE\encore-frontend
+Copy-Item .env.example .env -Force
+npm install
+npm run dev
+```
+
+Default API base URL:
+
+```env
+VITE_API_BASE_URL=http://localhost:8080
+```
+
+Open `http://localhost:5173`.
+
+## Build
+
+```powershell
+npm run build
+```
+
+The production build output is written to `dist/`.
+
+## Docker Preview
+
+The frontend Docker image is normally built through the root full compose file:
+
+```powershell
+cd D:\ENCORE
+docker compose -f docker-compose.full.yml up --build frontend
+```
+
+The container serves the built app through Nginx and proxies `/api` and `/ws` to the backend service.
+
+See the root [README](../README.md) for full-stack startup and demo flow instructions.

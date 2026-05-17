@@ -5,10 +5,14 @@ Use this checklist to prepare the final course defense.
 ## Environment
 
 - GitHub repository can be cloned.
+- Root `README.md` explains local startup and optional full Docker Compose preview.
+- `docs/user-manual.md` explains the runnable demo flows.
+- `docs/test-report.md` records automated checks and manual verification evidence.
 - Dependencies can be installed.
 - Frontend can build with `npm run build`.
 - Backend can start with `mvn spring-boot:run`.
 - MySQL and Redis can start through Docker Compose.
+- Full container preview config validates with `docker compose -f docker-compose.full.yml config`.
 - `GET /api/health` returns `code:0`.
 - Backend login and show APIs can read initialized MySQL data.
 - Frontend login page authenticates through backend auth API.
@@ -100,5 +104,6 @@ Use this checklist to prepare the final course defense.
 - Screenshot of dashboard charts.
 - Screenshot of homepage Top 8 recommendations.
 - Screenshot or recording of group-seat invitation with `user/123` and `friend/123`.
+- Screenshot or recording of Docker/terminal startup commands for the final defense package.
 - Terminal output for frontend build and backend tests.
 - GitHub commit history showing staged progress.
