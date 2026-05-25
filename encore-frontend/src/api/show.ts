@@ -23,3 +23,7 @@ export function getShowDetail(id: string): Promise<Show> {
 export function getShowSchedules(showId: string): Promise<Schedule[]> {
   return requestData<Schedule[]>(apiClient.get(`/api/shows/${showId}/schedules`))
 }
+
+export function getScheduleDetail(scheduleId: string): Promise<Schedule> {
+  return requestData<Schedule>(apiClient.get(`/api/shows/schedules/${scheduleId}`))
+}

@@ -81,3 +81,50 @@ a {
   opacity: 0;
   transform: translateY(8px);
 }
+
+/* 按钮物理反馈动效 (Click Scale) */
+.btn-interactive {
+  transition: transform 150ms cubic-bezier(0.4, 0, 0.2, 1), filter 150ms ease;
+  will-change: transform;
+
+  &:active {
+    transform: scale(0.96);
+  }
+}
+
+/* 列表项错开入场动效 (Staggered Fade Up) */
+.stagger-fade-up {
+  opacity: 0;
+  animation: fadeUpIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fadeUpIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 为子元素生成不同延迟的错开动画 (支持前10个元素) */
+@for $i from 1 through 10 {
+  .stagger-delay-#{$i} {
+    animation-delay: #{$i * 0.08}s;
+  }
+}
+
+/* 毛玻璃面板混入 */
+@mixin glass-panel {
+  background-color: rgba(17, 17, 17, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--color-border);
+}
+
+/* 全局主题切换平滑过渡 */
+.side-panel, .group-panel, .ticket-item, .language-switch {
+  transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease, box-shadow 200ms ease;
+}

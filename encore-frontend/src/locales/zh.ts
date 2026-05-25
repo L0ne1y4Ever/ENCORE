@@ -72,18 +72,24 @@ export default {
   },
   seat: {
     stage: '舞台',
+    screen: '银幕',
     selection: '已选座位',
     available: '可选',
     locked: '锁定',
     sold: '已售',
     yourSelection: '您的选择',
-    stagePreview: '舞台座位预览',
+    stagePreview: '3D 座位预览',
     previewUnavailable: '当前浏览器无法显示 3D 预览，仍可使用下方座位图选座。',
     total: '合计',
     checkout: '去结算',
     noSeats: '暂未选择座位',
     row: '排',
-    col: '座',
+    col: '号',
+    info: '第 {row} 排 {col} 号',
+    canvasHint: '拖拽旋转 · 滚轮缩放 · 双击聚焦',
+    minimapTitle: '平面图',
+    view2d: '2D 平面选座',
+    view3d: '3D 效果预览',
     locking: '锁座中...',
     conflict: '座位状态已变化，请重新选择。',
     live: {
@@ -214,6 +220,7 @@ export default {
       cancelled: '已取消'
     },
     priceRange: '价格区间',
+    ticketMode: '售票模式',
     startTime: '开始时间',
     endTime: '结束时间',
     seatRows: '座位行数',
@@ -277,5 +284,10 @@ export default {
     scheduleOpen: '检票窗口已开放',
     scheduleNotOpen: '未到检票窗口',
     scheduleLoadFailed: '检票场次加载失败'
+  },
+  ticketMode: {
+    seated: '选座票',
+    zoned: '区域票',
+    mixed: '混合票'
   }
 }

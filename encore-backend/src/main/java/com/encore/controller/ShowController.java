@@ -44,4 +44,9 @@ public class ShowController {
     public ApiResponse<List<ScheduleResponse>> listSchedules(@PathVariable String id) {
         return ApiResponse.ok(showService.listSchedules(id));
     }
+
+    @GetMapping("/schedules/{scheduleId}")
+    public ApiResponse<ScheduleResponse> getScheduleDetail(@PathVariable String scheduleId) {
+        return ApiResponse.ok(showService.getScheduleDetail(scheduleId));
+    }
 }

@@ -4,19 +4,22 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("ticket_item")
-public class TicketItem {
+@TableName("schedule_area_inventory")
+public class ScheduleAreaInventory {
     @TableId
     private String id;
-    private String orderId;
     private String scheduleId;
-    private String seatId;
-    private String ticketCode;
+    private String areaId;
+    private BigDecimal price;
+    private Integer totalCount;
+    private Integer availableCount;
+    private Integer lockedCount;
+    private Integer soldCount;
     private String status;
-    private String areaInventoryId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

@@ -17,6 +17,7 @@ public class ShowSchedule {
     private LocalDateTime endTime;
     private String status;
     private String priceRange;
+    private String ticketMode;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

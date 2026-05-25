@@ -30,6 +30,7 @@ interface ScheduleForm {
   endTime: string
   status: ScheduleStatus
   priceRange: string
+  ticketMode: string
   seatRows: number
   seatCols: number
   vipPrice: number
@@ -77,6 +78,7 @@ const emptyForm = (): ScheduleForm => {
     endTime: toDateTimeValue(end),
     status: 'PREPARING',
     priceRange: '$50 - $150',
+    ticketMode: 'SEATED',
     seatRows: 10,
     seatCols: 15,
     vipPrice: 150,
@@ -155,6 +157,7 @@ const openEdit = (row: AdminSchedule) => {
     endTime: row.endTime,
     status: row.status,
     priceRange: row.priceRange,
+    ticketMode: row.ticketMode || 'SEATED',
     seatRows: 10,
     seatCols: 15,
     vipPrice: 150,
@@ -188,6 +191,7 @@ const buildCreatePayload = (): CreateAdminSchedulePayload => ({
   endTime: form.endTime,
   status: form.status,
   priceRange: form.priceRange.trim(),
+  ticketMode: form.ticketMode,
   seatRows: form.seatRows,
   seatCols: form.seatCols,
   vipPrice: form.vipPrice,
@@ -201,7 +205,8 @@ const buildUpdatePayload = (): UpdateAdminSchedulePayload => ({
   startTime: form.startTime,
   endTime: form.endTime,
   status: form.status,
-  priceRange: form.priceRange.trim()
+  priceRange: form.priceRange.trim(),
+  ticketMode: form.ticketMode
 })
 
 const submitForm = async () => {
@@ -275,7 +280,14 @@ const handleCancel = async (row: AdminSchedule) => {
       <el-table :data="tableData" style="width: 100%" :empty-text="t('admin.empty')" v-loading="loading">
         <el-table-column prop="id" label="ID" width="130" />
         <el-table-column prop="showTitle" :label="t('admin.shows')" min-width="200" />
-        <el-table-column prop="theaterName" :label="t('admin.theater')" width="150" />
+        <el-table-column prop="theaterName" :label="t('admin.theater')" width="130" />
+        <el-table-column prop="ticketMode" :label="t('admin.ticketMode')" width="110">
+          <template #default="{ row }">
+            <el-tag size="small" :type="row.ticketMode === 'SEATED' ? 'info' : (row.ticketMode === 'ZONED' ? 'warning' : 'success')">
+              {{ t(`ticketMode.${row.ticketMode?.toLowerCase()}`) }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column :label="t('admin.time')" min-width="210">
           <template #default="{ row }">
             <div>{{ formatDate(row.startTime) }}</div>
@@ -391,6 +403,13 @@ const handleCancel = async (row: AdminSchedule) => {
           </el-form-item>
           <el-form-item :label="t('admin.priceRange')" required>
             <el-input v-model="form.priceRange" maxlength="64" />
+          </el-form-item>
+          <el-form-item :label="t('admin.ticketMode')" required>
+            <el-select v-model="form.ticketMode" class="full-control">
+              <el-option value="SEATED" :label="t('ticketMode.seated')" />
+              <el-option value="ZONED" :label="t('ticketMode.zoned')" />
+              <el-option value="MIXED" :label="t('ticketMode.mixed')" />
+            </el-select>
           </el-form-item>
           <template v-if="dialogMode === 'create'">
             <el-form-item :label="t('admin.seatRows')" required>

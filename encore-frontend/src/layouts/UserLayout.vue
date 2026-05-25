@@ -1,10 +1,17 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { onMounted } from 'vue'
 import LanguageSwitch from '../components/LanguageSwitch.vue'
 
 const router = useRouter()
 const { t } = useI18n()
+
+onMounted(() => {
+  // Force dark mode globally by clearing theme attributes/cache
+  document.documentElement.removeAttribute('data-theme')
+  localStorage.removeItem('encore-theme')
+})
 </script>
 
 <template>
@@ -60,7 +67,7 @@ const { t } = useI18n()
     display: flex;
     align-items: center;
     gap: var(--spacing-5);
-    
+
     a {
       font-family: var(--font-family-sans);
       font-size: 14px;

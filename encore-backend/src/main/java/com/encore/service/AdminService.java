@@ -17,6 +17,8 @@ import com.encore.entity.ShowSchedule;
 import com.encore.entity.TicketItem;
 import com.encore.entity.TicketOrder;
 import com.encore.entity.UserAccount;
+import com.encore.entity.VenueArea;
+import com.encore.entity.ScheduleAreaInventory;
 import com.encore.exception.BusinessException;
 import com.encore.mapper.ScheduleSeatMapper;
 import com.encore.mapper.ShowMapper;
@@ -24,6 +26,8 @@ import com.encore.mapper.ShowScheduleMapper;
 import com.encore.mapper.TicketItemMapper;
 import com.encore.mapper.TicketOrderMapper;
 import com.encore.mapper.UserAccountMapper;
+import com.encore.mapper.VenueAreaMapper;
+import com.encore.mapper.ScheduleAreaInventoryMapper;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,7 +57,7 @@ public class AdminService {
     private static final Set<String> ADMIN_ROLES = Set.of("admin", "sysadmin");
     private static final Set<String> SCHEDULE_STATUSES = Set.of(
             "COMING_SOON", "PREPARING", "ON_SALE", "SOLD_OUT", "CANCELLED"
-    );
+            );
     private static final Set<String> SHOW_STATUSES = Set.of("DRAFT", "PUBLISHED", "ARCHIVED");
 
     private final ShowScheduleMapper showScheduleMapper;
@@ -65,6 +69,8 @@ public class AdminService {
     private final StringRedisTemplate redisTemplate;
     private final SeatStatusPublisher seatStatusPublisher;
     private final DashboardRefreshPublisher dashboardRefreshPublisher;
+    private final VenueAreaMapper venueAreaMapper;
+    private final ScheduleAreaInventoryMapper scheduleAreaInventoryMapper;
 
     public AdminService(
             ShowScheduleMapper showScheduleMapper,
@@ -75,7 +81,9 @@ public class AdminService {
             UserAccountMapper userAccountMapper,
             StringRedisTemplate redisTemplate,
             SeatStatusPublisher seatStatusPublisher,
-            DashboardRefreshPublisher dashboardRefreshPublisher
+            DashboardRefreshPublisher dashboardRefreshPublisher,
+            VenueAreaMapper venueAreaMapper,
+            ScheduleAreaInventoryMapper scheduleAreaInventoryMapper
     ) {
         this.showScheduleMapper = showScheduleMapper;
         this.showMapper = showMapper;
@@ -86,6 +94,8 @@ public class AdminService {
         this.redisTemplate = redisTemplate;
         this.seatStatusPublisher = seatStatusPublisher;
         this.dashboardRefreshPublisher = dashboardRefreshPublisher;
+        this.venueAreaMapper = venueAreaMapper;
+        this.scheduleAreaInventoryMapper = scheduleAreaInventoryMapper;
     }
 
     public AdminDashboardResponse dashboard() {
@@ -228,16 +238,68 @@ public class AdminService {
         schedule.setEndTime(request.endTime());
         schedule.setStatus(StringUtils.hasText(request.status()) ? normalizeScheduleStatus(request.status()) : "PREPARING");
         schedule.setPriceRange(clean(request.priceRange()));
+
+        String mode = request.ticketMode();
+        if (mode == null || mode.isBlank()) {
+            mode = "SEATED";
+        }
+        schedule.setTicketMode(mode);
         showScheduleMapper.insert(schedule);
 
-        generateSeatPool(
-                schedule.getId(),
-                request.seatRows() == null ? DEFAULT_SEAT_ROWS : request.seatRows(),
-                request.seatCols() == null ? DEFAULT_SEAT_COLS : request.seatCols(),
-                request.vipPrice() == null ? DEFAULT_VIP_PRICE : request.vipPrice(),
-                request.standardPrice() == null ? DEFAULT_STANDARD_PRICE : request.standardPrice(),
-                request.economyPrice() == null ? DEFAULT_ECONOMY_PRICE : request.economyPrice()
-        );
+        if ("SEATED".equals(mode)) {
+            generateSeatPool(
+                    schedule.getId(),
+                    request.seatRows() == null ? DEFAULT_SEAT_ROWS : request.seatRows(),
+                    request.seatCols() == null ? DEFAULT_SEAT_COLS : request.seatCols(),
+                    request.vipPrice() == null ? DEFAULT_VIP_PRICE : request.vipPrice(),
+                    request.standardPrice() == null ? DEFAULT_STANDARD_PRICE : request.standardPrice(),
+                    request.economyPrice() == null ? DEFAULT_ECONOMY_PRICE : request.economyPrice()
+            );
+        } else {
+            // ZONED or MIXED
+            List<VenueArea> templateAreas = venueAreaMapper.selectList(new LambdaQueryWrapper<VenueArea>()
+                    .eq(VenueArea::getHallId, request.theaterName()));
+            for (VenueArea area : templateAreas) {
+                ScheduleAreaInventory inventory = new ScheduleAreaInventory();
+                inventory.setId("inv-" + schedule.getId().replace("sch-", "") + "-" + area.getCode().toLowerCase());
+                inventory.setScheduleId(schedule.getId());
+                inventory.setAreaId(area.getId());
+                inventory.setPrice(area.getBasePrice());
+                inventory.setTotalCount(area.getCapacity());
+                inventory.setAvailableCount(area.getCapacity());
+                inventory.setLockedCount(0);
+                inventory.setSoldCount(0);
+                inventory.setStatus("AVAILABLE");
+                inventory.setCreatedAt(LocalDateTime.now());
+                inventory.setUpdatedAt(LocalDateTime.now());
+                scheduleAreaInventoryMapper.insert(inventory);
+
+                if (area.getIsSeated() != null && area.getIsSeated()) {
+                    int cols = 20;
+                    int rows = (int) Math.ceil((double) area.getCapacity() / cols);
+                    int count = 0;
+                    for (int row = 1; row <= rows; row++) {
+                        for (int col = 1; col <= cols; col++) {
+                            if (count >= area.getCapacity()) {
+                                break;
+                            }
+                            ScheduleSeat seat = new ScheduleSeat();
+                            seat.setId("%s:seat-%s-%d-%d".formatted(schedule.getId(), area.getCode().toLowerCase(), row, col));
+                            seat.setScheduleId(schedule.getId());
+                            seat.setSeatCode("seat-%s-%d-%d".formatted(area.getCode().toLowerCase(), row, col));
+                            seat.setRowNo(row);
+                            seat.setColNo(col);
+                            seat.setStatus("AVAILABLE");
+                            seat.setSection(area.getCode());
+                            seat.setPrice(area.getBasePrice());
+                            seat.setAreaId(area.getId());
+                            scheduleSeatMapper.insert(seat);
+                            count++;
+                        }
+                    }
+                }
+            }
+        }
         return toScheduleResponse(showScheduleMapper.selectById(schedule.getId()));
     }
 
@@ -254,6 +316,9 @@ public class AdminService {
         schedule.setEndTime(request.endTime());
         schedule.setStatus(normalizeScheduleStatus(request.status()));
         schedule.setPriceRange(clean(request.priceRange()));
+        if (request.ticketMode() != null) {
+            schedule.setTicketMode(request.ticketMode());
+        }
         showScheduleMapper.updateById(schedule);
         if ("CANCELLED".equals(schedule.getStatus())) {
             releaseScheduleLocks(scheduleId);
@@ -315,17 +380,29 @@ public class AdminService {
 
         order.setStatus("REFUNDED");
         ticketOrderMapper.updateById(order);
-        for (TicketItem ticket : tickets) {
-            ticket.setStatus("VOID");
-            ticketItemMapper.updateById(ticket);
-            markSeatAvailable(ticket.getScheduleId(), ticket.getSeatId());
+
+        boolean isZoned = !tickets.isEmpty() && tickets.get(0).getAreaInventoryId() != null;
+        if (isZoned) {
+            String areaInventoryId = tickets.get(0).getAreaInventoryId();
+            int quantity = tickets.size();
+            for (TicketItem ticket : tickets) {
+                ticket.setStatus("VOID");
+                ticketItemMapper.updateById(ticket);
+            }
+            scheduleAreaInventoryMapper.refundInventory(areaInventoryId, quantity);
+        } else {
+            for (TicketItem ticket : tickets) {
+                ticket.setStatus("VOID");
+                ticketItemMapper.updateById(ticket);
+                markSeatAvailable(ticket.getScheduleId(), ticket.getSeatId());
+            }
+            seatStatusPublisher.publishSeatStatus(
+                    order.getScheduleId(),
+                    "REFUNDED",
+                    "AVAILABLE",
+                    tickets.stream().map(TicketItem::getSeatId).toList()
+            );
         }
-        seatStatusPublisher.publishSeatStatus(
-                order.getScheduleId(),
-                "REFUNDED",
-                "AVAILABLE",
-                tickets.stream().map(TicketItem::getSeatId).toList()
-        );
         dashboardRefreshPublisher.publish("ORDER_REFUNDED", orderId);
         return toOrderResponse(getOrder(orderId));
     }
@@ -643,6 +720,27 @@ public class AdminService {
         Set<String> lockKeys = redisTemplate.keys("encore:seat-lock:%s:*".formatted(schedule.getId()));
         long lockedSeats = lockKeys == null ? 0 : lockKeys.size();
 
+        long totalSeats = seats.size();
+        long availableSeats = countSeats(seats, "AVAILABLE");
+        long lockedSeatsVal = lockedSeats;
+        long soldSeats = countSeats(seats, "SOLD");
+        long disabledSeats = countSeats(seats, "DISABLED");
+
+        if ("ZONED".equals(schedule.getTicketMode()) || "MIXED".equals(schedule.getTicketMode())) {
+            List<ScheduleAreaInventory> inventories = scheduleAreaInventoryMapper.selectList(
+                    new LambdaQueryWrapper<ScheduleAreaInventory>().eq(ScheduleAreaInventory::getScheduleId, schedule.getId())
+            );
+            long zonedTotal = inventories.stream().mapToLong(ScheduleAreaInventory::getTotalCount).sum();
+            long zonedAvailable = inventories.stream().mapToLong(ScheduleAreaInventory::getAvailableCount).sum();
+            long zonedLocked = inventories.stream().mapToLong(ScheduleAreaInventory::getLockedCount).sum();
+            long zonedSold = inventories.stream().mapToLong(ScheduleAreaInventory::getSoldCount).sum();
+
+            totalSeats = zonedTotal;
+            availableSeats = zonedAvailable;
+            lockedSeatsVal = zonedLocked;
+            soldSeats = zonedSold;
+        }
+
         return new AdminScheduleResponse(
                 schedule.getId(),
                 schedule.getShowId(),
@@ -652,11 +750,12 @@ public class AdminService {
                 schedule.getEndTime(),
                 schedule.getStatus(),
                 schedule.getPriceRange(),
-                seats.size(),
-                countSeats(seats, "AVAILABLE"),
-                lockedSeats,
-                countSeats(seats, "SOLD"),
-                countSeats(seats, "DISABLED"),
+                schedule.getTicketMode(),
+                totalSeats,
+                availableSeats,
+                lockedSeatsVal,
+                soldSeats,
+                disabledSeats,
                 tickets.stream().filter(ticket -> "UNUSED".equals(ticket.getStatus()) || "CHECKED_IN".equals(ticket.getStatus())).count(),
                 tickets.stream().filter(ticket -> "CHECKED_IN".equals(ticket.getStatus())).count()
         );
@@ -671,7 +770,7 @@ public class AdminService {
         ShowSchedule schedule = showScheduleMapper.selectById(order.getScheduleId());
         ShowEntity show = schedule == null ? null : showMapper.selectById(schedule.getShowId());
         List<TicketItem> tickets = listTickets(order.getId()).stream()
-                .sorted(Comparator.comparing(TicketItem::getSeatId))
+                .sorted(Comparator.comparing(t -> t.getSeatId() == null ? "" : t.getSeatId()))
                 .toList();
         int checkedInCount = (int) tickets.stream()
                 .filter(ticket -> "CHECKED_IN".equals(ticket.getStatus()))

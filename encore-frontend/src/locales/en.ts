@@ -72,18 +72,23 @@ export default {
   },
   seat: {
     stage: 'STAGE',
+    screen: 'SCREEN',
     selection: 'Selection',
     available: 'Available',
     locked: 'Locked',
     sold: 'Sold',
     yourSelection: 'Your Selection',
-    stagePreview: 'Stage Seat Preview',
+    stagePreview: '3D Seat Preview',
     previewUnavailable: '3D preview is unavailable in this browser. Use the seat map below to continue.',
     total: 'Total',
     checkout: 'Checkout',
-    noSeats: 'No seats selected',
     row: 'Row',
-    col: 'Col',
+    col: 'Seat',
+    info: 'Row {row} Seat {col}',
+    canvasHint: 'Drag to rotate · Scroll to zoom · Double-click to focus',
+    minimapTitle: 'Floor Plan',
+    view2d: '2D Seat Map',
+    view3d: '3D Screen View',
     locking: 'Locking...',
     conflict: 'Seats are no longer available, please reselect.',
     live: {
@@ -214,6 +219,7 @@ export default {
       cancelled: 'Cancelled'
     },
     priceRange: 'Price Range',
+    ticketMode: 'Ticket Mode',
     startTime: 'Start Time',
     endTime: 'End Time',
     seatRows: 'Seat Rows',
@@ -277,5 +283,10 @@ export default {
     scheduleOpen: 'Check-in window open',
     scheduleNotOpen: 'Outside check-in window',
     scheduleLoadFailed: 'Failed to load check-in schedules'
+  },
+  ticketMode: {
+    seated: 'Seated',
+    zoned: 'Zoned',
+    mixed: 'Mixed'
   }
 }

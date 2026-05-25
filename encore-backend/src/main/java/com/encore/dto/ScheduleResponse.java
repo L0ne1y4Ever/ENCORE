@@ -9,6 +9,8 @@ public record ScheduleResponse(
         LocalDateTime startTime,
         LocalDateTime endTime,
         String status,
-        String priceRange
+        String priceRange,
+        String ticketMode,
+        String category
 ) {
 }

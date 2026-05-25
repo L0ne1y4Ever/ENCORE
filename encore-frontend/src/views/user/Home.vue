@@ -99,20 +99,23 @@ const goDetail = (id: string) => {
 <template>
   <div class="home-page">
     <section class="hero-section">
+      <div class="hero-bg"></div>
       <div class="hero-content">
         <h1 class="brand">{{ t('home.brand') }}<span class="dot">.</span></h1>
         <p class="tagline">{{ t('home.tagline') }}</p>
       </div>
-      <div class="hero-bg"></div>
     </section>
 
     <section class="recommendation-section">
       <div class="section-header recommendation-header">
         <div>
           <span class="section-kicker">{{ t('home.hotPick') }}</span>
-          <h2>{{ t('home.topRecommended') }}</h2>
+          <h2>Top Picks</h2>
         </div>
-        <span class="section-count">{{ recommendedShows.length }}</span>
+        <div class="pagination-controls">
+          <button class="icon-btn" aria-label="Previous">&larr;</button>
+          <button class="icon-btn" aria-label="Next">&rarr;</button>
+        </div>
       </div>
 
       <div class="recommendation-rail" v-if="recommendedShows.length > 0">
@@ -126,7 +129,6 @@ const goDetail = (id: string) => {
           <span class="recommendation-rank">#{{ show.rank }}</span>
           <div class="recommendation-cover">
             <img :src="show.coverUrl" :alt="show.title" loading="lazy" />
-            <span class="hot-badge">{{ t('home.hotPick') }}</span>
           </div>
           <div class="recommendation-info">
             <p class="recommendation-category">{{ show.category }}</p>
@@ -226,26 +228,60 @@ const goDetail = (id: string) => {
 }
 
 .hero-section {
-  height: 60vh;
+  height: 70vh;
+  min-height: 420px;
   position: relative;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
 
   .hero-bg {
     position: absolute;
     inset: 0;
-    background-image: url('https://images.unsplash.com/photo-1507676184212-d0330a157088?q=80&w=2000&auto=format&fit=crop');
-    background-size: cover;
-    background-position: center 30%;
-    filter: grayscale(100%) contrast(1.2);
-    opacity: 0.3;
-    z-index: -1;
+    z-index: 1;
+    background: var(--color-bg-base);
+
+    /* Multi-color neon glow orbs */
+    &::before {
+      content: '';
+      position: absolute;
+      inset: -10%;
+      background:
+        /* Warm amber center glow */
+        radial-gradient(ellipse 45% 40% at 50% 50%, rgba(210, 155, 90, 0.40) 0%, transparent 60%),
+        /* Purple top-left */
+        radial-gradient(ellipse 40% 35% at 18% 25%, rgba(140, 80, 200, 0.30) 0%, transparent 60%),
+        /* Magenta / hot-pink right */
+        radial-gradient(ellipse 35% 40% at 82% 35%, rgba(200, 60, 140, 0.25) 0%, transparent 55%),
+        /* Teal / cyan bottom-left */
+        radial-gradient(ellipse 38% 30% at 22% 75%, rgba(40, 180, 180, 0.22) 0%, transparent 55%),
+        /* Deep blue bottom-right */
+        radial-gradient(ellipse 35% 35% at 78% 72%, rgba(60, 80, 220, 0.20) 0%, transparent 55%),
+        /* Soft violet upper-center */
+        radial-gradient(ellipse 50% 30% at 55% 15%, rgba(120, 60, 180, 0.15) 0%, transparent 55%),
+        /* Orange accent mid-left */
+        radial-gradient(ellipse 25% 25% at 35% 55%, rgba(220, 120, 40, 0.18) 0%, transparent 50%);
+      filter: blur(60px);
+    }
+
+    /* Bottom fade to seamlessly blend into next section */
+    &::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 25%;
+      background: linear-gradient(to top, var(--color-bg-base) 0%, transparent 100%);
+    }
   }
 
   .hero-content {
+    position: relative;
+    z-index: 2;
     text-align: center;
+    width: 100%;
 
     .brand {
       font-family: var(--font-family-display);
@@ -301,10 +337,28 @@ const goDetail = (id: string) => {
       text-transform: uppercase;
     }
 
-    .section-count {
-      color: var(--color-text-secondary);
-      font-family: var(--font-family-sans);
-      font-size: 14px;
+    .pagination-controls {
+      display: flex;
+      gap: 8px;
+
+      .icon-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: transparent;
+        border: 1px solid var(--color-border);
+        color: var(--color-text-secondary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: color 150ms ease, border-color 150ms ease;
+
+        &:hover {
+          color: var(--color-text-primary);
+          border-color: var(--color-text-primary);
+        }
+      }
     }
   }
 
@@ -370,20 +424,6 @@ const goDetail = (id: string) => {
       object-fit: cover;
       filter: contrast(1.08) saturate(0.92);
       transition: transform 400ms ease;
-    }
-
-    .hot-badge {
-      position: absolute;
-      left: var(--spacing-2);
-      bottom: var(--spacing-2);
-      background: var(--color-accent);
-      color: #000;
-      font-family: var(--font-family-sans);
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      padding: 5px 8px;
-      text-transform: uppercase;
     }
   }
 

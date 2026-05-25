@@ -4,9 +4,13 @@ export interface TicketItem {
   id: string
   orderId: string
   scheduleId: string
-  seatId: string
+  seatId: string | null
   ticketCode: string
   status: 'UNUSED' | 'CHECKED_IN' | 'VOID'
+  areaInventoryId?: string | null
+  areaName?: string | null
+  areaType?: string | null
+  seatLabel?: string | null
 }
 
 export interface Order {

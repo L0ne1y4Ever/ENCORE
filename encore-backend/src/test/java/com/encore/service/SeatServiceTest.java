@@ -4,7 +4,9 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.encore.entity.ScheduleSeat;
 import com.encore.entity.ShowSchedule;
 import com.encore.mapper.ScheduleSeatMapper;
+import com.encore.mapper.ScheduleAreaInventoryMapper;
 import com.encore.mapper.ShowScheduleMapper;
+import com.encore.mapper.VenueAreaMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -34,6 +36,10 @@ class SeatServiceTest {
     private ValueOperations<String, String> valueOperations;
     @Mock
     private SeatStatusPublisher seatStatusPublisher;
+    @Mock
+    private ScheduleAreaInventoryMapper scheduleAreaInventoryMapper;
+    @Mock
+    private VenueAreaMapper venueAreaMapper;
 
     @Test
     void lockSeatsPublishesLockedEvent() {
@@ -41,7 +47,9 @@ class SeatServiceTest {
                 scheduleSeatMapper,
                 showScheduleMapper,
                 redisTemplate,
-                seatStatusPublisher
+                seatStatusPublisher,
+                scheduleAreaInventoryMapper,
+                venueAreaMapper
         );
 
         when(showScheduleMapper.selectById("sch-1")).thenReturn(onSaleSchedule());

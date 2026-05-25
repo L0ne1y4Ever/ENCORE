@@ -68,6 +68,7 @@ export interface AdminSchedule {
   endTime: string
   status: ScheduleStatus
   priceRange: string
+  ticketMode: 'SEATED' | 'ZONED' | 'MIXED' | string
   totalSeats: number
   availableSeats: number
   lockedSeats: number
@@ -84,6 +85,7 @@ export interface CreateAdminSchedulePayload {
   endTime: string
   status?: ScheduleStatus
   priceRange: string
+  ticketMode: 'SEATED' | 'ZONED' | 'MIXED' | string
   seatRows?: number
   seatCols?: number
   vipPrice?: number
@@ -98,6 +100,7 @@ export interface UpdateAdminSchedulePayload {
   endTime: string
   status: ScheduleStatus
   priceRange: string
+  ticketMode?: 'SEATED' | 'ZONED' | 'MIXED' | string
 }
 
 export interface AdminOrder {

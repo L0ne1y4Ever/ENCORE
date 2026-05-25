@@ -1,9 +1,23 @@
 import { apiClient, requestData } from './index'
 import type { Order } from '../mock/orders'
 
-export function createOrder(userId: string, scheduleId: string, seatIds: string[], totalAmount: number): Promise<string> {
+export function createOrder(
+  userId: string,
+  scheduleId: string,
+  seatIds: string[] | null,
+  totalAmount: number,
+  areaInventoryId?: string | null,
+  quantity?: number | null
+): Promise<string> {
   return requestData<string>(
-    apiClient.post('/api/orders', { userId, scheduleId, seatIds, totalAmount })
+    apiClient.post('/api/orders', {
+      userId,
+      scheduleId,
+      seatIds,
+      totalAmount,
+      areaInventoryId,
+      quantity
+    })
   )
 }
 

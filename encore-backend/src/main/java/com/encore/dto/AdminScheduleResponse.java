@@ -11,6 +11,7 @@ public record AdminScheduleResponse(
         LocalDateTime endTime,
         String status,
         String priceRange,
+        String ticketMode,
         long totalSeats,
         long availableSeats,
         long lockedSeats,

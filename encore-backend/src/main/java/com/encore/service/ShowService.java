@@ -257,7 +257,17 @@ public class ShowService {
         );
     }
 
+    public ScheduleResponse getScheduleDetail(String scheduleId) {
+        ShowSchedule schedule = showScheduleMapper.selectById(scheduleId);
+        if (schedule == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "场次不存在");
+        }
+        return toScheduleResponse(schedule);
+    }
+
     private ScheduleResponse toScheduleResponse(ShowSchedule schedule) {
+        ShowEntity show = showMapper.selectById(schedule.getShowId());
+        String category = show != null ? show.getCategory() : null;
         return new ScheduleResponse(
                 schedule.getId(),
                 schedule.getShowId(),
@@ -265,7 +275,9 @@ public class ShowService {
                 schedule.getStartTime(),
                 schedule.getEndTime(),
                 schedule.getStatus(),
-                schedule.getPriceRange()
+                schedule.getPriceRange(),
+                schedule.getTicketMode(),
+                category
         );
     }
 }

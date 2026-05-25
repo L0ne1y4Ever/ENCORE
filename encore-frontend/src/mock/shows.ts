@@ -18,6 +18,8 @@ export interface Schedule {
   endTime: string
   status: 'ON_SALE' | 'SOLD_OUT' | 'PREPARING' | 'COMING_SOON'
   priceRange: string
+  ticketMode?: 'SEATED' | 'ZONED' | 'MIXED'
+  category?: 'Movie' | 'Musical' | 'Play' | 'Concert' | 'Ballet'
 }
 
 export const mockShows: Show[] = [

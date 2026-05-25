@@ -16,6 +16,7 @@ public record CreateScheduleRequest(
         @NotNull LocalDateTime endTime,
         String status,
         @NotBlank String priceRange,
+        String ticketMode,
         @Min(1) @Max(30) Integer seatRows,
         @Min(1) @Max(40) Integer seatCols,
         @DecimalMin("0.01") BigDecimal vipPrice,

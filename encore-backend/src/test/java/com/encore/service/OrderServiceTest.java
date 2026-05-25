@@ -5,8 +5,10 @@ import com.encore.entity.ScheduleSeat;
 import com.encore.entity.TicketItem;
 import com.encore.entity.TicketOrder;
 import com.encore.mapper.ScheduleSeatMapper;
+import com.encore.mapper.ScheduleAreaInventoryMapper;
 import com.encore.mapper.TicketItemMapper;
 import com.encore.mapper.TicketOrderMapper;
+import com.encore.mapper.VenueAreaMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -35,6 +37,10 @@ class OrderServiceTest {
     private SeatStatusPublisher seatStatusPublisher;
     @Mock
     private DashboardRefreshPublisher dashboardRefreshPublisher;
+    @Mock
+    private ScheduleAreaInventoryMapper scheduleAreaInventoryMapper;
+    @Mock
+    private VenueAreaMapper venueAreaMapper;
 
     @Test
     void simulatePaymentPublishesSoldEvent() {
@@ -93,7 +99,9 @@ class OrderServiceTest {
                 scheduleSeatMapper,
                 seatService,
                 seatStatusPublisher,
-                dashboardRefreshPublisher
+                dashboardRefreshPublisher,
+                scheduleAreaInventoryMapper,
+                venueAreaMapper
         );
     }
 

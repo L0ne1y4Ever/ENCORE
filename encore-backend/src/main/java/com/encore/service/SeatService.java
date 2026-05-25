@@ -4,11 +4,16 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.encore.common.ErrorCode;
 import com.encore.dto.SeatResponse;
+import com.encore.dto.ScheduleAreaResponse;
 import com.encore.entity.ScheduleSeat;
 import com.encore.entity.ShowSchedule;
+import com.encore.entity.ScheduleAreaInventory;
+import com.encore.entity.VenueArea;
 import com.encore.exception.BusinessException;
 import com.encore.mapper.ScheduleSeatMapper;
 import com.encore.mapper.ShowScheduleMapper;
+import com.encore.mapper.ScheduleAreaInventoryMapper;
+import com.encore.mapper.VenueAreaMapper;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -24,27 +29,70 @@ public class SeatService {
     private final ShowScheduleMapper showScheduleMapper;
     private final StringRedisTemplate redisTemplate;
     private final SeatStatusPublisher seatStatusPublisher;
+    private final ScheduleAreaInventoryMapper scheduleAreaInventoryMapper;
+    private final VenueAreaMapper venueAreaMapper;
 
     public SeatService(
             ScheduleSeatMapper scheduleSeatMapper,
             ShowScheduleMapper showScheduleMapper,
             StringRedisTemplate redisTemplate,
-            SeatStatusPublisher seatStatusPublisher
+            SeatStatusPublisher seatStatusPublisher,
+            ScheduleAreaInventoryMapper scheduleAreaInventoryMapper,
+            VenueAreaMapper venueAreaMapper
     ) {
         this.scheduleSeatMapper = scheduleSeatMapper;
         this.showScheduleMapper = showScheduleMapper;
         this.redisTemplate = redisTemplate;
         this.seatStatusPublisher = seatStatusPublisher;
+        this.scheduleAreaInventoryMapper = scheduleAreaInventoryMapper;
+        this.venueAreaMapper = venueAreaMapper;
     }
 
     public List<SeatResponse> listSeats(String scheduleId) {
+        return listSeats(scheduleId, null);
+    }
+
+    public List<SeatResponse> listSeats(String scheduleId, String areaId) {
         ensureScheduleExists(scheduleId);
-        return scheduleSeatMapper.selectList(new LambdaQueryWrapper<ScheduleSeat>()
-                        .eq(ScheduleSeat::getScheduleId, scheduleId)
+        LambdaQueryWrapper<ScheduleSeat> wrapper = new LambdaQueryWrapper<ScheduleSeat>()
+                .eq(ScheduleSeat::getScheduleId, scheduleId);
+        if (areaId != null && !areaId.isBlank()) {
+            wrapper.eq(ScheduleSeat::getAreaId, areaId);
+        }
+        return scheduleSeatMapper.selectList(wrapper
                         .orderByAsc(ScheduleSeat::getRowNo)
                         .orderByAsc(ScheduleSeat::getColNo))
                 .stream()
                 .map(this::toSeatResponse)
+                .toList();
+    }
+
+    public List<ScheduleAreaResponse> listScheduleAreas(String scheduleId) {
+        ensureScheduleExists(scheduleId);
+        List<ScheduleAreaInventory> inventories = scheduleAreaInventoryMapper.selectList(
+                new LambdaQueryWrapper<ScheduleAreaInventory>()
+                        .eq(ScheduleAreaInventory::getScheduleId, scheduleId)
+        );
+        return inventories.stream()
+                .map(inv -> {
+                    VenueArea area = venueAreaMapper.selectById(inv.getAreaId());
+                    return new ScheduleAreaResponse(
+                            inv.getId(),
+                            inv.getAreaId(),
+                            area == null ? "Unknown" : area.getName(),
+                            area == null ? "UNKNOWN" : area.getCode(),
+                            area == null ? "UNKNOWN" : area.getAreaType(),
+                            area == null ? false : area.getIsSeated(),
+                            inv.getPrice(),
+                            inv.getTotalCount(),
+                            inv.getAvailableCount(),
+                            inv.getLockedCount(),
+                            inv.getSoldCount(),
+                            area == null ? "#ffffff" : area.getColor(),
+                            area == null ? "" : area.getDescription(),
+                            area == null ? "" : area.getPositionData()
+                    );
+                })
                 .toList();
     }
 

@@ -8,11 +8,13 @@ import com.encore.entity.TicketItem;
 import com.encore.entity.TicketOrder;
 import com.encore.entity.UserAccount;
 import com.encore.mapper.ScheduleSeatMapper;
+import com.encore.mapper.ScheduleAreaInventoryMapper;
 import com.encore.mapper.ShowMapper;
 import com.encore.mapper.ShowScheduleMapper;
 import com.encore.mapper.TicketItemMapper;
 import com.encore.mapper.TicketOrderMapper;
 import com.encore.mapper.UserAccountMapper;
+import com.encore.mapper.VenueAreaMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -49,6 +51,10 @@ class AdminServiceTest {
     private SeatStatusPublisher seatStatusPublisher;
     @Mock
     private DashboardRefreshPublisher dashboardRefreshPublisher;
+    @Mock
+    private VenueAreaMapper venueAreaMapper;
+    @Mock
+    private ScheduleAreaInventoryMapper scheduleAreaInventoryMapper;
 
     @Test
     void refundOrderPublishesAvailableEvent() {
@@ -90,7 +96,9 @@ class AdminServiceTest {
                 userAccountMapper,
                 redisTemplate,
                 seatStatusPublisher,
-                dashboardRefreshPublisher
+                dashboardRefreshPublisher,
+                venueAreaMapper,
+                scheduleAreaInventoryMapper
         );
     }
 

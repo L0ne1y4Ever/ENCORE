@@ -59,7 +59,7 @@ const doConfirm = async () => {
   <div class="confirm-page" v-if="orderData">
     <div class="content">
       <h1 class="page-title">{{ t('order.confirmation') }}</h1>
-      
+
       <div class="timer-box">
         <div class="timer-label">{{ t('order.paymentDeadline') }}</div>
         <div class="timer-value">{{ formatTime(timeLeft) }}</div>
@@ -110,13 +110,13 @@ const doConfirm = async () => {
   padding: var(--spacing-4);
   background-color: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
-  
+
   .timer-label {
     font-size: 14px;
     color: var(--color-text-secondary);
     margin-bottom: var(--spacing-2);
   }
-  
+
   .timer-value {
     font-family: var(--font-family-sans);
     font-size: 32px;
@@ -126,29 +126,34 @@ const doConfirm = async () => {
 }
 
 .summary-card {
+  background-color: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   padding: var(--spacing-6);
   margin-bottom: var(--spacing-6);
-  
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+
   .row {
     display: flex;
     justify-content: space-between;
     margin-bottom: var(--spacing-4);
     font-size: 16px;
-    
+    font-family: var(--font-family-sans);
+
     .label {
       color: var(--color-text-secondary);
     }
-    
+
     &.total-row {
       margin-top: var(--spacing-6);
       padding-top: var(--spacing-4);
-      border-top: 1px solid var(--color-border);
+      border-top: 1px dashed var(--color-border-strong);
       margin-bottom: 0;
       align-items: center;
-      
+
       .amount {
-        font-size: 24px;
+        font-family: var(--font-family-display);
+        font-size: 32px;
         font-weight: 700;
         color: var(--color-accent);
       }
@@ -158,20 +163,29 @@ const doConfirm = async () => {
 
 .btn-confirm {
   width: 100%;
-  padding: 16px;
-  background-color: var(--color-text-primary);
-  color: var(--color-bg-base);
+  padding: 18px;
+  background-color: var(--color-accent);
+  color: #000;
   border: none;
+  border-radius: var(--radius-sm);
   font-family: var(--font-family-sans);
   font-size: 16px;
   font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   cursor: pointer;
-  transition: background-color 150ms ease;
+  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
 
   &:hover:not(:disabled) {
-    background-color: var(--color-accent);
+    background-color: var(--color-accent-hover);
+    box-shadow: 0 4px 20px rgba(200, 149, 90, 0.3);
   }
-  
+
+  &:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
   &:disabled {
     background-color: var(--color-bg-elevated);
     color: var(--color-text-ghost);

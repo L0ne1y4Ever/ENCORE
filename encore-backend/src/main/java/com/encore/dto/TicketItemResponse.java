@@ -6,6 +6,10 @@ public record TicketItemResponse(
         String scheduleId,
         String seatId,
         String ticketCode,
-        String status
+        String status,
+        String areaInventoryId,
+        String areaName,
+        String areaType,
+        String seatLabel
 ) {
 }

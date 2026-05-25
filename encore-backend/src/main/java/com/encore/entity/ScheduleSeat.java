@@ -19,6 +19,7 @@ public class ScheduleSeat {
     private String section;
     private String status;
     private BigDecimal price;
+    private String areaId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

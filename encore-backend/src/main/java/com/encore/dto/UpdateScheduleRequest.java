@@ -11,6 +11,7 @@ public record UpdateScheduleRequest(
         @NotNull LocalDateTime startTime,
         @NotNull LocalDateTime endTime,
         @NotBlank String status,
-        @NotBlank String priceRange
+        @NotBlank String priceRange,
+        String ticketMode
 ) {
 }
