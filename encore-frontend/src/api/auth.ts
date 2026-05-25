@@ -24,6 +24,14 @@ export async function loginApi(username: string, password: string): Promise<User
   return response.user
 }
 
+export async function registerApi(username: string, password: string, displayName: string): Promise<UserProfile> {
+  const response = await requestData<LoginResponse>(
+    apiClient.post('/api/auth/register', { username, password, displayName })
+  )
+  saveAuthToken(response.tokenName, response.tokenValue)
+  return response.user
+}
+
 export async function logoutApi(): Promise<void> {
   try {
     await requestData<void>(apiClient.post('/api/auth/logout'))

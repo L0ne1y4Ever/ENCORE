@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { getCurrentUserApi, loginApi, logoutApi } from '../api/auth'
+import { getCurrentUserApi, loginApi, logoutApi, registerApi } from '../api/auth'
 import type { UserProfile } from '../api/auth'
 
 const USER_KEY = 'encore.currentUser'
@@ -29,6 +29,13 @@ export const useAuthStore = defineStore('auth', () => {
   
   async function login(username: string, password: string) {
     const user = await loginApi(username, password)
+    currentUser.value = user
+    saveStoredUser(user)
+    return true
+  }
+
+  async function register(username: string, password: string, displayName: string) {
+    const user = await registerApi(username, password, displayName)
     currentUser.value = user
     saveStoredUser(user)
     return true
@@ -65,6 +72,7 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     currentUser,
     login,
+    register,
     logout,
     refreshCurrentUser,
     updateNickname

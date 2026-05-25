@@ -47,7 +47,10 @@ export default {
   login: {
     heroTitle: '无限演出、音乐会等你探索',
     heroSubtitle: '随时随地购票，随时取消。',
-    heroPrompt: '准备好了吗？输入您的账号开始体验。'
+    heroPrompt: '准备好了吗？输入您的账号开始体验。',
+    nicknameRequired: '请输入昵称',
+    loginFailed: '登录失败，请检查账号和密码',
+    registerFailed: '注册失败，请稍后重试'
   },
   detail: {
     category: '类型',

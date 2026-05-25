@@ -47,7 +47,10 @@ export default {
   login: {
     heroTitle: 'Unlimited shows, concerts and more',
     heroSubtitle: 'Book anywhere. Cancel anytime.',
-    heroPrompt: 'Ready to explore? Enter your email to get started.'
+    heroPrompt: 'Ready to explore? Enter your username to get started.',
+    nicknameRequired: 'Nickname is required',
+    loginFailed: 'Sign in failed. Check your username and password.',
+    registerFailed: 'Sign up failed. Please try again.'
   },
   detail: {
     category: 'Category',

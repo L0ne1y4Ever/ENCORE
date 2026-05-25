@@ -3,6 +3,7 @@ package com.encore.controller;
 import com.encore.common.ApiResponse;
 import com.encore.dto.LoginRequest;
 import com.encore.dto.LoginResponse;
+import com.encore.dto.RegisterRequest;
 import com.encore.dto.UserProfileResponse;
 import com.encore.service.AuthService;
 import jakarta.validation.Valid;
@@ -24,6 +25,11 @@ public class AuthController {
     @PostMapping("/login")
     public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
         return ApiResponse.ok(authService.login(request));
+    }
+
+    @PostMapping("/register")
+    public ApiResponse<LoginResponse> register(@Valid @RequestBody RegisterRequest request) {
+        return ApiResponse.ok(authService.register(request));
     }
 
     @PostMapping("/logout")

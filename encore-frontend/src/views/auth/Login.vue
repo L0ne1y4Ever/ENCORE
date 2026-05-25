@@ -47,20 +47,16 @@ const handleSubmit = async () => {
   errorMsg.value = ''
   loading.value = true
 
-  if (isRegister.value) {
-    if (!nickname.value) {
-      errorMsg.value = 'Nickname is required'
-      loading.value = false
-      return
-    }
-    alert(`Registration Success for "${nickname.value}"! Please sign in.`)
-    isRegister.value = false
-    loading.value = false
-    return
-  }
-
   try {
-    await authStore.login(username.value, password.value)
+    if (isRegister.value) {
+      if (!nickname.value.trim()) {
+        errorMsg.value = t('login.nicknameRequired')
+        return
+      }
+      await authStore.register(username.value, password.value, nickname.value)
+    } else {
+      await authStore.login(username.value, password.value)
+    }
     const role = authStore.currentUser?.role
     const redirect = route.query.redirect as string
     if (redirect) {
@@ -70,8 +66,12 @@ const handleSubmit = async () => {
       else if (role === 'checker') router.push('/checkin')
       else router.push('/')
     }
-  } catch {
-    errorMsg.value = 'Invalid Credentials. Try user/123, admin/123'
+  } catch (error) {
+    errorMsg.value = error instanceof Error
+      ? error.message
+      : isRegister.value
+        ? t('login.registerFailed')
+        : t('login.loginFailed')
   } finally {
     loading.value = false
   }
