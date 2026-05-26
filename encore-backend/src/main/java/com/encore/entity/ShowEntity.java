@@ -18,6 +18,10 @@ public class ShowEntity {
     private String subtitle;
     private String coverUrl;
     private String description;
+    private String intro;
+    private String castMembers;
+    private String creativeTeam;
+    private String fullSynopsis;
     private Integer duration;
     private String category;
     @TableField(typeHandler = JacksonTypeHandler.class)

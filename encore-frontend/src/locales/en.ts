@@ -41,6 +41,7 @@ export default {
     topRecommended: 'Top 8 Recommended',
     hotPick: 'Hot Pick',
     ticketsSold: 'tickets sold',
+    availableTickets: '{count} available',
     onSaleSchedules: 'on-sale schedules',
     recommendationsEmpty: 'No recommendations yet.'
   },
@@ -57,6 +58,10 @@ export default {
     duration: 'Duration',
     tags: 'Tags',
     synopsis: 'Synopsis',
+    castMembers: 'Cast',
+    creativeTeam: 'Creative Team',
+    fullSynopsis: 'Full Synopsis',
+    pendingContent: 'To be announced',
     selectSchedule: 'Select Schedule',
     book: 'Book Tickets',
     reserve: 'Reserve / Notify Me',
@@ -93,6 +98,7 @@ export default {
     view2d: '2D Seat Map',
     view3d: '3D Screen View',
     locking: 'Locking...',
+    lockTip: 'Seats are locked for 15 minutes and will be released automatically if unpaid.',
     conflict: 'Seats are no longer available, please reselect.',
     live: {
       connecting: 'Connecting live updates',
@@ -144,12 +150,26 @@ export default {
     row: 'ROW',
     number: 'NO.',
     statusValid: 'Status: VALID',
-    unused: 'Unused'
+    unused: 'Unused',
+    unassigned: 'General Admission / Unassigned'
   },
   profile: {
     personalInfo: 'Personal Info',
     editNickname: 'Edit Nickname',
-    successSave: 'Saved successfully'
+    successSave: 'Saved successfully',
+    myTickets: 'My Tickets',
+    orderHistory: 'Order History',
+    viewTicket: 'View Ticket',
+    noTickets: 'No tickets found.',
+    noOrders: 'No orders yet.',
+    ordersLoadFailed: 'Failed to load orders',
+    orderStatus: {
+      pending_payment: 'Pending Payment',
+      paid: 'Paid',
+      expired: 'Expired',
+      cancelled: 'Cancelled',
+      refunded: 'Refunded'
+    }
   },
   admin: {
     dashboard: 'Dashboard',
@@ -191,6 +211,10 @@ export default {
     durationMinutes: 'Duration (m)',
     coverUrl: 'Cover URL',
     description: 'Description',
+    intro: 'Intro',
+    castMembers: 'Cast',
+    creativeTeam: 'Creative Team',
+    fullSynopsis: 'Full Synopsis',
     tags: 'Tags',
     tagsPlaceholder: 'Comma-separated tags',
     sortOrder: 'Sort',

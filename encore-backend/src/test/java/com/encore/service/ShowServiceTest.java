@@ -1,18 +1,23 @@
 package com.encore.service;
 
 import com.encore.dto.ShowRecommendationResponse;
+import com.encore.entity.ScheduleSeat;
 import com.encore.entity.ShowEntity;
 import com.encore.entity.ShowSchedule;
 import com.encore.entity.TicketItem;
 import com.encore.entity.TicketOrder;
 import com.encore.mapper.ShowMapper;
 import com.encore.mapper.ShowScheduleMapper;
+import com.encore.mapper.ScheduleAreaInventoryMapper;
+import com.encore.mapper.ScheduleSeatMapper;
 import com.encore.mapper.TicketItemMapper;
 import com.encore.mapper.TicketOrderMapper;
+import com.encore.mapper.VenueAreaMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -34,6 +39,14 @@ class ShowServiceTest {
     private TicketOrderMapper ticketOrderMapper;
     @Mock
     private TicketItemMapper ticketItemMapper;
+    @Mock
+    private ScheduleSeatMapper scheduleSeatMapper;
+    @Mock
+    private ScheduleAreaInventoryMapper scheduleAreaInventoryMapper;
+    @Mock
+    private VenueAreaMapper venueAreaMapper;
+    @Mock
+    private StringRedisTemplate redisTemplate;
 
     @Test
     void recommendationsPrioritizeOnSaleBeforeHigherSellingUnavailableShow() {
@@ -155,6 +168,23 @@ class ShowServiceTest {
     }
 
     @Test
+    void recommendationsExposeRemainingAvailableTickets() {
+        ShowService service = createService();
+
+        when(showMapper.selectList(any())).thenReturn(List.of(show("s-available", "PUBLISHED", 10, 1)));
+        when(showScheduleMapper.selectList(any())).thenReturn(List.of(schedule("sch-available", "s-available", "ON_SALE")));
+        when(scheduleSeatMapper.selectList(any())).thenReturn(List.of(availableSeat("seat-1-1"), availableSeat("seat-1-2")));
+        when(redisTemplate.hasKey("encore:seat-lock:sch-available:seat-1-1")).thenReturn(false);
+        when(redisTemplate.hasKey("encore:seat-lock:sch-available:seat-1-2")).thenReturn(true);
+        when(ticketOrderMapper.selectList(any())).thenReturn(List.of());
+
+        List<ShowRecommendationResponse> recommendations = service.listTopRecommendations();
+
+        assertThat(recommendations).hasSize(1);
+        assertThat(recommendations.get(0).availableTicketCount()).isEqualTo(1L);
+    }
+
+    @Test
     void recommendationsLimitToEightShowsAndAssignRanks() {
         ShowService service = createService();
         List<ShowEntity> shows = java.util.stream.IntStream.rangeClosed(1, 10)
@@ -178,7 +208,16 @@ class ShowServiceTest {
     }
 
     private ShowService createService() {
-        return new ShowService(showMapper, showScheduleMapper, ticketOrderMapper, ticketItemMapper);
+        return new ShowService(
+                showMapper,
+                showScheduleMapper,
+                ticketOrderMapper,
+                ticketItemMapper,
+                scheduleSeatMapper,
+                scheduleAreaInventoryMapper,
+                venueAreaMapper,
+                redisTemplate
+        );
     }
 
     private ShowEntity show(String id, String status, int sortOrder, int createdOffset) {
@@ -222,5 +261,13 @@ class ShowServiceTest {
         ticket.setScheduleId(scheduleId);
         ticket.setStatus(status);
         return ticket;
+    }
+
+    private ScheduleSeat availableSeat(String seatCode) {
+        ScheduleSeat seat = new ScheduleSeat();
+        seat.setScheduleId("sch-available");
+        seat.setSeatCode(seatCode);
+        seat.setStatus("AVAILABLE");
+        return seat;
     }
 }

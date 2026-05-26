@@ -9,12 +9,17 @@ public record ShowRecommendationResponse(
         String subtitle,
         String coverUrl,
         String description,
+        String intro,
+        String castMembers,
+        String creativeTeam,
+        String fullSynopsis,
         Integer duration,
         String category,
         List<String> tags,
         Integer rank,
         Long ticketsSold,
         Long availableScheduleCount,
+        Long availableTicketCount,
         BigDecimal hotScore
 ) {
 }

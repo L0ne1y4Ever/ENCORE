@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/orders")
 public class OrderController {
@@ -24,6 +26,11 @@ public class OrderController {
     @PostMapping
     public ApiResponse<String> createOrder(@Valid @RequestBody CreateOrderRequest request) {
         return ApiResponse.ok(orderService.createOrder(request));
+    }
+
+    @GetMapping("/my")
+    public ApiResponse<List<OrderResponse>> listMyOrders() {
+        return ApiResponse.ok(orderService.listMyOrders());
     }
 
     @GetMapping("/{id}")

@@ -1,4 +1,4 @@
-export type OrderStatus = 'PENDING_PAYMENT' | 'PAID' | 'EXPIRED' | 'CANCELLED'
+export type OrderStatus = 'PENDING_PAYMENT' | 'PAID' | 'EXPIRED' | 'CANCELLED' | 'REFUNDED'
 
 export interface TicketItem {
   id: string
@@ -17,7 +17,10 @@ export interface Order {
   id: string
   userId: string
   scheduleId: string
-  totalAmount: number
+  showTitle?: string | null
+  theaterName?: string | null
+  startTime?: string | null
+  totalAmount: number | string
   status: OrderStatus
   createdAt: string
   expiresAt: string

@@ -5,15 +5,22 @@ import com.encore.common.ErrorCode;
 import com.encore.dto.ScheduleResponse;
 import com.encore.dto.ShowRecommendationResponse;
 import com.encore.dto.ShowResponse;
+import com.encore.entity.ScheduleAreaInventory;
+import com.encore.entity.ScheduleSeat;
 import com.encore.entity.ShowEntity;
 import com.encore.entity.ShowSchedule;
 import com.encore.entity.TicketItem;
 import com.encore.entity.TicketOrder;
+import com.encore.entity.VenueArea;
 import com.encore.exception.BusinessException;
+import com.encore.mapper.ScheduleAreaInventoryMapper;
+import com.encore.mapper.ScheduleSeatMapper;
 import com.encore.mapper.ShowMapper;
 import com.encore.mapper.ShowScheduleMapper;
 import com.encore.mapper.TicketItemMapper;
 import com.encore.mapper.TicketOrderMapper;
+import com.encore.mapper.VenueAreaMapper;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -22,6 +29,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -31,17 +39,29 @@ public class ShowService {
     private final ShowScheduleMapper showScheduleMapper;
     private final TicketOrderMapper ticketOrderMapper;
     private final TicketItemMapper ticketItemMapper;
+    private final ScheduleSeatMapper scheduleSeatMapper;
+    private final ScheduleAreaInventoryMapper scheduleAreaInventoryMapper;
+    private final VenueAreaMapper venueAreaMapper;
+    private final StringRedisTemplate redisTemplate;
 
     public ShowService(
             ShowMapper showMapper,
             ShowScheduleMapper showScheduleMapper,
             TicketOrderMapper ticketOrderMapper,
-            TicketItemMapper ticketItemMapper
+            TicketItemMapper ticketItemMapper,
+            ScheduleSeatMapper scheduleSeatMapper,
+            ScheduleAreaInventoryMapper scheduleAreaInventoryMapper,
+            VenueAreaMapper venueAreaMapper,
+            StringRedisTemplate redisTemplate
     ) {
         this.showMapper = showMapper;
         this.showScheduleMapper = showScheduleMapper;
         this.ticketOrderMapper = ticketOrderMapper;
         this.ticketItemMapper = ticketItemMapper;
+        this.scheduleSeatMapper = scheduleSeatMapper;
+        this.scheduleAreaInventoryMapper = scheduleAreaInventoryMapper;
+        this.venueAreaMapper = venueAreaMapper;
+        this.redisTemplate = redisTemplate;
     }
 
     public List<ShowResponse> listShows(String keyword, String category) {
@@ -52,7 +72,13 @@ public class ShowService {
                     .or()
                     .like(ShowEntity::getSubtitle, keyword)
                     .or()
-                    .like(ShowEntity::getDescription, keyword));
+                    .like(ShowEntity::getDescription, keyword)
+                    .or()
+                    .like(ShowEntity::getIntro, keyword)
+                    .or()
+                    .like(ShowEntity::getCastMembers, keyword)
+                    .or()
+                    .like(ShowEntity::getFullSynopsis, keyword));
         }
         if (StringUtils.hasText(category)) {
             wrapper.eq(ShowEntity::getCategory, category);
@@ -86,6 +112,7 @@ public class ShowService {
         Map<String, Long> availableSchedulesByShow = schedules.stream()
                 .filter(schedule -> "ON_SALE".equals(schedule.getStatus()))
                 .collect(Collectors.groupingBy(ShowSchedule::getShowId, Collectors.counting()));
+        Map<String, Long> availableTicketsByShow = calculateAvailableTicketsByShow(schedules);
 
         List<String> scheduleIds = schedules.stream()
                 .map(ShowSchedule::getId)
@@ -145,6 +172,7 @@ public class ShowService {
                         index + 1,
                         ticketsByShow.getOrDefault(rankedShows.get(index).getId(), 0L),
                         availableSchedulesByShow.getOrDefault(rankedShows.get(index).getId(), 0L),
+                        availableTicketsByShow.getOrDefault(rankedShows.get(index).getId(), 0L),
                         revenueByShow.getOrDefault(rankedShows.get(index).getId(), BigDecimal.ZERO)
                 ))
                 .toList();
@@ -175,6 +203,10 @@ public class ShowService {
                 show.getSubtitle(),
                 show.getCoverUrl(),
                 show.getDescription(),
+                fallback(show.getIntro(), show.getDescription()),
+                fallback(show.getCastMembers(), "演职人员信息待补充"),
+                fallback(show.getCreativeTeam(), "主创团队信息待补充"),
+                fallback(show.getFullSynopsis(), show.getDescription()),
                 show.getDuration(),
                 show.getCategory(),
                 show.getTags()
@@ -235,6 +267,7 @@ public class ShowService {
             int rank,
             long ticketsSold,
             long availableScheduleCount,
+            long availableTicketCount,
             BigDecimal revenue
     ) {
         BigDecimal hotScore = BigDecimal.valueOf(ticketsSold)
@@ -247,14 +280,87 @@ public class ShowService {
                 show.getSubtitle(),
                 show.getCoverUrl(),
                 show.getDescription(),
+                fallback(show.getIntro(), show.getDescription()),
+                fallback(show.getCastMembers(), "演职人员信息待补充"),
+                fallback(show.getCreativeTeam(), "主创团队信息待补充"),
+                fallback(show.getFullSynopsis(), show.getDescription()),
                 show.getDuration(),
                 show.getCategory(),
                 show.getTags(),
                 rank,
                 ticketsSold,
                 availableScheduleCount,
+                availableTicketCount,
                 hotScore
         );
+    }
+
+    private Map<String, Long> calculateAvailableTicketsByShow(List<ShowSchedule> schedules) {
+        Map<String, Long> availableTicketsByShow = new HashMap<>();
+        for (ShowSchedule schedule : schedules) {
+            if (!"ON_SALE".equals(schedule.getStatus())) {
+                continue;
+            }
+            availableTicketsByShow.merge(schedule.getShowId(), countAvailableTickets(schedule), Long::sum);
+        }
+        return availableTicketsByShow;
+    }
+
+    private long countAvailableTickets(ShowSchedule schedule) {
+        String mode = schedule.getTicketMode() == null ? "SEATED" : schedule.getTicketMode();
+        if ("ZONED".equals(mode)) {
+            return listInventories(schedule.getId()).stream()
+                    .mapToLong(inv -> inv.getAvailableCount() == null ? 0 : inv.getAvailableCount())
+                    .sum();
+        }
+        if ("MIXED".equals(mode)) {
+            List<ScheduleAreaInventory> inventories = listInventories(schedule.getId());
+            Map<String, VenueArea> areaById = inventories.stream()
+                    .map(inv -> venueAreaMapper.selectById(inv.getAreaId()))
+                    .filter(area -> area != null)
+                    .collect(Collectors.toMap(VenueArea::getId, Function.identity(), (left, right) -> left));
+
+            long standingAvailable = inventories.stream()
+                    .filter(inv -> {
+                        VenueArea area = areaById.get(inv.getAreaId());
+                        return area == null || !Boolean.TRUE.equals(area.getIsSeated());
+                    })
+                    .mapToLong(inv -> inv.getAvailableCount() == null ? 0 : inv.getAvailableCount())
+                    .sum();
+            Set<String> seatedAreaIds = areaById.values().stream()
+                    .filter(area -> Boolean.TRUE.equals(area.getIsSeated()))
+                    .map(VenueArea::getId)
+                    .collect(Collectors.toSet());
+            long seatedAvailable = seatedAreaIds.isEmpty() ? 0 : countAvailableSeats(schedule.getId(), seatedAreaIds);
+            return standingAvailable + seatedAvailable;
+        }
+        return countAvailableSeats(schedule.getId(), Set.of());
+    }
+
+    private List<ScheduleAreaInventory> listInventories(String scheduleId) {
+        List<ScheduleAreaInventory> inventories = scheduleAreaInventoryMapper.selectList(new LambdaQueryWrapper<ScheduleAreaInventory>()
+                .eq(ScheduleAreaInventory::getScheduleId, scheduleId));
+        return inventories == null ? List.of() : inventories;
+    }
+
+    private long countAvailableSeats(String scheduleId, Set<String> areaIds) {
+        LambdaQueryWrapper<ScheduleSeat> wrapper = new LambdaQueryWrapper<ScheduleSeat>()
+                .eq(ScheduleSeat::getScheduleId, scheduleId)
+                .eq(ScheduleSeat::getStatus, "AVAILABLE");
+        if (areaIds != null && !areaIds.isEmpty()) {
+            wrapper.in(ScheduleSeat::getAreaId, areaIds);
+        }
+        List<ScheduleSeat> seats = scheduleSeatMapper.selectList(wrapper);
+        if (seats == null || seats.isEmpty()) {
+            return 0;
+        }
+        return seats.stream()
+                .filter(seat -> !Boolean.TRUE.equals(redisTemplate.hasKey("encore:seat-lock:%s:%s".formatted(scheduleId, seat.getSeatCode()))))
+                .count();
+    }
+
+    private String fallback(String value, String fallback) {
+        return StringUtils.hasText(value) ? value : fallback;
     }
 
     public ScheduleResponse getScheduleDetail(String scheduleId) {

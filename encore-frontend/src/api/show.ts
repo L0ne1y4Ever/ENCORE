@@ -5,6 +5,7 @@ export interface RecommendedShow extends Show {
   rank: number
   ticketsSold: number
   availableScheduleCount: number
+  availableTicketCount: number
   hotScore: number
 }
 

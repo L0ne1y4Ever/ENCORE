@@ -2,9 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { getOrderDetail } from '../../api/order'
-import { getShowDetail, getShowSchedules } from '../../api/show'
 import type { Order } from '../../mock/orders'
-import type { Show, Schedule } from '../../mock/shows'
 import { useI18n } from 'vue-i18n'
 
 const route = useRoute()
@@ -12,24 +10,10 @@ const { t, locale } = useI18n()
 const orderId = route.params.id as string
 
 const order = ref<Order | null>(null)
-const show = ref<Show | null>(null)
-const schedule = ref<Schedule | null>(null)
 const loading = ref(true)
 
 onMounted(async () => {
   order.value = (await getOrderDetail(orderId)) || null
-  if (order.value) {
-    const schId = order.value.scheduleId
-    // 因为 mock 接口中 getShowSchedules 需要 showId，我们简化假设根据已知关系推导
-    // 这里简单硬编码映射一下，实际应用会有后端联表查询
-    let sId = 's-001'
-    if (schId.includes('2')) sId = 's-002'
-    if (schId.includes('3')) sId = 's-003'
-
-    show.value = (await getShowDetail(sId)) || null
-    const schs = await getShowSchedules(sId)
-    schedule.value = schs.find(s => s.id === schId) || null
-  }
 
   // 添加一点延迟体现“票面展开”的仪式感
   setTimeout(() => {
@@ -49,10 +33,10 @@ const formatDate = (dateStr: string) => {
 <template>
   <div class="ticket-page">
     <transition name="ticket-reveal">
-      <div class="ticket-container" v-if="!loading && order && show && schedule">
+      <div class="ticket-container" v-if="!loading && order">
         <div
           class="ticket-wrapper"
-          v-for="ticket in order.tickets"
+          v-for="ticket in order.tickets || []"
           :key="ticket.id"
         >
           <div class="ticket-card" :class="{'vip-ticket': ticket.seatId ? ticket.seatId.includes('VIP') : ticket.areaType === 'VIP'}">
@@ -67,11 +51,11 @@ const formatDate = (dateStr: string) => {
 
             <!-- 剧目与时间 -->
             <div class="t-body">
-              <div class="date">{{ formatDate(schedule.startTime).date }}</div>
-              <h1 class="title">{{ show.title }}</h1>
+              <div class="date">{{ formatDate(order.startTime || order.createdAt).date }}</div>
+              <h1 class="title">{{ order.showTitle || order.scheduleId }}</h1>
               <div class="theater-info">
-                <span>{{ schedule.theaterName }}</span>
-                <span>{{ formatDate(schedule.startTime).time }}</span>
+                <span>{{ order.theaterName || '-' }}</span>
+                <span>{{ formatDate(order.startTime || order.createdAt).time }}</span>
               </div>
             </div>
 

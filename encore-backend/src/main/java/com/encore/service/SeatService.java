@@ -15,15 +15,19 @@ import com.encore.mapper.ShowScheduleMapper;
 import com.encore.mapper.ScheduleAreaInventoryMapper;
 import com.encore.mapper.VenueAreaMapper;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 @Service
 public class SeatService {
     public static final Duration SEAT_LOCK_TTL = Duration.ofMinutes(15);
+    private static final String SEAT_LOCK_PREFIX = "encore:seat-lock";
+    private static final String SEAT_LOCK_INDEX_PREFIX = "encore:seat-lock-index";
 
     private final ScheduleSeatMapper scheduleSeatMapper;
     private final ShowScheduleMapper showScheduleMapper;
@@ -118,8 +122,10 @@ public class SeatService {
                         throw new BusinessException(ErrorCode.CONFLICT, "座位已被锁定，请重新选择");
                     }
                     acquiredKeys.add(key);
+                    trackSeatLock(scheduleId, seat.getSeatCode(), ttl);
                 } else if (owner.equals(currentOwner)) {
                     redisTemplate.expire(key, ttl);
+                    trackSeatLock(scheduleId, seat.getSeatCode(), ttl);
                 } else {
                     throw new BusinessException(ErrorCode.CONFLICT, "座位已被锁定，请重新选择");
                 }
@@ -166,6 +172,7 @@ public class SeatService {
     public void attachOrderToLocks(String scheduleId, List<String> seatIds, String orderId, Duration ttl) {
         for (String seatId : normalizeSeatIds(seatIds)) {
             redisTemplate.opsForValue().set(lockKey(scheduleId, seatId), orderId, ttl);
+            trackSeatLock(scheduleId, seatId, ttl);
         }
     }
 
@@ -174,7 +181,10 @@ public class SeatService {
     }
 
     public void releaseLocks(String scheduleId, List<String> seatIds) {
-        normalizeSeatIds(seatIds).forEach(seatId -> redisTemplate.delete(lockKey(scheduleId, seatId)));
+        normalizeSeatIds(seatIds).forEach(seatId -> {
+            redisTemplate.delete(lockKey(scheduleId, seatId));
+            untrackSeatLock(scheduleId, seatId);
+        });
     }
 
     public void releaseLocksOwnedBy(String scheduleId, List<String> seatIds, String owner, boolean publishAvailable) {
@@ -183,6 +193,7 @@ public class SeatService {
             String key = lockKey(scheduleId, seatId);
             if (owner.equals(redisTemplate.opsForValue().get(key))) {
                 redisTemplate.delete(key);
+                untrackSeatLock(scheduleId, seatId);
                 releasedSeatIds.add(seatId);
             }
         }
@@ -204,11 +215,49 @@ public class SeatService {
         ensureLocksOwnedBy(scheduleId, normalizedSeatIds, expectedOwner);
         for (String seatId : normalizedSeatIds) {
             redisTemplate.opsForValue().set(lockKey(scheduleId, seatId), nextOwner, ttl);
+            trackSeatLock(scheduleId, seatId, ttl);
         }
     }
 
     public String lockKey(String scheduleId, String seatId) {
-        return "encore:seat-lock:%s:%s".formatted(scheduleId, seatId);
+        return "%s:%s:%s".formatted(SEAT_LOCK_PREFIX, scheduleId, seatId);
+    }
+
+    @Scheduled(fixedRate = 5000)
+    public void cleanupExpiredSeatLocks() {
+        Set<String> indexKeys = redisTemplate.keys("%s:*".formatted(SEAT_LOCK_INDEX_PREFIX));
+        if (indexKeys == null || indexKeys.isEmpty()) {
+            return;
+        }
+        for (String indexKey : indexKeys) {
+            String scheduleId = indexKey.substring((SEAT_LOCK_INDEX_PREFIX + ":").length());
+            ShowSchedule schedule = showScheduleMapper.selectById(scheduleId);
+            if (schedule == null || !"ON_SALE".equals(schedule.getStatus())) {
+                redisTemplate.delete(indexKey);
+                continue;
+            }
+            Set<String> seatIds = redisTemplate.opsForSet().members(indexKey);
+            if (seatIds == null || seatIds.isEmpty()) {
+                redisTemplate.delete(indexKey);
+                continue;
+            }
+            List<String> releasedSeatIds = new ArrayList<>();
+            for (String seatId : seatIds) {
+                if (!Boolean.TRUE.equals(redisTemplate.hasKey(lockKey(scheduleId, seatId)))) {
+                    redisTemplate.opsForSet().remove(indexKey, seatId);
+                    if (isSeatAvailable(scheduleId, seatId)) {
+                        releasedSeatIds.add(seatId);
+                    }
+                }
+            }
+            if (!releasedSeatIds.isEmpty()) {
+                seatStatusPublisher.publishSeatStatus(scheduleId, "LOCK_EXPIRED", "AVAILABLE", releasedSeatIds);
+            }
+            Long remaining = redisTemplate.opsForSet().size(indexKey);
+            if (remaining == null || remaining == 0) {
+                redisTemplate.delete(indexKey);
+            }
+        }
     }
 
     private ShowSchedule ensureScheduleExists(String scheduleId) {
@@ -217,6 +266,28 @@ public class SeatService {
             throw new BusinessException(ErrorCode.NOT_FOUND, "场次不存在");
         }
         return schedule;
+    }
+
+    private void trackSeatLock(String scheduleId, String seatId, Duration ttl) {
+        String indexKey = seatLockIndexKey(scheduleId);
+        redisTemplate.opsForSet().add(indexKey, seatId);
+        redisTemplate.expire(indexKey, ttl.plus(Duration.ofHours(1)));
+    }
+
+    private void untrackSeatLock(String scheduleId, String seatId) {
+        redisTemplate.opsForSet().remove(seatLockIndexKey(scheduleId), seatId);
+    }
+
+    private String seatLockIndexKey(String scheduleId) {
+        return "%s:%s".formatted(SEAT_LOCK_INDEX_PREFIX, scheduleId);
+    }
+
+    private boolean isSeatAvailable(String scheduleId, String seatId) {
+        ScheduleSeat seat = scheduleSeatMapper.selectOne(new LambdaQueryWrapper<ScheduleSeat>()
+                .eq(ScheduleSeat::getScheduleId, scheduleId)
+                .eq(ScheduleSeat::getSeatCode, seatId)
+                .last("limit 1"));
+        return seat != null && "AVAILABLE".equals(seat.getStatus());
     }
 
     private void ensureSeatAvailableForLock(String scheduleId, ScheduleSeat seat, String owner) {

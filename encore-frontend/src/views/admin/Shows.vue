@@ -21,6 +21,10 @@ interface ShowForm {
   subtitle: string
   coverUrl: string
   description: string
+  intro: string
+  castMembers: string
+  creativeTeam: string
+  fullSynopsis: string
   duration: number
   category: string
   tagsText: string
@@ -43,6 +47,10 @@ const emptyForm = (): ShowForm => ({
   subtitle: '',
   coverUrl: '',
   description: '',
+  intro: '',
+  castMembers: '',
+  creativeTeam: '',
+  fullSynopsis: '',
   duration: 120,
   category: 'Movie',
   tagsText: '',
@@ -106,6 +114,10 @@ const openEdit = (row: AdminShow) => {
     subtitle: row.subtitle,
     coverUrl: row.coverUrl,
     description: row.description,
+    intro: row.intro || '',
+    castMembers: row.castMembers || '',
+    creativeTeam: row.creativeTeam || '',
+    fullSynopsis: row.fullSynopsis || '',
     duration: row.duration,
     category: row.category,
     tagsText: row.tags.join(', '),
@@ -134,6 +146,10 @@ const buildPayload = (): AdminShowPayload => {
     subtitle: form.subtitle.trim(),
     coverUrl: form.coverUrl.trim(),
     description: form.description.trim(),
+    intro: form.intro.trim() || null,
+    castMembers: form.castMembers.trim() || null,
+    creativeTeam: form.creativeTeam.trim() || null,
+    fullSynopsis: form.fullSynopsis.trim() || null,
     duration: form.duration,
     category: form.category,
     tags: form.tagsText
@@ -323,6 +339,18 @@ const handleDelete = async (row: AdminShow) => {
           </el-form-item>
           <el-form-item :label="t('admin.description')" required class="span-2">
             <el-input v-model="form.description" type="textarea" :rows="5" maxlength="2000" show-word-limit />
+          </el-form-item>
+          <el-form-item :label="t('admin.intro')" class="span-2">
+            <el-input v-model="form.intro" type="textarea" :rows="3" maxlength="2000" show-word-limit />
+          </el-form-item>
+          <el-form-item :label="t('admin.castMembers')" class="span-2">
+            <el-input v-model="form.castMembers" type="textarea" :rows="3" maxlength="2000" show-word-limit />
+          </el-form-item>
+          <el-form-item :label="t('admin.creativeTeam')" class="span-2">
+            <el-input v-model="form.creativeTeam" type="textarea" :rows="3" maxlength="2000" show-word-limit />
+          </el-form-item>
+          <el-form-item :label="t('admin.fullSynopsis')" class="span-2">
+            <el-input v-model="form.fullSynopsis" type="textarea" :rows="5" maxlength="4000" show-word-limit />
           </el-form-item>
         </div>
       </el-form>

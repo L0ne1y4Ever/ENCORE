@@ -25,6 +25,10 @@ export function getOrderDetail(orderId: string): Promise<Order> {
   return requestData<Order>(apiClient.get(`/api/orders/${orderId}`))
 }
 
+export function getMyOrders(): Promise<Order[]> {
+  return requestData<Order[]>(apiClient.get('/api/orders/my'))
+}
+
 export function simulatePayment(orderId: string): Promise<boolean> {
   return requestData<boolean>(apiClient.post(`/api/orders/${orderId}/pay`))
 }

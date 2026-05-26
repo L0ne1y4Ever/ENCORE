@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useAuthStore } from '../../stores/auth'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { getMyOrders } from '../../api/order'
+import type { Order, TicketItem } from '../../mock/orders'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -27,18 +29,72 @@ const toggleEdit = () => {
 }
 
 const activeTab = ref<'info' | 'tickets' | 'orders' | 'reservations'>('info')
+const orders = ref<Order[]>([])
+const orderLoading = ref(false)
+const orderError = ref('')
 
-// Mock tickets data
-const tickets = ref([
-  { id: 't-001', showTitle: 'SWAN LAKE', date: '2026-06-10 20:00', venue: 'Opera House', seat: 'VIP-9-9', status: 'VALID' },
-  { id: 't-002', showTitle: 'HAMILTON', date: '2026-07-22 19:30', venue: 'Grand Theater', seat: 'A-12-14', status: 'USED' }
-])
+interface TicketView {
+  id: string
+  orderId: string
+  showTitle: string
+  date: string
+  venue: string
+  seat: string
+  status: TicketItem['status']
+}
 
-// Mock orders data
-const orders = ref([
-  { id: 'ORD-8X9A2B', date: '2026-05-10', total: 280, items: 2, status: 'COMPLETED' },
-  { id: 'ORD-3M7C1P', date: '2026-04-15', total: 120, items: 1, status: 'COMPLETED' }
-])
+const loadOrders = async () => {
+  orderLoading.value = true
+  orderError.value = ''
+  try {
+    orders.value = await getMyOrders()
+  } catch (error) {
+    orderError.value = error instanceof Error ? error.message : t('profile.ordersLoadFailed')
+  } finally {
+    orderLoading.value = false
+  }
+}
+
+onMounted(loadOrders)
+
+const tickets = computed<TicketView[]>(() => {
+  return orders.value
+    .filter(order => order.status === 'PAID')
+    .flatMap(order => (order.tickets || [])
+      .filter(ticket => ticket.status !== 'VOID')
+      .map(ticket => ({
+        id: ticket.id,
+        orderId: order.id,
+        showTitle: order.showTitle || order.scheduleId,
+        date: order.startTime || order.createdAt,
+        venue: order.theaterName || '-',
+        seat: ticket.seatLabel || ticket.seatId || t('ticket.unassigned'),
+        status: ticket.status
+      })))
+})
+
+const viewTicket = (orderId: string) => {
+  router.push(`/ticket/${orderId}`)
+}
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) return '-'
+  return new Date(value).toLocaleString(undefined, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+const formatAmount = (value: number | string) => {
+  return Number(value || 0).toFixed(2)
+}
+
+const orderStatusLabel = (status: Order['status']) => {
+  return t(`profile.orderStatus.${status.toLowerCase()}`)
+}
 
 // Mock reservations data
 const reservations = ref([
@@ -58,8 +114,8 @@ const reservations = ref([
 
     <nav class="profile-tabs">
       <button :class="{ active: activeTab === 'info' }" @click="activeTab = 'info'">{{ t('profile.personalInfo') }}</button>
-      <button :class="{ active: activeTab === 'tickets' }" @click="activeTab = 'tickets'">My Tickets</button>
-      <button :class="{ active: activeTab === 'orders' }" @click="activeTab = 'orders'">Orders</button>
+      <button :class="{ active: activeTab === 'tickets' }" @click="activeTab = 'tickets'">{{ t('profile.myTickets') }}</button>
+      <button :class="{ active: activeTab === 'orders' }" @click="activeTab = 'orders'">{{ t('profile.orderHistory') }}</button>
       <button :class="{ active: activeTab === 'reservations' }" @click="activeTab = 'reservations'">{{ t('reservation.myReservations') }}</button>
     </nav>
 
@@ -96,37 +152,61 @@ const reservations = ref([
 
         <div v-else-if="activeTab === 'tickets'" class="tab-pane" key="tickets">
           <section class="tickets-section">
-            <h2>My Tickets</h2>
-            <div class="ticket-list" v-if="tickets.length > 0">
-              <div class="t-card" v-for="tkt in tickets" :key="tkt.id" :class="{ used: tkt.status === 'USED' }">
+            <div class="section-header">
+              <h2>{{ t('profile.myTickets') }}</h2>
+              <button class="link-btn" :disabled="orderLoading" @click="loadOrders">{{ t('admin.refresh') }}</button>
+            </div>
+            <div class="loading-state" v-if="orderLoading">{{ t('common.loading') }}</div>
+            <div class="error-state" v-else-if="orderError">{{ orderError }}</div>
+            <div class="ticket-list" v-else-if="tickets.length > 0">
+              <div class="t-card" v-for="tkt in tickets" :key="tkt.id" :class="{ used: tkt.status === 'CHECKED_IN' }">
                 <div class="t-info">
                   <h3>{{ tkt.showTitle }}</h3>
-                  <p>{{ tkt.date }} &bull; {{ tkt.venue }}</p>
-                  <p class="t-seat">Seat: {{ tkt.seat }}</p>
+                  <p>{{ formatDateTime(tkt.date) }} &bull; {{ tkt.venue }}</p>
+                  <p class="t-seat">{{ t('ticket.seat') }}: {{ tkt.seat }}</p>
                 </div>
-                <div class="t-status">{{ tkt.status }}</div>
+                <div class="ticket-actions">
+                  <div class="t-status">{{ tkt.status }}</div>
+                  <button class="link-btn" @click="viewTicket(tkt.orderId)">{{ t('profile.viewTicket') }}</button>
+                </div>
               </div>
             </div>
-            <div class="empty-state" v-else>No tickets found.</div>
+            <div class="empty-state" v-else>{{ t('profile.noTickets') }}</div>
           </section>
         </div>
 
         <div v-else-if="activeTab === 'orders'" class="tab-pane" key="orders">
           <section class="orders-section">
-            <h2>Order History</h2>
-            <div class="order-list" v-if="orders.length > 0">
+            <div class="section-header">
+              <h2>{{ t('profile.orderHistory') }}</h2>
+              <button class="link-btn" :disabled="orderLoading" @click="loadOrders">{{ t('admin.refresh') }}</button>
+            </div>
+            <div class="loading-state" v-if="orderLoading">{{ t('common.loading') }}</div>
+            <div class="error-state" v-else-if="orderError">{{ orderError }}</div>
+            <div class="order-list" v-else-if="orders.length > 0">
               <div class="o-card" v-for="ord in orders" :key="ord.id">
                 <div class="o-header">
                   <span class="o-id">{{ ord.id }}</span>
-                  <span class="o-date">{{ ord.date }}</span>
+                  <span class="status-pill">{{ orderStatusLabel(ord.status) }}</span>
                 </div>
                 <div class="o-details">
-                  <span>{{ ord.items }} item(s)</span>
-                  <span class="o-total">${{ ord.total }}</span>
+                  <div>
+                    <strong>{{ ord.showTitle || ord.scheduleId }}</strong>
+                    <p>{{ formatDateTime(ord.startTime || ord.createdAt) }} &bull; {{ ord.theaterName || '-' }}</p>
+                    <p>{{ (ord.tickets || []).length }} {{ t('order.tickets') }}</p>
+                  </div>
+                  <span class="o-total">${{ formatAmount(ord.totalAmount) }}</span>
                 </div>
+                <button
+                  v-if="ord.status === 'PAID'"
+                  class="link-btn order-ticket-link"
+                  @click="viewTicket(ord.id)"
+                >
+                  {{ t('profile.viewTicket') }}
+                </button>
               </div>
             </div>
-            <div class="empty-state" v-else>No order history.</div>
+            <div class="empty-state" v-else>{{ t('profile.noOrders') }}</div>
           </section>
         </div>
 
@@ -261,10 +341,34 @@ section {
   display: flex;
   align-items: baseline;
   gap: var(--spacing-4);
+  justify-content: space-between;
 
   .save-msg {
     font-size: 14px;
     color: var(--color-accent);
+  }
+}
+
+.link-btn {
+  background: transparent;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-family: var(--font-family-sans);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 6px 12px;
+  transition: border-color 150ms ease, color 150ms ease;
+
+  &:hover:not(:disabled) {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+
+  &:disabled {
+    color: var(--color-text-ghost);
+    cursor: not-allowed;
   }
 }
 
@@ -373,6 +477,17 @@ section {
   padding: var(--spacing-4) 0;
 }
 
+.loading-state,
+.error-state {
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-sans);
+  padding: var(--spacing-4) 0;
+}
+
+.error-state {
+  color: #f0a86b;
+}
+
 /* Cards shared styling */
 .ticket-list, .order-list {
   display: flex;
@@ -421,6 +536,13 @@ section {
     border: 1px solid currentColor;
     border-radius: var(--radius-sm);
   }
+
+  .ticket-actions {
+    align-items: flex-end;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+  }
 }
 
 .o-card {
@@ -444,13 +566,32 @@ section {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: var(--spacing-4);
     font-size: 14px;
+
+    p {
+      color: var(--color-text-secondary);
+      margin-top: 4px;
+    }
 
     .o-total {
       font-size: 18px;
       font-weight: 700;
       color: var(--color-accent);
     }
+  }
+
+  .status-pill {
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px 8px;
+  }
+
+  .order-ticket-link {
+    margin-top: var(--spacing-3);
   }
 }
 

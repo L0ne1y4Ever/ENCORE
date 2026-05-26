@@ -654,6 +654,7 @@ const stageDisplayLabel = computed(() => {
           <div class="realtime-notice" v-if="realtimeNotice">
             {{ t(realtimeNotice) }}
           </div>
+          <div class="lock-tip">{{ t('seat.lockTip') }}</div>
         </div>
 
         <section class="group-panel" v-if="showGroupFeatures && (isGroupMode || groupOrder)" aria-live="polite">
@@ -1293,6 +1294,12 @@ const stageDisplayLabel = computed(() => {
   .realtime-notice {
     margin-top: var(--spacing-1);
     color: var(--color-text-ghost);
+  }
+
+  .lock-tip {
+    margin-top: var(--spacing-1);
+    color: var(--color-text-ghost);
+    line-height: 1.4;
   }
 
   .group-panel {

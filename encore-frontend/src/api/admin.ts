@@ -39,6 +39,10 @@ export interface AdminShow {
   subtitle: string
   coverUrl: string
   description: string
+  intro?: string | null
+  castMembers?: string | null
+  creativeTeam?: string | null
+  fullSynopsis?: string | null
   duration: number
   category: string
   tags: string[]
@@ -52,6 +56,10 @@ export interface AdminShowPayload {
   subtitle: string
   coverUrl: string
   description: string
+  intro?: string | null
+  castMembers?: string | null
+  creativeTeam?: string | null
+  fullSynopsis?: string | null
   duration: number
   category: string
   tags: string[]

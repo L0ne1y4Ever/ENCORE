@@ -12,7 +12,7 @@ export interface SeatStatusChange {
 
 export interface SeatStatusEvent {
   scheduleId: string
-  reason: 'LOCKED' | 'SOLD' | 'EXPIRED' | 'REFUNDED' | 'CANCELLED'
+  reason: 'LOCKED' | 'SOLD' | 'EXPIRED' | 'REFUNDED' | 'CANCELLED' | 'LOCK_EXPIRED' | 'GROUP_RELEASED'
   timestamp: string
   seats: SeatStatusChange[]
 }

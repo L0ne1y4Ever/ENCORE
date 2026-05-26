@@ -4,6 +4,10 @@ export interface Show {
   subtitle: string
   coverUrl: string
   description: string
+  intro?: string
+  castMembers?: string
+  creativeTeam?: string
+  fullSynopsis?: string
   duration: number
   category: 'Movie' | 'Musical' | 'Play' | 'Concert' | 'Ballet'
   tags: string[]

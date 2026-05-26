@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getShowDetail, getShowSchedules } from '../../api/show'
 import type { Show, Schedule } from '../../mock/shows'
@@ -13,6 +13,11 @@ const schedules = ref<Schedule[]>([])
 const loading = ref(true)
 const showReserveModal = ref(false)
 const reserveEmail = ref('')
+
+const introText = computed(() => show.value?.intro || show.value?.description || '')
+const castText = computed(() => show.value?.castMembers || t('detail.pendingContent'))
+const creativeText = computed(() => show.value?.creativeTeam || t('detail.pendingContent'))
+const fullSynopsisText = computed(() => show.value?.fullSynopsis || show.value?.description || '')
 
 onMounted(async () => {
   const id = route.params.id as string
@@ -78,7 +83,22 @@ const formatTime = (dateStr: string) => {
       <main class="main-desc">
         <section class="synopsis">
           <h2 class="section-title">{{ t('detail.synopsis') }}</h2>
-          <p class="drop-cap">{{ show.description }}</p>
+          <p class="drop-cap">{{ introText }}</p>
+        </section>
+
+        <section class="detail-rich-section">
+          <h2 class="section-title">{{ t('detail.castMembers') }}</h2>
+          <p>{{ castText }}</p>
+        </section>
+
+        <section class="detail-rich-section">
+          <h2 class="section-title">{{ t('detail.creativeTeam') }}</h2>
+          <p>{{ creativeText }}</p>
+        </section>
+
+        <section class="detail-rich-section">
+          <h2 class="section-title">{{ t('detail.fullSynopsis') }}</h2>
+          <p>{{ fullSynopsisText }}</p>
         </section>
 
         <!-- 场次卡片列表 -->
@@ -311,6 +331,17 @@ const formatTime = (dateStr: string) => {
         padding-right: 8px;
         color: var(--color-accent);
       }
+    }
+  }
+
+  .detail-rich-section {
+    p {
+      color: var(--color-text-primary);
+      font-family: var(--font-family-cjk);
+      font-size: 16px;
+      font-weight: 300;
+      line-height: 1.85;
+      white-space: pre-line;
     }
   }
 }

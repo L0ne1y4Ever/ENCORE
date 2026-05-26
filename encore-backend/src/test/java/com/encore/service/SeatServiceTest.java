@@ -13,9 +13,11 @@ import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.ValueOperations;
 
 import java.util.List;
+import java.util.Set;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -34,6 +36,8 @@ class SeatServiceTest {
     private StringRedisTemplate redisTemplate;
     @Mock
     private ValueOperations<String, String> valueOperations;
+    @Mock
+    private SetOperations<String, String> setOperations;
     @Mock
     private SeatStatusPublisher seatStatusPublisher;
     @Mock
@@ -55,6 +59,7 @@ class SeatServiceTest {
         when(showScheduleMapper.selectById("sch-1")).thenReturn(onSaleSchedule());
         when(scheduleSeatMapper.selectList(any())).thenReturn(List.of(seat("seat-1-1")));
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(redisTemplate.opsForSet()).thenReturn(setOperations);
         when(valueOperations.get(anyString())).thenReturn(null);
         when(valueOperations.setIfAbsent(
                 eq("encore:seat-lock:sch-1:seat-1-1"),
@@ -72,6 +77,38 @@ class SeatServiceTest {
                 "sch-1",
                 "LOCKED",
                 "LOCKED",
+                List.of("seat-1-1")
+        );
+    }
+
+    @Test
+    void cleanupExpiredSeatLocksPublishesAvailableEvent() {
+        SeatService service = new SeatService(
+                scheduleSeatMapper,
+                showScheduleMapper,
+                redisTemplate,
+                seatStatusPublisher,
+                scheduleAreaInventoryMapper,
+                venueAreaMapper
+        );
+
+        when(redisTemplate.keys("encore:seat-lock-index:*"))
+                .thenReturn(Set.of("encore:seat-lock-index:sch-1"));
+        when(showScheduleMapper.selectById("sch-1")).thenReturn(onSaleSchedule());
+        when(redisTemplate.opsForSet()).thenReturn(setOperations);
+        when(setOperations.members("encore:seat-lock-index:sch-1")).thenReturn(Set.of("seat-1-1"));
+        when(redisTemplate.hasKey("encore:seat-lock:sch-1:seat-1-1")).thenReturn(false);
+        when(scheduleSeatMapper.selectOne(any())).thenReturn(seat("seat-1-1"));
+        when(setOperations.size("encore:seat-lock-index:sch-1")).thenReturn(0L);
+
+        service.cleanupExpiredSeatLocks();
+
+        verify(setOperations).remove("encore:seat-lock-index:sch-1", "seat-1-1");
+        verify(redisTemplate).delete("encore:seat-lock-index:sch-1");
+        verify(seatStatusPublisher).publishSeatStatus(
+                "sch-1",
+                "LOCK_EXPIRED",
+                "AVAILABLE",
                 List.of("seat-1-1")
         );
     }

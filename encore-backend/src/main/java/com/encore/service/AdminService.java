@@ -163,6 +163,10 @@ public class AdminService {
         show.setSubtitle(clean(request.subtitle()));
         show.setCoverUrl(clean(request.coverUrl()));
         show.setDescription(clean(request.description()));
+        show.setIntro(cleanOptional(request.intro()));
+        show.setCastMembers(cleanOptional(request.castMembers()));
+        show.setCreativeTeam(cleanOptional(request.creativeTeam()));
+        show.setFullSynopsis(cleanOptional(request.fullSynopsis()));
         show.setDuration(request.duration());
         show.setCategory(clean(request.category()));
         show.setTags(normalizeTags(request.tags()));
@@ -181,6 +185,10 @@ public class AdminService {
         show.setSubtitle(clean(request.subtitle()));
         show.setCoverUrl(clean(request.coverUrl()));
         show.setDescription(clean(request.description()));
+        show.setIntro(cleanOptional(request.intro()));
+        show.setCastMembers(cleanOptional(request.castMembers()));
+        show.setCreativeTeam(cleanOptional(request.creativeTeam()));
+        show.setFullSynopsis(cleanOptional(request.fullSynopsis()));
         show.setDuration(request.duration());
         show.setCategory(clean(request.category()));
         show.setTags(normalizeTags(request.tags()));
@@ -535,6 +543,10 @@ public class AdminService {
         return value.trim();
     }
 
+    private String cleanOptional(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
     private List<TicketItem> listTickets(String orderId) {
         return ticketItemMapper.selectList(new LambdaQueryWrapper<TicketItem>()
                 .eq(TicketItem::getOrderId, orderId)
@@ -599,6 +611,7 @@ public class AdminService {
         if (lockKeys != null && !lockKeys.isEmpty()) {
             redisTemplate.delete(lockKeys);
         }
+        redisTemplate.delete("encore:seat-lock-index:%s".formatted(scheduleId));
     }
 
     private List<AdminDashboardResponse.SalesTrendItem> buildSalesTrend(
@@ -703,6 +716,10 @@ public class AdminService {
                 show.getSubtitle(),
                 show.getCoverUrl(),
                 show.getDescription(),
+                show.getIntro(),
+                show.getCastMembers(),
+                show.getCreativeTeam(),
+                show.getFullSynopsis(),
                 show.getDuration(),
                 show.getCategory(),
                 show.getTags(),

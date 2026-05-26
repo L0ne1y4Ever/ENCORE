@@ -7,15 +7,21 @@ import com.encore.dto.CreateOrderRequest;
 import com.encore.dto.OrderResponse;
 import com.encore.dto.TicketItemResponse;
 import com.encore.entity.ScheduleSeat;
+import com.encore.entity.ShowEntity;
+import com.encore.entity.ShowSchedule;
 import com.encore.entity.TicketItem;
 import com.encore.entity.TicketOrder;
 import com.encore.entity.ScheduleAreaInventory;
+import com.encore.entity.UserAccount;
 import com.encore.entity.VenueArea;
 import com.encore.exception.BusinessException;
 import com.encore.mapper.ScheduleSeatMapper;
+import com.encore.mapper.ShowMapper;
+import com.encore.mapper.ShowScheduleMapper;
 import com.encore.mapper.TicketItemMapper;
 import com.encore.mapper.TicketOrderMapper;
 import com.encore.mapper.ScheduleAreaInventoryMapper;
+import com.encore.mapper.UserAccountMapper;
 import com.encore.mapper.VenueAreaMapper;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -42,6 +48,9 @@ public class OrderService {
     private final DashboardRefreshPublisher dashboardRefreshPublisher;
     private final ScheduleAreaInventoryMapper scheduleAreaInventoryMapper;
     private final VenueAreaMapper venueAreaMapper;
+    private final ShowScheduleMapper showScheduleMapper;
+    private final ShowMapper showMapper;
+    private final UserAccountMapper userAccountMapper;
 
     public OrderService(
             TicketOrderMapper ticketOrderMapper,
@@ -51,7 +60,10 @@ public class OrderService {
             SeatStatusPublisher seatStatusPublisher,
             DashboardRefreshPublisher dashboardRefreshPublisher,
             ScheduleAreaInventoryMapper scheduleAreaInventoryMapper,
-            VenueAreaMapper venueAreaMapper
+            VenueAreaMapper venueAreaMapper,
+            ShowScheduleMapper showScheduleMapper,
+            ShowMapper showMapper,
+            UserAccountMapper userAccountMapper
     ) {
         this.ticketOrderMapper = ticketOrderMapper;
         this.ticketItemMapper = ticketItemMapper;
@@ -61,6 +73,9 @@ public class OrderService {
         this.dashboardRefreshPublisher = dashboardRefreshPublisher;
         this.scheduleAreaInventoryMapper = scheduleAreaInventoryMapper;
         this.venueAreaMapper = venueAreaMapper;
+        this.showScheduleMapper = showScheduleMapper;
+        this.showMapper = showMapper;
+        this.userAccountMapper = userAccountMapper;
     }
 
     @Transactional
@@ -203,13 +218,29 @@ public class OrderService {
 
     public OrderResponse getOrderDetail(String orderId) {
         TicketOrder order = getOrder(orderId);
+        ensureCanViewOrder(order);
         expireIfNeeded(order);
         return toOrderResponse(getOrder(orderId));
     }
 
     @Transactional
+    public List<OrderResponse> listMyOrders() {
+        String userId = StpUtil.getLoginIdAsString();
+        return ticketOrderMapper.selectList(new LambdaQueryWrapper<TicketOrder>()
+                        .eq(TicketOrder::getUserId, userId)
+                        .orderByDesc(TicketOrder::getCreatedAt))
+                .stream()
+                .map(order -> {
+                    expireIfNeeded(order);
+                    return toOrderResponse(getOrder(order.getId()));
+                })
+                .toList();
+    }
+
+    @Transactional
     public boolean simulatePayment(String orderId) {
         TicketOrder order = getOrder(orderId);
+        ensureOrderOwner(order);
         expireIfNeeded(order);
         order = getOrder(orderId);
         if ("PAID".equals(order.getStatus())) {
@@ -276,6 +307,25 @@ public class OrderService {
             throw new BusinessException(ErrorCode.NOT_FOUND, "订单不存在");
         }
         return order;
+    }
+
+    private void ensureCanViewOrder(TicketOrder order) {
+        String userId = StpUtil.getLoginIdAsString();
+        if (order.getUserId().equals(userId)) {
+            return;
+        }
+        UserAccount user = userAccountMapper.selectById(userId);
+        if (user != null && ("admin".equals(user.getRole()) || "sysadmin".equals(user.getRole()))) {
+            return;
+        }
+        throw new BusinessException(ErrorCode.UNAUTHORIZED, "无权查看该订单");
+    }
+
+    private void ensureOrderOwner(TicketOrder order) {
+        String userId = StpUtil.getLoginIdAsString();
+        if (!order.getUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "无权操作该订单");
+        }
     }
 
     private void expireIfNeeded(TicketOrder order) {
@@ -410,12 +460,34 @@ public class OrderService {
                 order.getId(),
                 order.getUserId(),
                 order.getScheduleId(),
+                showTitle(order.getScheduleId()),
+                theaterName(order.getScheduleId()),
+                startTime(order.getScheduleId()),
                 order.getTotalAmount(),
                 order.getStatus(),
                 order.getCreatedAt(),
                 order.getExpiresAt(),
                 tickets
         );
+    }
+
+    private String showTitle(String scheduleId) {
+        ShowSchedule schedule = showScheduleMapper.selectById(scheduleId);
+        if (schedule == null) {
+            return null;
+        }
+        ShowEntity show = showMapper.selectById(schedule.getShowId());
+        return show == null ? null : show.getTitle();
+    }
+
+    private String theaterName(String scheduleId) {
+        ShowSchedule schedule = showScheduleMapper.selectById(scheduleId);
+        return schedule == null ? null : schedule.getTheaterName();
+    }
+
+    private LocalDateTime startTime(String scheduleId) {
+        ShowSchedule schedule = showScheduleMapper.selectById(scheduleId);
+        return schedule == null ? null : schedule.getStartTime();
     }
 
     @Scheduled(fixedRate = 5000)

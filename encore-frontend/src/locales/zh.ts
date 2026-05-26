@@ -41,6 +41,7 @@ export default {
     topRecommended: 'Top 8 推荐',
     hotPick: '热门推荐',
     ticketsSold: '张有效票',
+    availableTickets: '剩余 {count} 张可购',
     onSaleSchedules: '个可售场次',
     recommendationsEmpty: '暂无推荐演出。'
   },
@@ -57,6 +58,10 @@ export default {
     duration: '时长',
     tags: '标签',
     synopsis: '剧情简介',
+    castMembers: '演职人员',
+    creativeTeam: '主创团队',
+    fullSynopsis: '详细剧情简介',
+    pendingContent: '内容待补充',
     selectSchedule: '选择场次',
     book: '立即购票',
     reserve: '立即预约',
@@ -94,6 +99,7 @@ export default {
     view2d: '2D 平面选座',
     view3d: '3D 效果预览',
     locking: '锁座中...',
+    lockTip: '座位锁定 15 分钟，超时未支付将自动释放。',
     conflict: '座位状态已变化，请重新选择。',
     live: {
       connecting: '实时同步连接中',
@@ -145,12 +151,26 @@ export default {
     row: '排',
     number: '号',
     statusValid: '状态：有效',
-    unused: '未使用'
+    unused: '未使用',
+    unassigned: '不指定座位'
   },
   profile: {
     personalInfo: '个人资料',
     editNickname: '修改昵称',
-    successSave: '保存成功'
+    successSave: '保存成功',
+    myTickets: '我的票据',
+    orderHistory: '订单记录',
+    viewTicket: '查看电子票',
+    noTickets: '暂无可查看票据。',
+    noOrders: '暂无订单记录。',
+    ordersLoadFailed: '订单加载失败',
+    orderStatus: {
+      pending_payment: '待支付',
+      paid: '已支付',
+      expired: '已过期',
+      cancelled: '已取消',
+      refunded: '已退款'
+    }
   },
   admin: {
     dashboard: '数据看板',
@@ -192,6 +212,10 @@ export default {
     durationMinutes: '时长(分钟)',
     coverUrl: '封面 URL',
     description: '简介',
+    intro: '详情简介',
+    castMembers: '演职人员',
+    creativeTeam: '主创团队',
+    fullSynopsis: '详细剧情简介',
     tags: '标签',
     tagsPlaceholder: '用英文逗号分隔多个标签',
     sortOrder: '排序',

@@ -27,6 +27,7 @@ const toFallbackRecommendations = (source: Show[]): RecommendedShow[] => {
     rank: index + 1,
     ticketsSold: 0,
     availableScheduleCount: show.status === 'ON_SALE' ? 1 : 0,
+    availableTicketCount: 0,
     hotScore: 0
   }))
 }
@@ -55,6 +56,7 @@ onMounted(async () => {
         rank: show.rank || index + 1,
         ticketsSold: show.ticketsSold || 0,
         availableScheduleCount: show.availableScheduleCount || 0,
+        availableTicketCount: show.availableTicketCount || 0,
         hotScore: show.hotScore || 0
       }))
       : toFallbackRecommendations(resolvedShows)
@@ -135,7 +137,7 @@ const goDetail = (id: string) => {
             <h3>{{ show.title }}</h3>
             <p class="recommendation-subtitle">{{ show.subtitle }}</p>
             <div class="recommendation-meta">
-              <span>{{ formatCount(show.ticketsSold) }} {{ t('home.ticketsSold') }}</span>
+              <span>{{ t('home.availableTickets', { count: formatCount(show.availableTicketCount) }) }}</span>
               <span>{{ formatCount(show.availableScheduleCount) }} {{ t('home.onSaleSchedules') }}</span>
             </div>
           </div>
