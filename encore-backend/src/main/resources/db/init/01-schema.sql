@@ -39,21 +39,118 @@ CREATE TABLE IF NOT EXISTS encore_show (
   INDEX idx_encore_show_status_sort (status, sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+CREATE TABLE IF NOT EXISTS venue (
+  id VARCHAR(32) PRIMARY KEY,
+  name VARCHAR(128) NOT NULL,
+  city VARCHAR(64) NULL,
+  address VARCHAR(256) NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_venue_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS venue_hall (
+  id VARCHAR(32) PRIMARY KEY,
+  venue_id VARCHAR(32) NOT NULL,
+  name VARCHAR(128) NOT NULL,
+  hall_type VARCHAR(32) NOT NULL DEFAULT 'THEATER',
+  capacity INT NOT NULL DEFAULT 0,
+  clearance_minutes INT NOT NULL DEFAULT 30,
+  default_layout_id VARCHAR(32) NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_venue_hall_venue (venue_id),
+  CONSTRAINT fk_venue_hall_venue
+    FOREIGN KEY (venue_id) REFERENCES venue (id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS seat_layout (
+  id VARCHAR(32) PRIMARY KEY,
+  hall_id VARCHAR(32) NOT NULL,
+  name VARCHAR(128) NOT NULL,
+  ticket_mode VARCHAR(32) NOT NULL DEFAULT 'SEATED',
+  version INT NOT NULL DEFAULT 1,
+  status VARCHAR(32) NOT NULL DEFAULT 'DRAFT',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_seat_layout_hall_status (hall_id, status),
+  CONSTRAINT fk_seat_layout_hall
+    FOREIGN KEY (hall_id) REFERENCES venue_hall (id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS seat_layout_area (
+  id VARCHAR(32) PRIMARY KEY,
+  layout_id VARCHAR(32) NOT NULL,
+  name VARCHAR(64) NOT NULL,
+  code VARCHAR(32) NOT NULL,
+  area_type VARCHAR(32) NOT NULL,
+  is_seated BOOLEAN NOT NULL DEFAULT FALSE,
+  capacity INT NOT NULL,
+  base_price DECIMAL(10, 2) NOT NULL,
+  color VARCHAR(32) NULL,
+  description VARCHAR(256) NULL,
+  position_data TEXT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_seat_layout_area_layout (layout_id),
+  CONSTRAINT fk_seat_layout_area_layout
+    FOREIGN KEY (layout_id) REFERENCES seat_layout (id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS seat_layout_seat (
+  id VARCHAR(64) PRIMARY KEY,
+  layout_id VARCHAR(32) NOT NULL,
+  area_id VARCHAR(32) NULL,
+  seat_code VARCHAR(32) NOT NULL,
+  row_no INT NOT NULL,
+  col_no INT NOT NULL,
+  section VARCHAR(32) NOT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'AVAILABLE',
+  price DECIMAL(10, 2) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_layout_seat_code (layout_id, seat_code),
+  INDEX idx_seat_layout_seat_layout_area (layout_id, area_id),
+  CONSTRAINT fk_seat_layout_seat_layout
+    FOREIGN KEY (layout_id) REFERENCES seat_layout (id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_seat_layout_seat_area
+    FOREIGN KEY (area_id) REFERENCES seat_layout_area (id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE IF NOT EXISTS show_schedule (
   id VARCHAR(32) PRIMARY KEY,
   show_id VARCHAR(32) NOT NULL,
+  hall_id VARCHAR(32) NULL,
+  layout_id VARCHAR(32) NULL,
   theater_name VARCHAR(128) NOT NULL,
+  business_date DATE NULL,
   start_time DATETIME NOT NULL,
   end_time DATETIME NOT NULL,
+  sale_start_time DATETIME NULL,
+  sale_end_time DATETIME NULL,
   status VARCHAR(32) NOT NULL,
+  publish_status VARCHAR(32) NOT NULL DEFAULT 'PUBLISHED',
   price_range VARCHAR(64) NOT NULL,
   ticket_mode VARCHAR(32) NOT NULL DEFAULT 'SEATED',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_show_schedule_show_time (show_id, start_time),
+  INDEX idx_show_schedule_hall_time (hall_id, start_time, end_time),
+  INDEX idx_show_schedule_business_date (business_date),
   CONSTRAINT fk_show_schedule_show
     FOREIGN KEY (show_id) REFERENCES encore_show (id)
-    ON DELETE CASCADE
+    ON DELETE CASCADE,
+  CONSTRAINT fk_show_schedule_hall
+    FOREIGN KEY (hall_id) REFERENCES venue_hall (id),
+  CONSTRAINT fk_show_schedule_layout
+    FOREIGN KEY (layout_id) REFERENCES seat_layout (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS schedule_seat (

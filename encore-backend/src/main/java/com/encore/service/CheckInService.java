@@ -174,6 +174,7 @@ public class CheckInService {
         return new CheckInScheduleResponse(
                 schedule.getId(),
                 show == null ? "Unknown Show" : show.getTitle(),
+                show == null ? "Unknown" : show.getCategory(),
                 schedule.getTheaterName(),
                 schedule.getStartTime(),
                 schedule.getEndTime(),

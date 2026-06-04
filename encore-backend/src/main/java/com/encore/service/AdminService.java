@@ -12,6 +12,7 @@ import com.encore.dto.CreateShowRequest;
 import com.encore.dto.UpdateScheduleRequest;
 import com.encore.dto.UpdateShowRequest;
 import com.encore.entity.ScheduleSeat;
+import com.encore.entity.SeatLayout;
 import com.encore.entity.ShowEntity;
 import com.encore.entity.ShowSchedule;
 import com.encore.entity.TicketItem;
@@ -56,7 +57,7 @@ public class AdminService {
     private static final BigDecimal DEFAULT_ECONOMY_PRICE = BigDecimal.valueOf(50);
     private static final Set<String> ADMIN_ROLES = Set.of("admin", "sysadmin");
     private static final Set<String> SCHEDULE_STATUSES = Set.of(
-            "COMING_SOON", "PREPARING", "ON_SALE", "SOLD_OUT", "CANCELLED"
+            "DRAFT", "PUBLISHED", "COMING_SOON", "PREPARING", "ON_SALE", "SOLD_OUT", "CANCELLED", "ENDED"
             );
     private static final Set<String> SHOW_STATUSES = Set.of("DRAFT", "PUBLISHED", "ARCHIVED");
 
@@ -71,6 +72,8 @@ public class AdminService {
     private final DashboardRefreshPublisher dashboardRefreshPublisher;
     private final VenueAreaMapper venueAreaMapper;
     private final ScheduleAreaInventoryMapper scheduleAreaInventoryMapper;
+    private final VenueManagementService venueManagementService;
+    private final SeatService seatService;
 
     public AdminService(
             ShowScheduleMapper showScheduleMapper,
@@ -83,7 +86,9 @@ public class AdminService {
             SeatStatusPublisher seatStatusPublisher,
             DashboardRefreshPublisher dashboardRefreshPublisher,
             VenueAreaMapper venueAreaMapper,
-            ScheduleAreaInventoryMapper scheduleAreaInventoryMapper
+            ScheduleAreaInventoryMapper scheduleAreaInventoryMapper,
+            VenueManagementService venueManagementService,
+            SeatService seatService
     ) {
         this.showScheduleMapper = showScheduleMapper;
         this.showMapper = showMapper;
@@ -96,6 +101,8 @@ public class AdminService {
         this.dashboardRefreshPublisher = dashboardRefreshPublisher;
         this.venueAreaMapper = venueAreaMapper;
         this.scheduleAreaInventoryMapper = scheduleAreaInventoryMapper;
+        this.venueManagementService = venueManagementService;
+        this.seatService = seatService;
     }
 
     public AdminDashboardResponse dashboard() {
@@ -241,10 +248,13 @@ public class AdminService {
         ShowSchedule schedule = new ShowSchedule();
         schedule.setId(generateScheduleId());
         schedule.setShowId(clean(request.showId()));
-        schedule.setTheaterName(clean(request.theaterName()));
         schedule.setStartTime(request.startTime());
         schedule.setEndTime(request.endTime());
+        schedule.setBusinessDate(request.startTime().toLocalDate());
+        schedule.setSaleStartTime(request.saleStartTime());
+        schedule.setSaleEndTime(request.saleEndTime());
         schedule.setStatus(StringUtils.hasText(request.status()) ? normalizeScheduleStatus(request.status()) : "PREPARING");
+        schedule.setPublishStatus(StringUtils.hasText(request.publishStatus()) ? request.publishStatus().trim().toUpperCase() : "DRAFT");
         schedule.setPriceRange(clean(request.priceRange()));
 
         String mode = request.ticketMode();
@@ -252,9 +262,36 @@ public class AdminService {
             mode = "SEATED";
         }
         schedule.setTicketMode(mode);
+
+        SeatLayout layout = null;
+        if (StringUtils.hasText(request.layoutId())) {
+            layout = venueManagementService.getPublishedLayout(request.layoutId());
+            schedule.setLayoutId(layout.getId());
+            schedule.setHallId(layout.getHallId());
+            schedule.setTicketMode(layout.getTicketMode());
+        } else if (StringUtils.hasText(request.hallId())) {
+            schedule.setHallId(clean(request.hallId()));
+        }
+        if (StringUtils.hasText(schedule.getHallId())) {
+            var hall = venueManagementService.getHall(schedule.getHallId());
+            if (layout == null && StringUtils.hasText(hall.getDefaultLayoutId())) {
+                layout = venueManagementService.getPublishedLayout(hall.getDefaultLayoutId());
+                schedule.setLayoutId(layout.getId());
+                schedule.setTicketMode(layout.getTicketMode());
+            }
+            schedule.setTheaterName(hall.getName());
+            venueManagementService.ensureScheduleConflictFree(null, schedule.getHallId(), schedule.getStartTime(), schedule.getEndTime());
+        } else {
+            if (!StringUtils.hasText(request.theaterName())) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "请选择场馆厅或填写剧场名称");
+            }
+            schedule.setTheaterName(clean(request.theaterName()));
+        }
         showScheduleMapper.insert(schedule);
 
-        if ("SEATED".equals(mode)) {
+        if (layout != null) {
+            venueManagementService.snapshotLayoutToSchedule(layout, schedule);
+        } else if ("SEATED".equals(mode)) {
             generateSeatPool(
                     schedule.getId(),
                     request.seatRows() == null ? DEFAULT_SEAT_ROWS : request.seatRows(),
@@ -273,6 +310,8 @@ public class AdminService {
                 inventory.setScheduleId(schedule.getId());
                 inventory.setAreaId(area.getId());
                 inventory.setPrice(area.getBasePrice());
+                // 座位区(看台)的库存真相源是 schedule_seat，本行仅作区域注册/价格/枚举；
+                // 下方为座位区按 capacity 逐座位生成，故 total/available 初值与座位数一致。
                 inventory.setTotalCount(area.getCapacity());
                 inventory.setAvailableCount(area.getCapacity());
                 inventory.setLockedCount(0);
@@ -319,13 +358,22 @@ public class AdminService {
         validateScheduleTime(request.startTime(), request.endTime());
 
         schedule.setShowId(clean(request.showId()));
+        schedule.setHallId(cleanOptional(request.hallId()));
+        schedule.setLayoutId(cleanOptional(request.layoutId()));
         schedule.setTheaterName(clean(request.theaterName()));
         schedule.setStartTime(request.startTime());
         schedule.setEndTime(request.endTime());
+        schedule.setBusinessDate(request.startTime().toLocalDate());
+        schedule.setSaleStartTime(request.saleStartTime());
+        schedule.setSaleEndTime(request.saleEndTime());
         schedule.setStatus(normalizeScheduleStatus(request.status()));
+        schedule.setPublishStatus(StringUtils.hasText(request.publishStatus()) ? request.publishStatus().trim().toUpperCase() : schedule.getPublishStatus());
         schedule.setPriceRange(clean(request.priceRange()));
         if (request.ticketMode() != null) {
             schedule.setTicketMode(request.ticketMode());
+        }
+        if (StringUtils.hasText(schedule.getHallId())) {
+            venueManagementService.ensureScheduleConflictFree(scheduleId, schedule.getHallId(), schedule.getStartTime(), schedule.getEndTime());
         }
         showScheduleMapper.updateById(schedule);
         if ("CANCELLED".equals(schedule.getStatus())) {
@@ -398,6 +446,7 @@ public class AdminService {
                 ticketItemMapper.updateById(ticket);
             }
             scheduleAreaInventoryMapper.refundInventory(areaInventoryId, quantity);
+            seatService.publishAreaInventory(order.getScheduleId(), "AREA_REFUNDED", areaInventoryId);
         } else {
             for (TicketItem ticket : tickets) {
                 ticket.setStatus("VOID");
@@ -744,28 +793,31 @@ public class AdminService {
         long disabledSeats = countSeats(seats, "DISABLED");
 
         if ("ZONED".equals(schedule.getTicketMode()) || "MIXED".equals(schedule.getTicketMode())) {
-            List<ScheduleAreaInventory> inventories = scheduleAreaInventoryMapper.selectList(
-                    new LambdaQueryWrapper<ScheduleAreaInventory>().eq(ScheduleAreaInventory::getScheduleId, schedule.getId())
-            );
-            long zonedTotal = inventories.stream().mapToLong(ScheduleAreaInventory::getTotalCount).sum();
-            long zonedAvailable = inventories.stream().mapToLong(ScheduleAreaInventory::getAvailableCount).sum();
-            long zonedLocked = inventories.stream().mapToLong(ScheduleAreaInventory::getLockedCount).sum();
-            long zonedSold = inventories.stream().mapToLong(ScheduleAreaInventory::getSoldCount).sum();
-
-            totalSeats = zonedTotal;
-            availableSeats = zonedAvailable;
-            lockedSeatsVal = zonedLocked;
-            soldSeats = zonedSold;
+            // Reuse the per-area counts (non-seated from inventory, seated derived from
+            // schedule_seat) so MIXED seated areas are not double-counted as full capacity.
+            var areaResponses = seatService.listScheduleAreas(schedule.getId());
+            totalSeats = areaResponses.stream().mapToLong(a -> a.totalCount() == null ? 0 : a.totalCount()).sum();
+            availableSeats = areaResponses.stream().mapToLong(a -> a.availableCount() == null ? 0 : a.availableCount()).sum();
+            lockedSeatsVal = areaResponses.stream().mapToLong(a -> a.lockedCount() == null ? 0 : a.lockedCount()).sum();
+            soldSeats = areaResponses.stream().mapToLong(a -> a.soldCount() == null ? 0 : a.soldCount()).sum();
         }
 
         return new AdminScheduleResponse(
                 schedule.getId(),
                 schedule.getShowId(),
                 show == null ? "Unknown Show" : show.getTitle(),
+                show == null ? "Unknown" : show.getCategory(),
+                schedule.getHallId(),
+                hallName(schedule.getHallId()),
+                schedule.getLayoutId(),
+                layoutName(schedule.getLayoutId()),
                 schedule.getTheaterName(),
                 schedule.getStartTime(),
                 schedule.getEndTime(),
+                schedule.getSaleStartTime(),
+                schedule.getSaleEndTime(),
                 schedule.getStatus(),
+                schedule.getPublishStatus() == null ? "DRAFT" : schedule.getPublishStatus(),
                 schedule.getPriceRange(),
                 schedule.getTicketMode(),
                 totalSeats,
@@ -776,6 +828,28 @@ public class AdminService {
                 tickets.stream().filter(ticket -> "UNUSED".equals(ticket.getStatus()) || "CHECKED_IN".equals(ticket.getStatus())).count(),
                 tickets.stream().filter(ticket -> "CHECKED_IN".equals(ticket.getStatus())).count()
         );
+    }
+
+    private String hallName(String hallId) {
+        if (!StringUtils.hasText(hallId)) {
+            return null;
+        }
+        try {
+            return venueManagementService.getHall(hallId).getName();
+        } catch (BusinessException ignored) {
+            return null;
+        }
+    }
+
+    private String layoutName(String layoutId) {
+        if (!StringUtils.hasText(layoutId)) {
+            return null;
+        }
+        try {
+            return venueManagementService.getLayout(layoutId).getName();
+        } catch (BusinessException ignored) {
+            return null;
+        }
     }
 
     private long countSeats(List<ScheduleSeat> seats, String status) {

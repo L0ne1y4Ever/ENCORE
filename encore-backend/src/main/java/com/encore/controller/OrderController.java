@@ -42,4 +42,14 @@ public class OrderController {
     public ApiResponse<Boolean> simulatePayment(@PathVariable String id) {
         return ApiResponse.ok(orderService.simulatePayment(id));
     }
+
+    @PostMapping("/{id}/cancel")
+    public ApiResponse<OrderResponse> cancelOrder(@PathVariable String id) {
+        return ApiResponse.ok(orderService.cancelOrder(id));
+    }
+
+    @PostMapping("/{id}/refund")
+    public ApiResponse<OrderResponse> refundOrder(@PathVariable String id) {
+        return ApiResponse.ok(orderService.refundOrder(id));
+    }
 }

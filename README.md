@@ -99,3 +99,5 @@ npm run build
 ```
 
 Current verification summary is recorded in [docs/test-report.md](docs/test-report.md). Demo flow guidance is in [docs/user-manual.md](docs/user-manual.md), and screenshot evidence for the purchase flow is in [docs/demo-evidence/2026-05-17-purchase-flow.md](docs/demo-evidence/2026-05-17-purchase-flow.md).
+
+Server database synchronization and Flyway migration steps are documented in [docs/server-database-sync.md](docs/server-database-sync.md).

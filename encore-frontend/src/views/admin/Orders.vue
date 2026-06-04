@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { forceCheckInAdminOrder, getAdminOrders, refundAdminOrder } from '../../api/admin'
@@ -10,6 +10,20 @@ const { t } = useI18n()
 const tableData = ref<AdminOrder[]>([])
 const loading = ref(false)
 const operatingId = ref('')
+const statusFilter = ref('')
+const sortKey = ref<'createdDesc' | 'createdAsc' | 'amountDesc' | 'showName'>('createdDesc')
+
+const orderStatusOptions = ['PENDING_PAYMENT', 'PAID', 'EXPIRED', 'CANCELLED', 'REFUNDED']
+
+const filteredOrders = computed(() => {
+  const rows = tableData.value.filter(row => !statusFilter.value || row.status === statusFilter.value)
+  return [...rows].sort((left, right) => {
+    if (sortKey.value === 'createdAsc') return left.createdAt.localeCompare(right.createdAt)
+    if (sortKey.value === 'amountDesc') return Number(right.totalAmount) - Number(left.totalAmount)
+    if (sortKey.value === 'showName') return left.showName.localeCompare(right.showName) || right.createdAt.localeCompare(left.createdAt)
+    return right.createdAt.localeCompare(left.createdAt)
+  })
+})
 
 const loadOrders = async () => {
   loading.value = true
@@ -90,13 +104,24 @@ const handleCheckin = async (row: AdminOrder) => {
   <div class="orders-page">
     <div class="page-header">
       <h1>{{ t('admin.orders') }}</h1>
-      <el-button type="primary" plain :loading="loading" @click="loadOrders">
-        {{ t('admin.refresh') }}
-      </el-button>
+      <div class="header-actions">
+        <el-select v-model="statusFilter" class="compact-filter" clearable :placeholder="t('admin.allStatuses')">
+          <el-option v-for="status in orderStatusOptions" :key="status" :label="status" :value="status" />
+        </el-select>
+        <el-select v-model="sortKey" class="sort-filter" :placeholder="t('admin.sortBy')">
+          <el-option value="createdDesc" :label="t('admin.sortCreatedDesc')" />
+          <el-option value="createdAsc" :label="t('admin.sortCreatedAsc')" />
+          <el-option value="amountDesc" :label="t('admin.sortAmountDesc')" />
+          <el-option value="showName" :label="t('admin.sortShowName')" />
+        </el-select>
+        <el-button type="primary" plain :loading="loading" @click="loadOrders">
+          {{ t('admin.refresh') }}
+        </el-button>
+      </div>
     </div>
 
     <div class="table-container">
-      <el-table :data="tableData" style="width: 100%" :empty-text="t('admin.empty')" v-loading="loading">
+      <el-table :data="filteredOrders" style="width: 100%" :empty-text="t('admin.empty')" v-loading="loading">
         <el-table-column prop="id" :label="t('admin.orderId')" width="120" />
         <el-table-column prop="username" :label="t('admin.user')" width="120" />
         <el-table-column prop="showName" :label="t('admin.shows')" min-width="200" />
@@ -169,6 +194,22 @@ const handleCheckin = async (row: AdminOrder) => {
     font-family: var(--font-family-display);
     font-size: 32px;
   }
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.compact-filter {
+  width: 150px;
+}
+
+.sort-filter {
+  width: 160px;
 }
 
 .table-container {

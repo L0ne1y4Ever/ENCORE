@@ -1,5 +1,6 @@
 package com.encore.service;
 
+import com.encore.dto.AreaStatusChange;
 import com.encore.dto.SeatStatusChange;
 import com.encore.dto.SeatStatusEvent;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -27,11 +28,20 @@ public class SeatStatusPublisher {
     }
 
     public void publish(String scheduleId, String reason, List<SeatStatusChange> seats) {
+        send(scheduleId, reason, seats, List.of());
+    }
+
+    public void publishAreaStatus(String scheduleId, String reason, List<AreaStatusChange> areas) {
+        send(scheduleId, reason, List.of(), areas);
+    }
+
+    private void send(String scheduleId, String reason, List<SeatStatusChange> seats, List<AreaStatusChange> areas) {
         SeatStatusEvent event = new SeatStatusEvent(
                 scheduleId,
                 reason,
                 LocalDateTime.now(),
-                seats
+                seats,
+                areas
         );
         messagingTemplate.convertAndSend("/topic/schedules/%s/seats".formatted(scheduleId), event);
     }

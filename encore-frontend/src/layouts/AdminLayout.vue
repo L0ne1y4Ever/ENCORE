@@ -10,13 +10,25 @@ const router = useRouter()
 const authStore = useAuthStore()
 const { t } = useI18n()
 
-const menuItems = computed(() => [
-  { path: '/admin', label: t('admin.dashboard'), icon: 'Histogram' },
-  { path: '/admin/shows', label: t('admin.shows'), icon: 'Film' },
-  { path: '/admin/schedules', label: t('admin.schedules'), icon: 'Calendar' },
-  { path: '/admin/orders', label: t('admin.orders'), icon: 'List' },
-  { path: '/admin/ai', label: t('admin.ai'), icon: 'Cpu' },
-])
+const menuItems = computed(() => {
+  const items = [
+    { path: '/admin', label: t('admin.dashboard'), icon: 'Histogram' },
+    { path: '/admin/shows', label: t('admin.shows'), icon: 'Film' },
+    { path: '/admin/venues', label: t('admin.venues'), icon: 'OfficeBuilding' },
+    { path: '/admin/layouts', label: t('admin.layouts'), icon: 'Grid' },
+    { path: '/admin/schedules', label: t('admin.schedules'), icon: 'Calendar' },
+    { path: '/admin/orders', label: t('admin.orders'), icon: 'List' },
+  ]
+  if (authStore.currentUser?.role === 'sysadmin') {
+    items.push({ path: '/admin/users', label: t('admin.staffUsers'), icon: 'UserFilled' })
+  }
+  return items
+})
+
+const isActive = (path: string) => {
+  if (path === '/admin') return route.path === '/admin'
+  return route.path === path || route.path.startsWith(`${path}/`)
+}
 
 const logout = async () => {
   await authStore.logout()
@@ -33,7 +45,7 @@ const logout = async () => {
           v-for="item in menuItems" 
           :key="item.path"
           class="menu-item"
-          :class="{ active: route.path === item.path }"
+          :class="{ active: isActive(item.path) }"
           @click="router.push(item.path)"
         >
           {{ item.label }}

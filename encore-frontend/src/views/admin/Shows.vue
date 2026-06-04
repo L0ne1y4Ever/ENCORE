@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -40,6 +40,9 @@ const saving = ref(false)
 const operatingId = ref('')
 const dialogVisible = ref(false)
 const dialogMode = ref<DialogMode>('create')
+const categoryFilter = ref('')
+const statusFilter = ref('')
+const sortKey = ref<'sortOrder' | 'category' | 'title' | 'scheduleDesc'>('sortOrder')
 
 const emptyForm = (): ShowForm => ({
   id: '',
@@ -59,6 +62,20 @@ const emptyForm = (): ShowForm => ({
 })
 
 const form = reactive<ShowForm>(emptyForm())
+
+const filteredShows = computed(() => {
+  const rows = tableData.value.filter(row => {
+    if (categoryFilter.value && row.category !== categoryFilter.value) return false
+    if (statusFilter.value && row.status !== statusFilter.value) return false
+    return true
+  })
+  return [...rows].sort((left, right) => {
+    if (sortKey.value === 'category') return `${left.category}-${left.sortOrder}`.localeCompare(`${right.category}-${right.sortOrder}`)
+    if (sortKey.value === 'title') return left.title.localeCompare(right.title)
+    if (sortKey.value === 'scheduleDesc') return right.scheduleCount - left.scheduleCount || left.sortOrder - right.sortOrder
+    return left.sortOrder - right.sortOrder || left.title.localeCompare(right.title)
+  })
+})
 
 const resetForm = () => {
   Object.assign(form, emptyForm())
@@ -223,6 +240,20 @@ const handleDelete = async (row: AdminShow) => {
     <div class="page-header">
       <h1>{{ t('admin.showsManagement') }}</h1>
       <div class="header-actions">
+        <el-select v-model="categoryFilter" class="compact-filter" clearable :placeholder="t('admin.allCategories')">
+          <el-option v-for="category in categoryOptions" :key="category" :label="categoryLabel(category)" :value="category" />
+        </el-select>
+        <el-select v-model="statusFilter" class="compact-filter" clearable :placeholder="t('admin.allStatuses')">
+          <el-option value="DRAFT" :label="statusLabel('DRAFT')" />
+          <el-option value="PUBLISHED" :label="statusLabel('PUBLISHED')" />
+          <el-option value="ARCHIVED" :label="statusLabel('ARCHIVED')" />
+        </el-select>
+        <el-select v-model="sortKey" class="sort-filter" :placeholder="t('admin.sortBy')">
+          <el-option value="sortOrder" :label="t('admin.sortOrder')" />
+          <el-option value="category" :label="t('admin.sortCategory')" />
+          <el-option value="title" :label="t('admin.sortTitle')" />
+          <el-option value="scheduleDesc" :label="t('admin.sortScheduleDesc')" />
+        </el-select>
         <el-button type="primary" plain :loading="loading" @click="loadShows">
           {{ t('admin.refresh') }}
         </el-button>
@@ -233,7 +264,7 @@ const handleDelete = async (row: AdminShow) => {
     </div>
 
     <div class="table-container">
-      <el-table :data="tableData" style="width: 100%" :empty-text="t('admin.empty')" v-loading="loading">
+      <el-table :data="filteredShows" style="width: 100%" :empty-text="t('admin.empty')" v-loading="loading">
         <el-table-column prop="id" label="ID" width="125" />
         <el-table-column :label="t('admin.title')" min-width="240">
           <template #default="{ row }">
@@ -388,6 +419,16 @@ const handleDelete = async (row: AdminShow) => {
   display: flex;
   align-items: center;
   gap: var(--spacing-3);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.compact-filter {
+  width: 132px;
+}
+
+.sort-filter {
+  width: 168px;
 }
 
 .table-container {

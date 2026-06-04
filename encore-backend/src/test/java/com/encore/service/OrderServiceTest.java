@@ -3,6 +3,7 @@ package com.encore.service;
 import cn.dev33.satoken.stp.StpUtil;
 import com.encore.dto.OrderResponse;
 import com.encore.entity.ScheduleSeat;
+import com.encore.entity.ShowSchedule;
 import com.encore.entity.TicketItem;
 import com.encore.entity.TicketOrder;
 import com.encore.exception.BusinessException;
@@ -135,6 +136,61 @@ class OrderServiceTest {
         assertThat(responses).hasSize(1);
         assertThat(responses.get(0).id()).isEqualTo("ord-1");
         assertThat(responses.get(0).tickets()).hasSize(1);
+    }
+
+    @Test
+    void cancelPendingOrderReleasesSeatLocks() {
+        OrderService service = createService();
+        TicketOrder order = pendingOrder(LocalDateTime.now().plusMinutes(10));
+        TicketItem ticket = ticket();
+
+        when(ticketOrderMapper.selectById("ord-1")).thenReturn(order);
+        when(ticketItemMapper.selectList(any())).thenReturn(List.of(ticket));
+
+        OrderResponse response;
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-1");
+            response = service.cancelOrder("ord-1");
+        }
+
+        assertThat(response.status()).isEqualTo("CANCELLED");
+        assertThat(ticket.getStatus()).isEqualTo("VOID");
+        verify(seatService).releaseLocks("sch-1", List.of("seat-1-1"));
+        verify(seatStatusPublisher).publishSeatStatus("sch-1", "ORDER_CANCELLED", "AVAILABLE", List.of("seat-1-1"));
+        verify(dashboardRefreshPublisher).publish("ORDER_CANCELLED", "ord-1");
+    }
+
+    @Test
+    void refundPaidOrderRestoresUnsoldSeatsBeforeDeadline() {
+        OrderService service = createService();
+        TicketOrder order = pendingOrder(LocalDateTime.now().plusMinutes(10));
+        order.setStatus("PAID");
+        TicketItem ticket = ticket();
+        ticket.setStatus("UNUSED");
+        ShowSchedule schedule = new ShowSchedule();
+        schedule.setId("sch-1");
+        schedule.setStartTime(LocalDateTime.now().plusDays(1));
+        schedule.setTheaterName("Main Hall");
+        ScheduleSeat soldSeat = availableSeat();
+        soldSeat.setStatus("SOLD");
+
+        when(ticketOrderMapper.selectById("ord-1")).thenReturn(order);
+        when(ticketItemMapper.selectList(any())).thenReturn(List.of(ticket));
+        when(showScheduleMapper.selectById("sch-1")).thenReturn(schedule);
+        when(scheduleSeatMapper.selectOne(any())).thenReturn(soldSeat);
+
+        OrderResponse response;
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-1");
+            response = service.refundOrder("ord-1");
+        }
+
+        assertThat(response.status()).isEqualTo("REFUNDED");
+        assertThat(ticket.getStatus()).isEqualTo("VOID");
+        assertThat(soldSeat.getStatus()).isEqualTo("AVAILABLE");
+        verify(scheduleSeatMapper).updateById(soldSeat);
+        verify(seatStatusPublisher).publishSeatStatus("sch-1", "USER_REFUNDED", "AVAILABLE", List.of("seat-1-1"));
+        verify(dashboardRefreshPublisher).publish("ORDER_REFUNDED", "ord-1");
     }
 
     @Test

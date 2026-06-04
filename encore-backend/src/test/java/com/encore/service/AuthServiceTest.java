@@ -88,6 +88,18 @@ class AuthServiceTest {
         }
     }
 
+    @Test
+    void loginRejectsInactiveStaffAccount() {
+        AuthService service = new AuthService(userAccountMapper);
+        UserAccount checker = user("u-checker", "checker2", "checker", "INACTIVE");
+        checker.setPassword("123");
+        when(userAccountMapper.selectOne(any())).thenReturn(checker);
+
+        assertThatThrownBy(() -> service.login(new LoginRequest("checker2", "123")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("用户名或密码错误");
+    }
+
     private SaTokenInfo tokenInfo() {
         SaTokenInfo tokenInfo = new SaTokenInfo();
         tokenInfo.setTokenName("satoken");

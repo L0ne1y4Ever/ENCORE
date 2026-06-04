@@ -13,13 +13,17 @@ Use this checklist to prepare the final course defense.
 - Backend can start with `mvn spring-boot:run`.
 - MySQL and Redis can start through Docker Compose.
 - Full container preview config validates with `docker compose -f docker-compose.full.yml config`.
+- Flyway runs automatically when the backend starts and upgrades old MySQL schemas without deleting existing orders, tickets, seats, or check-in records.
+- A fresh empty MySQL database can be bootstrapped by Flyway V1+V2 and still exposes the demo accounts and default showtimes.
 - `GET /api/health` returns `code:0`.
 - Backend login and show APIs can read initialized MySQL data.
+- Public `GET /api/shows` and `GET /api/shows/recommendations/top8` return `code:0`.
 - Frontend login page authenticates through backend auth API.
 - Frontend home and show detail pages read backend show APIs.
 - Chinese/English switch is available on login, user, admin, and check-in screens.
 - Language selection persists after navigation and refresh.
 - Demo accounts are available.
+- Movie, Musical, Play, Concert, and Ballet each have at least one `PUBLISHED` show and one future `ON_SALE` schedule.
 
 ## User Flow
 
@@ -65,6 +69,7 @@ Use this checklist to prepare the final course defense.
 
 - Admin logs in with `admin / 123`.
 - Admin views dashboard metrics.
+- Admin dashboard, venue management, layout management, schedule management, and schedule inventory pages load without server-internal-error responses after Flyway migration.
 - Dashboard shows real paid revenue, sold tickets, active shows, attendance, 7-day sales trend, top shows, and check-in summary.
 - Dashboard auto-refreshes when paid/refunded/check-in/show-change events arrive over WebSocket.
 - Admin manages shows through backend CRUD APIs.
@@ -74,9 +79,17 @@ Use this checklist to prepare the final course defense.
 - Admin archives a show through soft delete.
 - Public show list only displays `PUBLISHED` shows.
 - Admin manages schedules through backend data.
+- Admin manages real venues and halls before scheduling.
+- Admin creates or reviews published layout versions for a hall.
 - Admin creates a schedule for an existing show.
-- Admin-generated schedules create a seat pool.
+- Admin creates schedules from a selected hall and published layout version.
+- Conflicting schedules in the same hall/time window are rejected by the backend.
+- Admin-generated schedules create independent seat and inventory snapshots.
 - Admin edits schedule theater, time, status, and price range.
+- Admin uses the list/calendar schedule view to review排片.
+- Admin opens the schedule inventory page.
+- Admin disables/restores unsold fixed seats.
+- Admin adjusts area inventory without going below locked + sold counts.
 - Admin changes schedule status through backend API.
 - Admin cancels a schedule through soft delete.
 - Admin views backend orders.

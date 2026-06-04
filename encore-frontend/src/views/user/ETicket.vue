@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { getOrderDetail } from '../../api/order'
-import type { Order } from '../../mock/orders'
+import type { Order, TicketItem } from '../../mock/orders'
 import { useI18n } from 'vue-i18n'
 
 const route = useRoute()
@@ -28,6 +28,18 @@ const formatDate = (dateStr: string) => {
   const time = d.toLocaleTimeString(dateLocale, { hour: '2-digit', minute: '2-digit' })
   return { date, time }
 }
+
+const areaDisplay = (ticket: TicketItem) => {
+  return ticket.areaName || ticket.areaType || (ticket.seatId ? t('ticket.seatGeneral') : t('ticket.freeArea'))
+}
+
+const seatDisplay = (ticket: TicketItem) => {
+  if (!ticket.seatId) return t('ticket.unassigned')
+  if (ticket.rowNo != null && ticket.colNo != null) {
+    return t('seat.info', { row: ticket.rowNo, col: ticket.colNo })
+  }
+  return ticket.seatLabel || ticket.seatId
+}
 </script>
 
 <template>
@@ -39,7 +51,7 @@ const formatDate = (dateStr: string) => {
           v-for="ticket in order.tickets || []"
           :key="ticket.id"
         >
-          <div class="ticket-card" :class="{'vip-ticket': ticket.seatId ? ticket.seatId.includes('VIP') : ticket.areaType === 'VIP'}">
+          <div class="ticket-card" :class="{'vip-ticket': ticket.areaType === 'VIP'}">
             <!-- 票全息涂层/反光 -->
             <div class="foil-overlay"></div>
 
@@ -66,32 +78,15 @@ const formatDate = (dateStr: string) => {
             <div class="t-seat">
               <div class="s-label">{{ t('ticket.seat') }}</div>
 
-              <!-- Seated Tickets -->
-              <div class="s-details" v-if="ticket.seatId">
-                <div class="s-item">
-                  <div class="sm">{{ t('ticket.section') }}</div>
-                  <div class="lg">{{ ticket.seatId.includes('VIP') ? 'VIP' : 'STD' }}</div>
-                </div>
-                <div class="s-item">
-                  <div class="sm">{{ t('ticket.row') }}</div>
-                  <div class="lg">{{ ticket.seatId.split('-')[1] }}</div>
-                </div>
-                <div class="s-item">
-                  <div class="sm">{{ t('ticket.number') }}</div>
-                  <div class="lg">{{ ticket.seatId.split('-')[2] }}</div>
-                </div>
-              </div>
-
-              <!-- Zoned Tickets -->
-              <div class="s-details-zoned" v-else>
+              <div class="s-details-zoned">
                 <div class="zoned-main">
                   <div class="sm">{{ t('ticket.section') }}</div>
-                  <div class="lg-name">{{ ticket.areaName || '自由区域' }}</div>
+                  <div class="lg-name">{{ areaDisplay(ticket) }}</div>
                 </div>
                 <div class="zoned-info">
-                  <div class="sm">座位信息 / SEAT</div>
-                  <div class="lg-label">不指定座位</div>
-                  <div class="instructions">凭票入场，区域内自由站立</div>
+                  <div class="sm">{{ t('ticket.seatInfo') }}</div>
+                  <div class="lg-label">{{ seatDisplay(ticket) }}</div>
+                  <div class="instructions" v-if="!ticket.seatId">{{ t('ticket.standingInstructions') }}</div>
                 </div>
               </div>
             </div>

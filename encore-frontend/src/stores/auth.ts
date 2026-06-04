@@ -66,6 +66,7 @@ export const useAuthStore = defineStore('auth', () => {
   function updateNickname(newNickname: string) {
     if (currentUser.value) {
       currentUser.value.nickname = newNickname
+      saveStoredUser(currentUser.value)
     }
   }
 

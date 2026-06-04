@@ -26,6 +26,8 @@ import com.encore.mapper.VenueAreaMapper;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -39,6 +41,7 @@ import java.util.stream.Collectors;
 @Service
 public class OrderService {
     private static final Duration PAYMENT_TTL = Duration.ofMinutes(15);
+    private static final Duration SELF_SERVICE_REFUND_DEADLINE = Duration.ofHours(2);
 
     private final TicketOrderMapper ticketOrderMapper;
     private final TicketItemMapper ticketItemMapper;
@@ -136,6 +139,7 @@ public class OrderService {
                 ticketItemMapper.insert(ticket);
             }
             dashboardRefreshPublisher.publish("ORDER_CREATED", orderId);
+            seatService.publishAreaInventory(request.scheduleId(), "AREA_LOCKED", request.areaInventoryId());
             return orderId;
         }
 
@@ -178,6 +182,7 @@ public class OrderService {
                 .toList();
         tickets.forEach(ticketItemMapper::insert);
         seatService.attachOrderToLocks(request.scheduleId(), seatIds, orderId, PAYMENT_TTL);
+        releaseSeatLocksOnRollback(request.scheduleId(), seatIds);
         return orderId;
     }
 
@@ -213,7 +218,50 @@ public class OrderService {
                 .toList();
         tickets.forEach(ticketItemMapper::insert);
         seatService.transferLocksOwner(scheduleId, seatIds, lockOwner, orderId, PAYMENT_TTL);
+        revertGroupLocksOnRollback(scheduleId, seatIds, orderId, lockOwner);
         return orderId;
+    }
+
+    // Redis 锁不受数据库事务管控：下单事务回滚后，指向该订单的座位锁会变成孤儿锁。
+    // 注册事务同步，在确实回滚(STATUS_ROLLED_BACK)时删除这些锁，让座位立即恢复可售。
+    private void releaseSeatLocksOnRollback(String scheduleId, List<String> seatIds) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status != STATUS_ROLLED_BACK) {
+                    return;
+                }
+                try {
+                    seatService.releaseLocks(scheduleId, seatIds);
+                } catch (RuntimeException ignored) {
+                    // 回收失败时残留锁由 SeatService.cleanupExpiredSeatLocks 定时兜底
+                }
+            }
+        });
+    }
+
+    // 拼座下单已把座位锁从发起人转移到 orderId；若订单事务回滚，需把锁退回发起人，
+    // 否则拼座会话会丢失这些座位。并发改动导致回退失败时放弃，交由定时任务回收。
+    private void revertGroupLocksOnRollback(String scheduleId, List<String> seatIds, String orderId, String lockOwner) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status != STATUS_ROLLED_BACK) {
+                    return;
+                }
+                try {
+                    seatService.transferLocksOwner(scheduleId, seatIds, orderId, lockOwner, SeatService.SEAT_LOCK_TTL);
+                } catch (RuntimeException ignored) {
+                    // 锁已被并发改动或失效时放弃回退，残留锁由定时任务回收
+                }
+            }
+        });
     }
 
     public OrderResponse getOrderDetail(String orderId) {
@@ -296,9 +344,55 @@ public class OrderService {
             List<String> seatIds = tickets.stream().map(TicketItem::getSeatId).toList();
             seatService.releaseLocks(order.getScheduleId(), seatIds);
             seatStatusPublisher.publishSeatStatus(order.getScheduleId(), "SOLD", "SOLD", seatIds);
+        } else {
+            seatService.publishAreaInventory(order.getScheduleId(), "AREA_SOLD", tickets.get(0).getAreaInventoryId());
         }
         dashboardRefreshPublisher.publish("ORDER_PAID", order.getId());
         return true;
+    }
+
+    @Transactional
+    public OrderResponse cancelOrder(String orderId) {
+        TicketOrder order = getOrder(orderId);
+        ensureOrderOwner(order);
+        expireIfNeeded(order);
+        order = getOrder(orderId);
+        if ("CANCELLED".equals(order.getStatus()) || "EXPIRED".equals(order.getStatus())) {
+            return toOrderResponse(order);
+        }
+        if (!"PENDING_PAYMENT".equals(order.getStatus())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "仅待支付预约可取消");
+        }
+        markCancelled(order, listTickets(orderId));
+        return toOrderResponse(getOrder(orderId));
+    }
+
+    @Transactional
+    public OrderResponse refundOrder(String orderId) {
+        TicketOrder order = getOrder(orderId);
+        ensureOrderOwner(order);
+        expireIfNeeded(order);
+        order = getOrder(orderId);
+        if ("REFUNDED".equals(order.getStatus())) {
+            return toOrderResponse(order);
+        }
+        if (!"PAID".equals(order.getStatus())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "仅已支付订单可申请退票");
+        }
+        ShowSchedule schedule = showScheduleMapper.selectById(order.getScheduleId());
+        if (schedule == null || schedule.getStartTime() == null) {
+            throw new BusinessException(ErrorCode.CONFLICT, "场次信息异常，无法自助退票");
+        }
+        LocalDateTime refundDeadline = schedule.getStartTime().minus(SELF_SERVICE_REFUND_DEADLINE);
+        if (!LocalDateTime.now().isBefore(refundDeadline)) {
+            throw new BusinessException(ErrorCode.CONFLICT, "开演前 2 小时内不可自助退票，请联系管理员处理");
+        }
+        List<TicketItem> tickets = listTickets(orderId);
+        if (tickets.stream().anyMatch(ticket -> "CHECKED_IN".equals(ticket.getStatus()))) {
+            throw new BusinessException(ErrorCode.CONFLICT, "已核销票据不可退票");
+        }
+        markRefunded(order, tickets, "USER_REFUNDED");
+        return toOrderResponse(getOrder(orderId));
     }
 
     private TicketOrder getOrder(String orderId) {
@@ -346,12 +440,79 @@ public class OrderService {
             String areaInventoryId = tickets.get(0).getAreaInventoryId();
             int quantity = tickets.size();
             scheduleAreaInventoryMapper.unlockInventory(areaInventoryId, quantity);
+            seatService.publishAreaInventory(order.getScheduleId(), "AREA_RELEASED", areaInventoryId);
         } else {
             List<String> seatIds = tickets.stream().map(TicketItem::getSeatId).toList();
             seatService.releaseLocks(order.getScheduleId(), seatIds);
             seatStatusPublisher.publishSeatStatus(order.getScheduleId(), "EXPIRED", "AVAILABLE", seatIds);
         }
         dashboardRefreshPublisher.publish("ORDER_EXPIRED", order.getId());
+    }
+
+    private void markCancelled(TicketOrder order, List<TicketItem> tickets) {
+        order.setStatus("CANCELLED");
+        ticketOrderMapper.updateById(order);
+        for (TicketItem ticket : tickets) {
+            ticket.setStatus("VOID");
+            ticketItemMapper.updateById(ticket);
+        }
+        releaseReservedInventory(order, tickets, "ORDER_CANCELLED", "AVAILABLE", "AREA_RELEASED");
+        dashboardRefreshPublisher.publish("ORDER_CANCELLED", order.getId());
+    }
+
+    private void markRefunded(TicketOrder order, List<TicketItem> tickets, String reason) {
+        order.setStatus("REFUNDED");
+        ticketOrderMapper.updateById(order);
+        for (TicketItem ticket : tickets) {
+            ticket.setStatus("VOID");
+            ticketItemMapper.updateById(ticket);
+        }
+        boolean isZoned = !tickets.isEmpty() && tickets.get(0).getAreaInventoryId() != null;
+        if (isZoned) {
+            String areaInventoryId = tickets.get(0).getAreaInventoryId();
+            scheduleAreaInventoryMapper.refundInventory(areaInventoryId, tickets.size());
+            seatService.publishAreaInventory(order.getScheduleId(), "AREA_REFUNDED", areaInventoryId);
+        } else {
+            List<String> seatIds = tickets.stream().map(TicketItem::getSeatId).toList();
+            for (String seatId : seatIds) {
+                markSeatAvailable(order.getScheduleId(), seatId);
+            }
+            seatStatusPublisher.publishSeatStatus(order.getScheduleId(), reason, "AVAILABLE", seatIds);
+        }
+        dashboardRefreshPublisher.publish("ORDER_REFUNDED", order.getId());
+    }
+
+    private void releaseReservedInventory(
+            TicketOrder order,
+            List<TicketItem> tickets,
+            String seatReason,
+            String seatStatus,
+            String areaReason
+    ) {
+        boolean isZoned = !tickets.isEmpty() && tickets.get(0).getAreaInventoryId() != null;
+        if (isZoned) {
+            String areaInventoryId = tickets.get(0).getAreaInventoryId();
+            scheduleAreaInventoryMapper.unlockInventory(areaInventoryId, tickets.size());
+            seatService.publishAreaInventory(order.getScheduleId(), areaReason, areaInventoryId);
+        } else {
+            List<String> seatIds = tickets.stream().map(TicketItem::getSeatId).toList();
+            seatService.releaseLocks(order.getScheduleId(), seatIds);
+            seatStatusPublisher.publishSeatStatus(order.getScheduleId(), seatReason, seatStatus, seatIds);
+        }
+    }
+
+    private void markSeatAvailable(String scheduleId, String seatId) {
+        if (seatId == null) {
+            return;
+        }
+        ScheduleSeat seat = scheduleSeatMapper.selectOne(new LambdaQueryWrapper<ScheduleSeat>()
+                .eq(ScheduleSeat::getScheduleId, scheduleId)
+                .eq(ScheduleSeat::getSeatCode, seatId)
+                .last("limit 1"));
+        if (seat != null) {
+            seat.setStatus("AVAILABLE");
+            scheduleSeatMapper.updateById(seat);
+        }
     }
 
     private TicketItem createReservedTicket(String orderId, String scheduleId, String seatId) {
@@ -414,6 +575,8 @@ public class OrderService {
                     String areaName = null;
                     String areaType = null;
                     String seatLabel = "不指定座位";
+                    Integer rowNo = null;
+                    Integer colNo = null;
 
                     if (ticket.getAreaInventoryId() != null) {
                         ScheduleAreaInventory inv = scheduleAreaInventoryMapper.selectById(ticket.getAreaInventoryId());
@@ -431,6 +594,8 @@ public class OrderService {
                                 .last("limit 1"));
                         if (seat != null) {
                             seatLabel = String.format("第 %s 排 %s 号", seat.getRowNo(), seat.getColNo());
+                            rowNo = seat.getRowNo();
+                            colNo = seat.getColNo();
                             if (seat.getAreaId() != null) {
                                 VenueArea area = venueAreaMapper.selectById(seat.getAreaId());
                                 if (area != null) {
@@ -451,7 +616,9 @@ public class OrderService {
                             ticket.getAreaInventoryId(),
                             areaName,
                             areaType,
-                            seatLabel
+                            seatLabel,
+                            rowNo,
+                            colNo
                     );
                 })
                 .toList();

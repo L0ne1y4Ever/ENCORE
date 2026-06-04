@@ -11,10 +11,15 @@ import java.time.LocalDateTime;
 
 public record CreateScheduleRequest(
         @NotBlank String showId,
-        @NotBlank String theaterName,
+        String hallId,
+        String layoutId,
+        String theaterName,
         @NotNull LocalDateTime startTime,
         @NotNull LocalDateTime endTime,
+        LocalDateTime saleStartTime,
+        LocalDateTime saleEndTime,
         String status,
+        String publishStatus,
         @NotBlank String priceRange,
         String ticketMode,
         @Min(1) @Max(30) Integer seatRows,

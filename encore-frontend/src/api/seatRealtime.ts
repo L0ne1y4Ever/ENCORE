@@ -10,11 +10,23 @@ export interface SeatStatusChange {
   status: SeatStatus
 }
 
+export interface AreaStatusChange {
+  areaId: string
+  code: string | null
+  availableCount: number | null
+  lockedCount: number | null
+  soldCount: number | null
+  status: string | null
+}
+
 export interface SeatStatusEvent {
   scheduleId: string
-  reason: 'LOCKED' | 'SOLD' | 'EXPIRED' | 'REFUNDED' | 'CANCELLED' | 'LOCK_EXPIRED' | 'GROUP_RELEASED'
+  reason:
+    | 'LOCKED' | 'SOLD' | 'EXPIRED' | 'REFUNDED' | 'CANCELLED' | 'LOCK_EXPIRED' | 'GROUP_RELEASED'
+    | 'AREA_LOCKED' | 'AREA_SOLD' | 'AREA_RELEASED' | 'AREA_REFUNDED' | 'AREA_ADJUSTED'
   timestamp: string
   seats: SeatStatusChange[]
+  areas?: AreaStatusChange[]
 }
 
 interface SeatRealtimeHandlers {

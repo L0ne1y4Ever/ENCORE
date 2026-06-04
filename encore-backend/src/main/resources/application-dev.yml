@@ -17,6 +17,12 @@ spring:
   sql:
     init:
       mode: never
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 1
+    locations: classpath:db/migration
+    validate-migration-naming: true
 
 mybatis-plus:
   configuration:
@@ -32,3 +38,7 @@ sa-token:
   is-share: true
   token-style: uuid
   is-log: false
+
+encore:
+  cors:
+    allowed-origin-patterns: ${ENCORE_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}

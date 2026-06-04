@@ -120,6 +120,36 @@ const applySeatStatusEvent = async (event: SeatStatusEvent) => {
     return
   }
 
+  if (event.areas && event.areas.length > 0) {
+    const changeByArea = new Map(event.areas.map((area) => [area.areaId, area]))
+    areas.value = areas.value.map((area) => {
+      const change = changeByArea.get(area.areaId)
+      if (!change) {
+        return area
+      }
+      return {
+        ...area,
+        availableCount: change.availableCount ?? area.availableCount,
+        lockedCount: change.lockedCount ?? area.lockedCount,
+        soldCount: change.soldCount ?? area.soldCount,
+        status: change.status ?? area.status
+      }
+    })
+    if (selectedArea.value) {
+      const change = changeByArea.get(selectedArea.value.areaId)
+      if (change) {
+        selectedArea.value = {
+          ...selectedArea.value,
+          availableCount: change.availableCount ?? selectedArea.value.availableCount,
+          lockedCount: change.lockedCount ?? selectedArea.value.lockedCount,
+          soldCount: change.soldCount ?? selectedArea.value.soldCount
+        }
+      }
+    }
+    showRealtimeNotice('seat.liveUpdated')
+    return
+  }
+
   if (event.seats.length === 0) {
     return
   }
@@ -144,6 +174,13 @@ const applySeatStatusEvent = async (event: SeatStatusEvent) => {
       status: nextStatus
     }
   })
+
+  // MIXED 下看台座位的真相源是 schedule_seat，座位事件后刷新区域聚合数，
+  // 让体育场总览里看台的可售数与实际售出保持一致。
+  if (schedule.value?.ticketMode === 'MIXED') {
+    void loadAreas()
+  }
+
   showRealtimeNotice('seat.liveUpdated')
 }
 
@@ -165,12 +202,9 @@ const handleBookZonedArea = async (qty: number) => {
   if (!selectedArea.value) return
   bookingZoned.value = true
   try {
-    const totalAmount = selectedArea.value.price * qty
     const orderId = await createOrder(
-      authStore.currentUser?.id || 'u-101',
       scheduleId,
       null,
-      totalAmount,
       selectedArea.value.id,
       qty
     )
@@ -200,7 +234,8 @@ onMounted(async () => {
     await refreshSeatMap(true)
   }
 
-  if (schedule.value?.ticketMode === 'SEATED' || schedule.value?.ticketMode === 'MIXED') {
+  // 三种模式都订阅：SEATED/MIXED 用座位事件，ZONED/MIXED 还需区域库存事件。
+  if (schedule.value) {
     disconnectRealtime = subscribeToSeatUpdates(scheduleId, {
       onEvent: (event) => {
         void applySeatStatusEvent(event)
@@ -633,8 +668,8 @@ const stageDisplayLabel = computed(() => {
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
             </svg>
           </div>
-          <h3>请选择观演区域</h3>
-          <p>请点击左侧场馆平面图中的高亮区域以选择价格档位或进入对应看台选座。</p>
+          <h3>{{ t('seat.selectAreaTitle') }}</h3>
+          <p>{{ t('seat.selectAreaHint') }}</p>
           <TicketModeBadge v-if="schedule" :mode="schedule.ticketMode" class="badge-center" />
         </div>
       </template>

@@ -192,6 +192,7 @@ public class ShowService {
                         .eq(ShowSchedule::getShowId, showId)
                         .orderByAsc(ShowSchedule::getStartTime))
                 .stream()
+                .filter(this::isPublicSchedule)
                 .map(this::toScheduleResponse)
                 .toList();
     }
@@ -355,7 +356,7 @@ public class ShowService {
             return 0;
         }
         return seats.stream()
-                .filter(seat -> !Boolean.TRUE.equals(redisTemplate.hasKey("encore:seat-lock:%s:%s".formatted(scheduleId, seat.getSeatCode()))))
+                .filter(seat -> !Boolean.TRUE.equals(redisTemplate.hasKey(SeatService.lockKey(scheduleId, seat.getSeatCode()))))
                 .count();
     }
 
@@ -365,10 +366,14 @@ public class ShowService {
 
     public ScheduleResponse getScheduleDetail(String scheduleId) {
         ShowSchedule schedule = showScheduleMapper.selectById(scheduleId);
-        if (schedule == null) {
+        if (schedule == null || !isPublicSchedule(schedule)) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "场次不存在");
         }
         return toScheduleResponse(schedule);
+    }
+
+    private boolean isPublicSchedule(ShowSchedule schedule) {
+        return schedule.getPublishStatus() == null || "PUBLISHED".equals(schedule.getPublishStatus());
     }
 
     private ScheduleResponse toScheduleResponse(ShowSchedule schedule) {
@@ -380,7 +385,10 @@ public class ShowService {
                 schedule.getTheaterName(),
                 schedule.getStartTime(),
                 schedule.getEndTime(),
+                schedule.getSaleStartTime(),
+                schedule.getSaleEndTime(),
                 schedule.getStatus(),
+                schedule.getPublishStatus() == null ? "PUBLISHED" : schedule.getPublishStatus(),
                 schedule.getPriceRange(),
                 schedule.getTicketMode(),
                 category

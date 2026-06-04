@@ -55,6 +55,10 @@ class AdminServiceTest {
     private VenueAreaMapper venueAreaMapper;
     @Mock
     private ScheduleAreaInventoryMapper scheduleAreaInventoryMapper;
+    @Mock
+    private VenueManagementService venueManagementService;
+    @Mock
+    private SeatService seatService;
 
     @Test
     void refundOrderPublishesAvailableEvent() {
@@ -98,7 +102,9 @@ class AdminServiceTest {
                 seatStatusPublisher,
                 dashboardRefreshPublisher,
                 venueAreaMapper,
-                scheduleAreaInventoryMapper
+                scheduleAreaInventoryMapper,
+                venueManagementService,
+                seatService
         );
     }
 

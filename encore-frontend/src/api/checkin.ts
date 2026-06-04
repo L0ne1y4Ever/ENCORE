@@ -16,6 +16,7 @@ export interface CheckInResponse {
 export interface CheckInSchedule {
   id: string
   showTitle: string
+  category: string
   theaterName: string
   startTime: string | null
   endTime: string | null

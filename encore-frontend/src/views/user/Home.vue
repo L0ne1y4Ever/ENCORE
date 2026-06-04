@@ -96,6 +96,15 @@ const formatCount = (value: number) => {
 const goDetail = (id: string) => {
   router.push(`/show/${id}`)
 }
+
+const railRef = ref<HTMLElement | null>(null)
+
+const scrollRail = (direction: 'prev' | 'next') => {
+  const el = railRef.value
+  if (!el) return
+  const amount = Math.round(el.clientWidth * 0.8)
+  el.scrollBy({ left: direction === 'next' ? amount : -amount, behavior: 'smooth' })
+}
 </script>
 
 <template>
@@ -115,12 +124,12 @@ const goDetail = (id: string) => {
           <h2>Top Picks</h2>
         </div>
         <div class="pagination-controls">
-          <button class="icon-btn" aria-label="Previous">&larr;</button>
-          <button class="icon-btn" aria-label="Next">&rarr;</button>
+          <button class="icon-btn" aria-label="Previous" @click="scrollRail('prev')">&larr;</button>
+          <button class="icon-btn" aria-label="Next" @click="scrollRail('next')">&rarr;</button>
         </div>
       </div>
 
-      <div class="recommendation-rail" v-if="recommendedShows.length > 0">
+      <div class="recommendation-rail" ref="railRef" v-if="recommendedShows.length > 0">
         <button
           class="recommendation-card"
           v-for="show in recommendedShows"

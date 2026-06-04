@@ -32,3 +32,9 @@ This file is a defense-friendly index of meaningful commits. It complements `git
 | `2212ef2` | feat | Added backend-ranked Top 8 recommendations and a homepage recommendation rail above category tabs. | `mvn -Dtest=ShowServiceTest test` passed; `mvn test` passed; `npm run build` passed; real API returned ranked recommendations and browser verification opened `/show/s-001` from a recommendation card. | Pushed to `origin/main` |
 | `a55df93` | feat | Added Redis-backed group-seat invitations with member seat claims and host checkout. | `mvn -Dtest=GroupOrderServiceTest test` passed; `mvn test` passed; `npm run build` passed; real API and two-browser UI verification completed group invite, friend join, host checkout, payment, and e-ticket flow. | Pushed to `origin/main` |
 | `b9fc834` | docs | Added the Phase 6 delivery startup package with root README, user manual, test report, Dockerfiles, Nginx config, and full Compose preview. | `docker compose -f docker-compose.full.yml config` passed; `mvn test` passed; `npm run build` passed. | Pushed to `origin/main` |
+
+## 2026-06-02
+
+| Commit | Type | Summary | Verification | Push |
+| --- | --- | --- | --- | --- |
+| `pending` | feat | Added real venue/hall/layout scheduling management, schedule layout snapshots, Flyway auto-migration, default five-category future showtimes, and admin venue/layout/schedule-inventory pages. | `mvn test` passed; `npm run build` passed; existing DB Flyway upgrade passed; empty DB Flyway V1+V2 smoke test passed; public/admin APIs returned `code:0`. | Pending |

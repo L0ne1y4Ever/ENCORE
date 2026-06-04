@@ -7,6 +7,7 @@ public record SeatStatusEvent(
         String scheduleId,
         String reason,
         LocalDateTime timestamp,
-        List<SeatStatusChange> seats
+        List<SeatStatusChange> seats,
+        List<AreaStatusChange> areas
 ) {
 }

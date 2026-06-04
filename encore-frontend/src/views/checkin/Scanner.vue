@@ -23,6 +23,25 @@ const selectedSchedule = computed(() => {
   return schedules.value.find((schedule) => schedule.id === selectedScheduleId.value) || null
 })
 
+const scheduleGroups = computed(() => {
+  const groups = new Map<string, CheckInSchedule[]>()
+  const ordered = [...schedules.value].sort((left, right) => {
+    if (left.checkInOpen !== right.checkInOpen) {
+      return left.checkInOpen ? -1 : 1
+    }
+    const leftTime = left.startTime || ''
+    const rightTime = right.startTime || ''
+    return leftTime.localeCompare(rightTime)
+  })
+  for (const schedule of ordered) {
+    const key = schedule.category || t('admin.uncategorized')
+    const list = groups.get(key) || []
+    list.push(schedule)
+    groups.set(key, list)
+  }
+  return Array.from(groups.entries()).map(([category, rows]) => ({ category, rows }))
+})
+
 const canScan = computed(() => {
   return Boolean(ticketCode.value.trim()) &&
     Boolean(selectedScheduleId.value) &&
@@ -140,9 +159,11 @@ onMounted(() => {
           @change="persistScheduleSelection"
         >
           <option value="" disabled>{{ t('checkin.selectSchedule') }}</option>
-          <option v-for="schedule in schedules" :key="schedule.id" :value="schedule.id">
-            {{ schedule.showTitle }} · {{ schedule.theaterName }} · {{ formatDateTime(schedule.startTime) }}
-          </option>
+          <optgroup v-for="group in scheduleGroups" :key="group.category" :label="group.category">
+            <option v-for="schedule in group.rows" :key="schedule.id" :value="schedule.id">
+              {{ schedule.checkInOpen ? '●' : '○' }} {{ schedule.showTitle }} · {{ schedule.theaterName }} · {{ formatDateTime(schedule.startTime) }}
+            </option>
+          </optgroup>
         </select>
         <button
           class="reload-btn"

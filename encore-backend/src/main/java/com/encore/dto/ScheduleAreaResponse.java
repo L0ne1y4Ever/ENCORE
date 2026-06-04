@@ -14,6 +14,7 @@ public record ScheduleAreaResponse(
         Integer availableCount,
         Integer lockedCount,
         Integer soldCount,
+        String status,
         String color,
         String description,
         String positionData

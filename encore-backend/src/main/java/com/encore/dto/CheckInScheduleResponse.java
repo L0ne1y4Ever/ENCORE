@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 public record CheckInScheduleResponse(
         String id,
         String showTitle,
+        String category,
         String theaterName,
         LocalDateTime startTime,
         LocalDateTime endTime,

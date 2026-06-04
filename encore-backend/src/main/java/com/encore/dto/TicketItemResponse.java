@@ -10,6 +10,8 @@ public record TicketItemResponse(
         String areaInventoryId,
         String areaName,
         String areaType,
-        String seatLabel
+        String seatLabel,
+        Integer rowNo,
+        Integer colNo
 ) {
 }

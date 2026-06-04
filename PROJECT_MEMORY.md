@@ -1,6 +1,6 @@
 # ENCORE Project Memory
 
-Last updated: 2026-05-17
+Last updated: 2026-06-02
 
 ## Project Identity
 
@@ -144,16 +144,51 @@ Backend foundation added on 2026-05-14:
     - Added `docs/user-manual.md` for user, group-seat, check-in, and admin demo flows.
     - Added `docs/test-report.md` with automated checks, manual verification matrix, and recommended final evidence.
     - Verified `docker compose -f docker-compose.full.yml config`, backend tests, and frontend build.
+  - Real scheduling, venue, layout, and inventory management continued on 2026-06-02:
+    - Added venue, hall, seat-layout, layout-area, and layout-seat backend models.
+    - `show_schedule` now supports `hall_id`, `layout_id`, `business_date`, sale window fields, and `publish_status` while keeping `theater_name` for compatible display.
+    - Admin APIs now expose `/api/admin/venues`, `/api/admin/halls`, `/api/admin/layouts`, layout areas/seats, and `/api/admin/schedules/{id}/inventory`.
+    - Creating a schedule from a published layout snapshots layout seats and area inventory into `schedule_seat` and `schedule_area_inventory`, so later layout edits do not affect existing/paid schedules.
+    - Same-hall schedule creation/update now rejects overlapping time ranges with the hall clearance buffer.
+    - Admin frontend now has venue management, layout management, enhanced schedule list/calendar views, and a schedule inventory page for unsold seat disable/restore and area inventory adjustment.
+    - Added fresh-install SQL and `db/migration/2026-06-02-venue-layout-schedule.sql` for cloud database upgrades.
+    - Verified `mvn test` and `npm run build`.
+  - Flyway automatic migration and default showtime recovery continued on 2026-06-02:
+    - Added Flyway Core/MySQL dependencies and enabled Flyway in the dev profile with `baseline-on-migrate=true` so existing old MySQL databases can be upgraded in place.
+    - Added `V1__baseline_schema_and_seed.sql` for empty databases and `V2__venue_layout_schedule_and_default_showtimes.sql` for upgrading old databases to the venue/layout/schedule model.
+    - Spring SQL init remains disabled in the app profile; Docker MySQL init SQL is kept as a reference/fresh-container bootstrap path, while Flyway is now the normal application migration path.
+    - V2 creates missing venue/layout tables, adds missing schedule/detail fields, keeps existing orders/tickets/seats intact, and inserts default future `ON_SALE` schedules for Movie, Musical, Play, Concert, and Ballet.
+    - Added default Play show `茶馆` with Chinese introduction, cast, creative team, and synopsis content.
+    - Verified an existing old database upgrades through Flyway V2 and `/api/shows`, `/api/shows/recommendations/top8`, `/api/admin/dashboard`, `/api/admin/venues`, `/api/admin/layouts`, `/api/admin/schedules`, and schedule inventory APIs return `code:0`.
+    - Verified a temporary empty database runs Flyway V1+V2 from scratch, returns 6 public shows, and contains future `ON_SALE` schedules for all five categories.
+  - End-to-end realtime sync overhaul and defect cleanup continued on 2026-06-02 (layered on the venue/layout work above, not yet committed; see `docs/dev-logs/2026-06-02.md` "Round 2" for the file-by-file record):
+    - ZONED/MIXED area-inventory changes now broadcast over the existing `/topic/schedules/{id}/seats` channel via a new `AreaStatusChange` payload added to `SeatStatusEvent`; lock/sell/release/refund and admin inventory adjustments publish `AREA_LOCKED/SOLD/RELEASED/REFUNDED/ADJUSTED` events.
+    - Frontend seat selection now subscribes in all three modes (previously pure ZONED was missed) and patches area availability in place; the admin schedule inventory page live-reloads on seat/area events.
+    - Fixed MIXED double-accounting: seated areas derive `available/locked/sold/total` from `schedule_seat` (single source of truth) in both `SeatService.listScheduleAreas` and `AdminService` schedule totals, matching `ShowService`.
+    - Cleanup: `createOrder` no longer sends backend-ignored `userId`/`totalAmount` (server uses the token login id and recomputes totals); `ETicket` renders backend `seatLabel`/`areaName`/`areaType` instead of fragile `seatId` parsing; Home Top-Picks arrows now scroll the rail; nickname edits persist to `sessionStorage`; added the missing `seat.noSeats` English key and moved area-ticket Chinese into i18n; removed dead `HelloWorld.vue` and `mockRequest`/`mockReject`.
+    - Added `VenueManagementServiceTest` (9 tests; role guard, reject-sold, broadcasts, inventory validation, schedule-conflict, three-mode layout generation). `mvn test` = 50 passing across 9 classes; `npm run build` passes.
+  - Auth gateway, HTTP status semantics, consistency hardening, structured seat label, bundle splitting, and slice tests continued on 2026-06-02 (Round 3, layered on the still-uncommitted Round 1+2 work; see `docs/dev-logs/2026-06-02.md` "Round 3" for the file-by-file record):
+    - Added an HTTP-layer Sa-Token auth gate: new `StpInterfaceImpl` (role source from `user_account.role`) plus `SaTokenConfigure` `SaInterceptor` that requires login on orders/group-orders/`auth/me`/`POST seats lock` and roles on `/api/admin/**` and `/api/checkin/**`, while public routes pass through. Service-layer `ensureAdminRole`/`ensureCheckInRole` are kept as defense-in-depth.
+    - `BusinessException` now maps to its semantic HTTP status (404/409/401/...) instead of a flat 400, via `GlobalExceptionHandler` + new `ErrorCode.FORBIDDEN`; wrong-role requests return 403 (a `NotRoleException`/`NotPermissionException` handler). The response body shape is unchanged so the frontend is unaffected; login failure now returns HTTP 401.
+    - Hardened seated-area inventory consistency without deleting rows: seated-area inventory `total/available` are initialized from the generated seat count, and `updateAreaInventory` rejects seated-area edits — `schedule_seat` is the count source of truth, while the inventory row remains the area registry / price / enumeration / stadium-map tile.
+    - Closed the Redis-lock leak on transaction rollback: `createOrder`/`createGroupOrder` register `TransactionSynchronization` callbacks that release (SEATED) or revert-to-owner (group) the seat locks on `STATUS_ROLLED_BACK`.
+    - Structured seat label: `TicketItemResponse` adds `rowNo`/`colNo`; the e-ticket and profile localize via `t('seat.info', {row,col})`, so the English ticket no longer shows a hardcoded Chinese label.
+    - Frontend `vite.config.ts` `manualChunks` splits three/echarts/element-plus into separate vendor chunks (`index` ~1.17 MB → ~166 kB); removed the last hardcoded admin `city: '上海'` defaults.
+    - Added infra-free slice tests `StpInterfaceImplTest` and `GlobalExceptionHandlerTest`. `mvn test` = 58 passing across 11 classes; `npm run build` passes.
 
 Important current limitation:
 
 - Seat locking, order creation, mock payment, and ticket generation now have backend APIs, and the full browser purchase flow has screenshot evidence under `docs/demo-evidence/`.
 - Admin seat editing within an existing generated pool is not implemented yet; schedule creation generates the initial pool.
+- Admin can now disable/restore unsold fixed seats and adjust unsold area inventory in the schedule inventory page; full visual CAD-style layout editing is still intentionally out of scope.
 - Dashboard metrics still come from query APIs; WebSocket only triggers refresh events and does not push aggregate metric payloads.
 - Check-in station binding is intentionally lightweight: the selected current schedule is stored in the browser only, and there is no separate managed check-in-station entity yet.
 - Top 8 recommendations are global and refresh on page/API reload; they are not personalized and are not pushed through WebSocket yet.
 - Group-seat sessions are temporary Redis state. Paid orders and tickets persist after checkout, but unpurchased group sessions disappear on Redis expiry/restart.
 - Full Docker Compose preview has been configuration-validated; local development still uses the default MySQL/Redis-only compose plus separate backend/frontend dev servers.
+- Database migrations are now handled by Flyway at backend startup. For cloud deployment, point the backend at MySQL and let Flyway create or upgrade schema; do not manually replay old ad hoc SQL against a populated production database.
+- HTTP-layer auth is now enforced by a Sa-Token `SaInterceptor` (role source: `StpInterfaceImpl` over `user_account.role`), with service-layer role guards kept as defense-in-depth. `BusinessException` codes are returned as real HTTP statuses (404/409/403/...) and login failure returns 401. Only the error-handler and role-source levels are unit-covered (slice tests); the full route pass/401/403 gating is left to the manual curl matrix in the Round-3 log (needs MySQL/Redis + backend).
+- Seated-area (`isSeated`) inventory rows are an area registry / price / enumeration / stadium-map source only; their live counts derive from `schedule_seat`. Bulk edits to seated-area inventory are rejected by design, and those rows must not be deleted (deletion would remove the area from the seat-selection map).
 
 ## Target Technical Stack
 

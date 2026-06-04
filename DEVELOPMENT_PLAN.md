@@ -1,6 +1,6 @@
 # ENCORE Development Plan
 
-Updated: 2026-05-17
+Updated: 2026-06-02
 
 ## Goal
 
@@ -148,6 +148,19 @@ Progress:
 - Connected the check-in scanner page to the schedule list, persisted the selected current schedule in `localStorage`, and submitted it with ticket verification.
 - Added wrong-schedule rejection with fixed message `票据不属于当前检票场次` while preserving old no-`scheduleId` compatibility.
 - Verified real API flow for wrong-schedule rejection and correct-schedule check-in; browser verification confirmed schedule selection persistence and request payload binding.
+- Added real venue/hall/layout scheduling management:
+  - New backend models and admin APIs for venues, halls, layout versions, layout areas, layout seats, and schedule inventory.
+  - `show_schedule` now records `hall_id`, `layout_id`, `business_date`, sale windows, and publish status.
+  - New schedule creation can snapshot a published layout into independent per-schedule seats and area inventory.
+  - Same-hall overlapping schedules are rejected using the hall clearance buffer.
+  - Admin frontend now includes venue management, layout management, list/calendar schedule management, and per-schedule inventory operations.
+  - Database init SQL and migration SQL were updated for cloud deployment.
+  - `mvn test` and `npm run build` passed on 2026-06-02.
+- Added Flyway automatic migration for the real scheduling schema:
+  - `V1__baseline_schema_and_seed.sql` supports empty cloud databases.
+  - `V2__venue_layout_schedule_and_default_showtimes.sql` upgrades old databases in place with venue, hall, layout, schedule fields, default Play data, and future `ON_SALE` schedules for Movie/Musical/Play/Concert/Ballet.
+  - `baseline-on-migrate=true` allows existing initialized databases to adopt Flyway without deleting order, ticket, seat, or check-in data.
+  - Verified old-database upgrade, empty-database smoke startup, public show APIs, admin dashboard, admin venues/layouts/schedules, and schedule inventory APIs.
 
 Commit trigger:
 

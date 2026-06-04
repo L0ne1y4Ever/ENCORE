@@ -6,11 +6,13 @@ export interface TicketItem {
   scheduleId: string
   seatId: string | null
   ticketCode: string
-  status: 'UNUSED' | 'CHECKED_IN' | 'VOID'
+  status: 'RESERVED' | 'UNUSED' | 'CHECKED_IN' | 'VOID'
   areaInventoryId?: string | null
   areaName?: string | null
   areaType?: string | null
   seatLabel?: string | null
+  rowNo?: number | null
+  colNo?: number | null
 }
 
 export interface Order {

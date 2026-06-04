@@ -29,8 +29,12 @@ const routes: Array<RouteRecordRaw> = [
     children: [
       { path: '', name: 'AdminDashboard', component: () => import('../views/admin/Dashboard.vue') },
       { path: 'shows', name: 'AdminShows', component: () => import('../views/admin/Shows.vue') },
+      { path: 'venues', name: 'AdminVenues', component: () => import('../views/admin/Venues.vue') },
+      { path: 'layouts', name: 'AdminLayouts', component: () => import('../views/admin/Layouts.vue') },
       { path: 'schedules', name: 'AdminSchedules', component: () => import('../views/admin/Schedules.vue') },
+      { path: 'schedules/:id/inventory', name: 'AdminScheduleInventory', component: () => import('../views/admin/ScheduleInventory.vue') },
       { path: 'orders', name: 'AdminOrders', component: () => import('../views/admin/Orders.vue') },
+      { path: 'users', name: 'AdminStaffUsers', component: () => import('../views/admin/StaffUsers.vue'), meta: { role: 'sysadmin' } },
     ]
   },
   {
@@ -51,7 +55,7 @@ const router = createRouter({
 router.beforeEach((to, _from, next) => {
   const authStore = useAuthStore()
   const requiresAuth = to.matched.some(record => record.meta.requiresAuth)
-  const requiredRole = to.matched.find(record => record.meta.role)?.meta.role
+  const requiredRole = [...to.matched].reverse().find(record => record.meta.role)?.meta.role
 
   if (requiresAuth && !authStore.currentUser) {
     next({ path: '/login', query: { redirect: to.fullPath } })

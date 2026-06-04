@@ -43,8 +43,7 @@ const formatTime = (secs: number) => {
 const doConfirm = async () => {
   submitting.value = true
   try {
-    // 假设当前用户 ID 为 u-101
-    const orderId = await createOrder('u-101', orderData.value.scheduleId, orderData.value.seatIds, orderData.value.totalAmount)
+    const orderId = await createOrder(orderData.value.scheduleId, orderData.value.seatIds)
     sessionStorage.removeItem('tempOrder')
     router.push(`/payment?id=${orderId}`)
   } catch (e) {

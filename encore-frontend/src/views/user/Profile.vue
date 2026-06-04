@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useAuthStore } from '../../stores/auth'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { getMyOrders } from '../../api/order'
+import { cancelOrder, getMyOrders, refundOrder } from '../../api/order'
 import type { Order, TicketItem } from '../../mock/orders'
 
 const authStore = useAuthStore()
@@ -32,6 +32,7 @@ const activeTab = ref<'info' | 'tickets' | 'orders' | 'reservations'>('info')
 const orders = ref<Order[]>([])
 const orderLoading = ref(false)
 const orderError = ref('')
+const operatingOrderId = ref('')
 
 interface TicketView {
   id: string
@@ -68,13 +69,23 @@ const tickets = computed<TicketView[]>(() => {
         showTitle: order.showTitle || order.scheduleId,
         date: order.startTime || order.createdAt,
         venue: order.theaterName || '-',
-        seat: ticket.seatLabel || ticket.seatId || t('ticket.unassigned'),
+        seat: ticket.rowNo != null && ticket.colNo != null
+          ? t('seat.info', { row: ticket.rowNo, col: ticket.colNo })
+          : (ticket.seatLabel || ticket.seatId || t('ticket.unassigned')),
         status: ticket.status
       })))
 })
 
+const pendingReservations = computed(() => {
+  return orders.value.filter(order => order.status === 'PENDING_PAYMENT')
+})
+
 const viewTicket = (orderId: string) => {
   router.push(`/ticket/${orderId}`)
+}
+
+const continuePayment = (orderId: string) => {
+  router.push(`/payment?id=${orderId}`)
 }
 
 const formatDateTime = (value?: string | null) => {
@@ -96,10 +107,45 @@ const orderStatusLabel = (status: Order['status']) => {
   return t(`profile.orderStatus.${status.toLowerCase()}`)
 }
 
-// Mock reservations data
-const reservations = ref([
-  { id: 'r-001', show: 'COLDPLAY: MUSIC OF THE SPHERES', date: '2026-08-15', lineNum: 8204 }
-])
+const canRefundOrder = (order: Order) => {
+  if (order.status !== 'PAID') return false
+  if ((order.tickets || []).some(ticket => ticket.status === 'CHECKED_IN')) return false
+  if (!order.startTime) return false
+  return Date.now() < new Date(order.startTime).getTime() - 2 * 60 * 60 * 1000
+}
+
+const replaceOrder = (updated: Order) => {
+  const index = orders.value.findIndex(order => order.id === updated.id)
+  if (index >= 0) {
+    orders.value[index] = updated
+  } else {
+    orders.value.unshift(updated)
+  }
+}
+
+const cancelReservation = async (order: Order) => {
+  if (!window.confirm(t('profile.cancelReservationConfirm', { id: order.id }))) return
+  operatingOrderId.value = order.id
+  try {
+    replaceOrder(await cancelOrder(order.id))
+  } catch (error) {
+    alert(error instanceof Error ? error.message : t('profile.cancelReservationFailed'))
+  } finally {
+    operatingOrderId.value = ''
+  }
+}
+
+const requestRefund = async (order: Order) => {
+  if (!window.confirm(t('profile.refundConfirm', { id: order.id }))) return
+  operatingOrderId.value = order.id
+  try {
+    replaceOrder(await refundOrder(order.id))
+  } catch (error) {
+    alert(error instanceof Error ? error.message : t('profile.refundFailed'))
+  } finally {
+    operatingOrderId.value = ''
+  }
+}
 </script>
 
 <template>
@@ -197,13 +243,39 @@ const reservations = ref([
                   </div>
                   <span class="o-total">${{ formatAmount(ord.totalAmount) }}</span>
                 </div>
-                <button
-                  v-if="ord.status === 'PAID'"
-                  class="link-btn order-ticket-link"
-                  @click="viewTicket(ord.id)"
-                >
-                  {{ t('profile.viewTicket') }}
-                </button>
+                <div class="order-actions">
+                  <button
+                    v-if="ord.status === 'PENDING_PAYMENT'"
+                    class="link-btn"
+                    :disabled="operatingOrderId === ord.id"
+                    @click="continuePayment(ord.id)"
+                  >
+                    {{ t('profile.continuePayment') }}
+                  </button>
+                  <button
+                    v-if="ord.status === 'PENDING_PAYMENT'"
+                    class="link-btn danger"
+                    :disabled="operatingOrderId === ord.id"
+                    @click="cancelReservation(ord)"
+                  >
+                    {{ t('profile.cancelReservation') }}
+                  </button>
+                  <button
+                    v-if="ord.status === 'PAID'"
+                    class="link-btn"
+                    @click="viewTicket(ord.id)"
+                  >
+                    {{ t('profile.viewTicket') }}
+                  </button>
+                  <button
+                    v-if="ord.status === 'PAID'"
+                    class="link-btn danger"
+                    :disabled="!canRefundOrder(ord) || operatingOrderId === ord.id"
+                    @click="requestRefund(ord)"
+                  >
+                    {{ t('profile.requestRefund') }}
+                  </button>
+                </div>
               </div>
             </div>
             <div class="empty-state" v-else>{{ t('profile.noOrders') }}</div>
@@ -212,15 +284,27 @@ const reservations = ref([
 
         <div v-else-if="activeTab === 'reservations'" class="tab-pane" key="reservations">
           <section class="reservations-section">
-            <h2>{{ t('reservation.myReservations') }}</h2>
-            <div class="reservation-list" v-if="reservations.length > 0">
-              <div class="r-card" v-for="res in reservations" :key="res.id">
+            <div class="section-header">
+              <h2>{{ t('reservation.myReservations') }}</h2>
+              <button class="link-btn" :disabled="orderLoading" @click="loadOrders">{{ t('admin.refresh') }}</button>
+            </div>
+            <div class="loading-state" v-if="orderLoading">{{ t('common.loading') }}</div>
+            <div class="error-state" v-else-if="orderError">{{ orderError }}</div>
+            <div class="reservation-list" v-else-if="pendingReservations.length > 0">
+              <div class="r-card" v-for="res in pendingReservations" :key="res.id">
                 <div class="r-info">
-                  <h3>{{ res.show }}</h3>
-                  <p>{{ res.date }}</p>
+                  <h3>{{ res.showTitle || res.scheduleId }}</h3>
+                  <p>{{ formatDateTime(res.startTime || res.createdAt) }} &bull; {{ res.theaterName || '-' }}</p>
+                  <p>{{ (res.tickets || []).length }} {{ t('order.tickets') }} · {{ t('order.paymentDeadline') }} {{ formatDateTime(res.expiresAt) }}</p>
                 </div>
-                <div class="r-status">
-                  <span class="line-num">#{{ res.lineNum }}</span>
+                <div class="reservation-actions">
+                  <span class="line-num">${{ formatAmount(res.totalAmount) }}</span>
+                  <button class="link-btn" :disabled="operatingOrderId === res.id" @click="continuePayment(res.id)">
+                    {{ t('profile.continuePayment') }}
+                  </button>
+                  <button class="link-btn danger" :disabled="operatingOrderId === res.id" @click="cancelReservation(res)">
+                    {{ t('profile.cancelReservation') }}
+                  </button>
                 </div>
               </div>
             </div>
@@ -370,6 +454,15 @@ section {
     color: var(--color-text-ghost);
     cursor: not-allowed;
   }
+
+  &.danger {
+    color: #f0a86b;
+
+    &:hover:not(:disabled) {
+      border-color: #f0a86b;
+      color: #ffd0ad;
+    }
+  }
 }
 
 .personal-info-section {
@@ -467,6 +560,13 @@ section {
       font-family: monospace;
       font-size: 24px;
       color: var(--color-accent);
+    }
+
+    .reservation-actions {
+      align-items: flex-end;
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-2);
     }
   }
 }
@@ -590,7 +690,10 @@ section {
     padding: 4px 8px;
   }
 
-  .order-ticket-link {
+  .order-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-2);
     margin-top: var(--spacing-3);
   }
 }

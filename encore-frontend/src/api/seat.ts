@@ -13,6 +13,7 @@ export interface ScheduleAreaResponse {
   availableCount: number
   lockedCount: number
   soldCount: number
+  status?: string
   color: string
   description: string
   positionData: string

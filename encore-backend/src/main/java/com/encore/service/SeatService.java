@@ -3,6 +3,7 @@ package com.encore.service;
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.encore.common.ErrorCode;
+import com.encore.dto.AreaStatusChange;
 import com.encore.dto.SeatResponse;
 import com.encore.dto.ScheduleAreaResponse;
 import com.encore.entity.ScheduleSeat;
@@ -19,6 +20,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -80,6 +82,19 @@ public class SeatService {
         return inventories.stream()
                 .map(inv -> {
                     VenueArea area = venueAreaMapper.selectById(inv.getAreaId());
+                    int total = inv.getTotalCount() == null ? 0 : inv.getTotalCount();
+                    int available = inv.getAvailableCount() == null ? 0 : inv.getAvailableCount();
+                    int locked = inv.getLockedCount() == null ? 0 : inv.getLockedCount();
+                    int sold = inv.getSoldCount() == null ? 0 : inv.getSoldCount();
+                    // Seated areas (e.g. MIXED 看台) are tracked by per-seat rows, not the inventory
+                    // counter, so derive their live counts from schedule_seat to avoid drift.
+                    if (area != null && Boolean.TRUE.equals(area.getIsSeated())) {
+                        int[] counts = seatedAreaCounts(scheduleId, inv.getAreaId());
+                        total = counts[0];
+                        available = counts[1];
+                        locked = counts[2];
+                        sold = counts[3];
+                    }
                     return new ScheduleAreaResponse(
                             inv.getId(),
                             inv.getAreaId(),
@@ -88,16 +103,39 @@ public class SeatService {
                             area == null ? "UNKNOWN" : area.getAreaType(),
                             area == null ? false : area.getIsSeated(),
                             inv.getPrice(),
-                            inv.getTotalCount(),
-                            inv.getAvailableCount(),
-                            inv.getLockedCount(),
-                            inv.getSoldCount(),
+                            total,
+                            available,
+                            locked,
+                            sold,
+                            inv.getStatus(),
                             area == null ? "#ffffff" : area.getColor(),
                             area == null ? "" : area.getDescription(),
                             area == null ? "" : area.getPositionData()
                     );
                 })
                 .toList();
+    }
+
+    private int[] seatedAreaCounts(String scheduleId, String areaId) {
+        List<ScheduleSeat> seats = scheduleSeatMapper.selectList(new LambdaQueryWrapper<ScheduleSeat>()
+                .eq(ScheduleSeat::getScheduleId, scheduleId)
+                .eq(ScheduleSeat::getAreaId, areaId));
+        int total = seats.size();
+        int sold = 0;
+        int locked = 0;
+        int available = 0;
+        for (ScheduleSeat seat : seats) {
+            if ("SOLD".equals(seat.getStatus())) {
+                sold++;
+            } else if ("AVAILABLE".equals(seat.getStatus())) {
+                if (Boolean.TRUE.equals(redisTemplate.hasKey(lockKey(scheduleId, seat.getSeatCode())))) {
+                    locked++;
+                } else {
+                    available++;
+                }
+            }
+        }
+        return new int[]{total, available, locked, sold};
     }
 
     public boolean lockSeats(String scheduleId, List<String> seatIds) {
@@ -155,6 +193,16 @@ public class SeatService {
         ShowSchedule schedule = ensureScheduleExists(scheduleId);
         if (!"ON_SALE".equals(schedule.getStatus())) {
             throw new BusinessException(ErrorCode.CONFLICT, "该场次暂不可售");
+        }
+        if (schedule.getPublishStatus() != null && !"PUBLISHED".equals(schedule.getPublishStatus())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "该场次暂未发布");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        if (schedule.getSaleStartTime() != null && now.isBefore(schedule.getSaleStartTime())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "该场次尚未开售");
+        }
+        if (schedule.getSaleEndTime() != null && now.isAfter(schedule.getSaleEndTime())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "该场次已停止售票");
         }
     }
 
@@ -219,8 +267,25 @@ public class SeatService {
         }
     }
 
-    public String lockKey(String scheduleId, String seatId) {
+    public static String lockKey(String scheduleId, String seatId) {
         return "%s:%s:%s".formatted(SEAT_LOCK_PREFIX, scheduleId, seatId);
+    }
+
+    public void publishAreaInventory(String scheduleId, String reason, String inventoryId) {
+        ScheduleAreaInventory inventory = scheduleAreaInventoryMapper.selectById(inventoryId);
+        if (inventory == null) {
+            return;
+        }
+        VenueArea area = venueAreaMapper.selectById(inventory.getAreaId());
+        AreaStatusChange change = new AreaStatusChange(
+                inventory.getAreaId(),
+                area == null ? null : area.getCode(),
+                inventory.getAvailableCount(),
+                inventory.getLockedCount(),
+                inventory.getSoldCount(),
+                inventory.getStatus()
+        );
+        seatStatusPublisher.publishAreaStatus(scheduleId, reason, List.of(change));
     }
 
     @Scheduled(fixedRate = 5000)

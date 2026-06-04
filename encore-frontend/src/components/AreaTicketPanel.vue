@@ -61,21 +61,21 @@ const handleSubmit = () => {
     </div>
 
     <div class="area-details">
-      <p class="description">{{ props.area.description || '凭票入场，区域内自由站立，感受最极致的演出声效和气氛。' }}</p>
+      <p class="description">{{ props.area.description || t('seat.areaDescFallback') }}</p>
       <div class="stats-row">
         <div class="stat-item">
-          <span class="label">可售数量</span>
+          <span class="label">{{ t('seat.areaAvailable') }}</span>
           <span class="val">{{ props.area.availableCount }} / {{ props.area.totalCount }}</span>
         </div>
         <div class="stat-item">
-          <span class="label">区域类型</span>
-          <span class="val">{{ props.area.isSeated ? '坐席 (自动配座)' : '站席 (无固定位置)' }}</span>
+          <span class="label">{{ t('seat.areaType') }}</span>
+          <span class="val">{{ props.area.isSeated ? t('seat.seatedAuto') : t('seat.standing') }}</span>
         </div>
       </div>
     </div>
 
     <div class="selection-control">
-      <span class="control-label">购买数量</span>
+      <span class="control-label">{{ t('seat.quantity') }}</span>
       <div class="quantity-stepper">
         <button
           type="button"
@@ -116,7 +116,7 @@ const handleSubmit = () => {
         <span v-if="props.loading">{{ t('seat.locking') }}</span>
         <span v-else>{{ t('seat.checkout') }}</span>
       </button>
-      <p class="limit-hint">每人限购 4 张 · 提交后请在 5 分钟内完成支付</p>
+      <p class="limit-hint">{{ t('seat.areaLimitHint') }}</p>
     </div>
   </div>
 </template>
