@@ -445,11 +445,17 @@ const requestRefund = async (order: Order) => {
     z-index: -1;
     pointer-events: none;
     background:
-      linear-gradient(115deg, rgba(229, 9, 20, 0.16) 0%, transparent 34%),
-      linear-gradient(240deg, rgba(57, 245, 255, 0.08) 0%, transparent 30%),
-      linear-gradient(180deg, rgba(155, 92, 255, 0.07) 0%, rgba(8, 8, 8, 0) 42%);
-    filter: blur(26px);
-    opacity: 0.82;
+      radial-gradient(circle at 8% 16%, rgba(255, 255, 255, 0.5) 0 1px, transparent 1.8px),
+      radial-gradient(circle at 18% 78%, rgba(255, 255, 255, 0.34) 0 1px, transparent 1.8px),
+      radial-gradient(circle at 31% 34%, rgba(255, 255, 255, 0.42) 0 1px, transparent 1.8px),
+      radial-gradient(circle at 44% 64%, rgba(255, 255, 255, 0.26) 0 1px, transparent 1.8px),
+      radial-gradient(circle at 57% 22%, rgba(255, 255, 255, 0.5) 0 1px, transparent 1.8px),
+      radial-gradient(circle at 72% 48%, rgba(255, 255, 255, 0.3) 0 1px, transparent 1.8px),
+      radial-gradient(circle at 86% 18%, rgba(255, 255, 255, 0.42) 0 1px, transparent 1.8px),
+      radial-gradient(circle at 92% 72%, rgba(255, 255, 255, 0.28) 0 1px, transparent 1.8px),
+      linear-gradient(180deg, #030305 0%, #050507 46%, #020203 100%);
+    filter: none;
+    opacity: 1;
   }
 }
 
@@ -1235,27 +1241,30 @@ const requestRefund = async (order: Order) => {
 }
 
 .metric-strip {
-  margin: 28px 0;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
+  margin: 26px 0 24px;
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 28px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 
   button,
   .spend-card {
-    min-height: 96px;
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    min-height: auto;
+    border-radius: 0;
+    background: transparent;
+    border: none;
     box-shadow: none;
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    justify-content: center;
-    padding: 16px 20px;
+    justify-content: flex-start;
+    padding: 0;
     text-align: left;
-    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: color 0.2s ease, opacity 0.2s ease;
     box-sizing: border-box;
   }
 
@@ -1263,26 +1272,24 @@ const requestRefund = async (order: Order) => {
     cursor: pointer;
 
     &:hover {
-      background: rgba(255, 255, 255, 0.05);
-      border-color: rgba(255, 255, 255, 0.12);
-      transform: translateY(-2px);
+      background: transparent;
+      color: #fff;
     }
 
     &:active {
-      transform: scale(0.96);
+      transform: none;
     }
 
     &.active {
-      background: rgba(229, 9, 20, 0.08);
-      border-color: rgba(229, 9, 20, 0.3);
-      box-shadow: 0 8px 24px rgba(229, 9, 20, 0.12);
+      background: transparent;
+      color: #fff;
     }
   }
 
   .spend-card {
     cursor: default;
-    background: rgba(229, 9, 20, 0.03);
-    border-color: rgba(229, 9, 20, 0.12);
+    background: transparent;
+    border-color: transparent;
   }
 
   strong {
@@ -1451,9 +1458,10 @@ const requestRefund = async (order: Order) => {
 
 .card-kicker.unused,
 .order-head strong.paid {
-  color: #39f5ff;
-  border-color: rgba(57, 245, 255, 0.25);
-  background: rgba(57, 245, 255, 0.04);
+  color: rgba(255, 255, 255, 0.84);
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 2px 0 rgba(229, 9, 20, 0.62);
 }
 
 .card-kicker.pending-payment,
@@ -1490,7 +1498,7 @@ const requestRefund = async (order: Order) => {
 .primary-link,
 .danger-link {
   min-height: 38px;
-  border-radius: 18px;
+  border-radius: 4px;
   padding: 0 15px;
   font-size: 14px;
   font-weight: 700;
@@ -1552,7 +1560,7 @@ const requestRefund = async (order: Order) => {
   button.primary-link {
     justify-self: start;
     margin-top: 8px;
-    border-radius: 18px;
+    border-radius: 4px;
   }
 }
 
