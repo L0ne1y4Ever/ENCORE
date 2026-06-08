@@ -19,6 +19,8 @@ VITE_API_BASE_URL=http://localhost:8080
 
 Open `http://localhost:5173`.
 
+For production builds, leave `VITE_API_BASE_URL` unset or set it to `/` when the app is served by the included Nginx config. The browser will call same-origin `/api/...` and `/ws`, which Nginx proxies to the backend container.
+
 ## Build
 
 ```powershell

@@ -4,10 +4,12 @@ import com.encore.common.ApiResponse;
 import com.encore.dto.LoginRequest;
 import com.encore.dto.LoginResponse;
 import com.encore.dto.RegisterRequest;
+import com.encore.dto.UpdateCurrentUserRequest;
 import com.encore.dto.UserProfileResponse;
 import com.encore.service.AuthService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -41,5 +43,10 @@ public class AuthController {
     @GetMapping("/me")
     public ApiResponse<UserProfileResponse> currentUser() {
         return ApiResponse.ok(authService.currentUser());
+    }
+
+    @PatchMapping("/me")
+    public ApiResponse<UserProfileResponse> updateCurrentUser(@Valid @RequestBody UpdateCurrentUserRequest request) {
+        return ApiResponse.ok(authService.updateCurrentUser(request));
     }
 }

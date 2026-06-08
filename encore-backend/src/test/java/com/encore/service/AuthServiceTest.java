@@ -14,6 +14,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -29,9 +31,11 @@ class AuthServiceTest {
     @Mock
     private UserAccountMapper userAccountMapper;
 
+    private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+
     @Test
     void registerCreatesUserAndReturnsLoginToken() {
-        AuthService service = new AuthService(userAccountMapper);
+        AuthService service = new AuthService(userAccountMapper, passwordEncoder);
         SaTokenInfo tokenInfo = tokenInfo();
         ArgumentCaptor<UserAccount> userCaptor = ArgumentCaptor.forClass(UserAccount.class);
 
@@ -53,14 +57,14 @@ class AuthServiceTest {
         verify(userAccountMapper).insert(userCaptor.capture());
         UserAccount saved = userCaptor.getValue();
         assertThat(saved.getUsername()).isEqualTo("test");
-        assertThat(saved.getPassword()).isEqualTo("123456");
+        assertThat(passwordEncoder.matches("123456", saved.getPassword())).isTrue();
         assertThat(saved.getRole()).isEqualTo("user");
         assertThat(saved.getStatus()).isEqualTo("ACTIVE");
     }
 
     @Test
     void registerRejectsDuplicateUsername() {
-        AuthService service = new AuthService(userAccountMapper);
+        AuthService service = new AuthService(userAccountMapper, passwordEncoder);
         when(userAccountMapper.selectOne(any())).thenReturn(user("u-1", "test", "user", "ACTIVE"));
 
         assertThatThrownBy(() -> service.register(new RegisterRequest("test", "123456", "Tester")))
@@ -72,9 +76,9 @@ class AuthServiceTest {
 
     @Test
     void loginStillReturnsExistingUserToken() {
-        AuthService service = new AuthService(userAccountMapper);
+        AuthService service = new AuthService(userAccountMapper, passwordEncoder);
         UserAccount user = user("u-101", "user", "user", "ACTIVE");
-        user.setPassword("123");
+        user.setPassword(passwordEncoder.encode("123"));
         when(userAccountMapper.selectOne(any())).thenReturn(user);
 
         try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
@@ -90,7 +94,7 @@ class AuthServiceTest {
 
     @Test
     void loginRejectsInactiveStaffAccount() {
-        AuthService service = new AuthService(userAccountMapper);
+        AuthService service = new AuthService(userAccountMapper, passwordEncoder);
         UserAccount checker = user("u-checker", "checker2", "checker", "INACTIVE");
         checker.setPassword("123");
         when(userAccountMapper.selectOne(any())).thenReturn(checker);

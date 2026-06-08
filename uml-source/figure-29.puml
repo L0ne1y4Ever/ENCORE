@@ -1,60 +1,85 @@
 @startuml
-!pragma teoz true
 skinparam shadowing false
 skinparam DefaultFontName "Microsoft YaHei"
 skinparam DefaultFontSize 12
-skinparam package {
+skinparam rectangle {
   BackgroundColor #FFF8E7
   BorderColor #5B0E0E
 }
-title 图29  ENCORE 领域驱动设计 (DDD) 限界上下文图
+skinparam package {
+  BackgroundColor #FBF3DF
+  BorderColor #5B0E0E
+}
+skinparam database {
+  BackgroundColor #FFF8E7
+  BorderColor #5B0E0E
+}
+skinparam queue {
+  BackgroundColor #FFF8E7
+  BorderColor #5B0E0E
+}
+title 图29  ENCORE 分层架构与模块划分图
 
-package "Account 账号上下文" as ACC {
-  class User
-  class Role
-  class Session
-}
-package "Catalog 剧目上下文" as CAT {
-  class ShowInfo
-  class ShowCategory
-}
-package "Scheduling 排期上下文" as SCH {
-  class TheaterHall
-  class HallSeat
-  class ShowSchedule
-  class ScheduleSeat
-}
-package "Ordering 订单上下文" as ORD {
-  class TicketOrder
-  class TicketItem
-  class PaymentRecord
-}
-package "CheckIn 检票上下文" as CHK {
-  class CheckinRecord
-}
-package "Analytics 分析上下文" as ANA {
-  class DashboardVO
-  class StatAggregator
-}
-package "Recommendation 推荐上下文" as REC {
-  class RecommendVO
-  class RecallEngine
-  class RankingEngine
+package "前端展示层 (Vue 3 + TypeScript SPA)" as L1 {
+  rectangle "用户端\n首页 / 详情 / 选座 / 区域购票 /\n下单 / 支付 / 电子票 / 拼座 / 个人中心" as feUser
+  rectangle "管理端\n看板 / 演出 / 排期 / 场馆 /\n布局 / 库存 / 订单 / 员工账号" as feAdmin
+  rectangle "检票端\n核销扫描 / 场次列表" as feCheck
+  rectangle "API 客户端 axios (api/*)\nPinia 鉴权 Store · vue-router 路由守卫" as feApi
+  rectangle "STOMP 实时客户端\nseatRealtime · adminRealtime" as feWs
 }
 
-ACC -[#5B0E0E]-> ORD : << Customer-Supplier >>\n用户身份
-ACC -[#5B0E0E]-> CHK : << Customer-Supplier >>\n检票员身份
-CAT -[#5B0E0E]-> SCH : << Customer-Supplier >>\n剧目元数据
-SCH -[#5B0E0E]-> ORD : << OHS / PL >>\n场次座位票池
-ORD -[#5B0E0E]-> CHK : << Customer-Supplier >>\n电子票
-ORD -[#999]-> ANA : << Conformist >>\n订单事件
-SCH -[#999]-> ANA : << Conformist >>\n上座率事件
-CAT -[#999]-> REC : << Conformist >>\n剧目特征
-ORD -[#999]-> REC : << Conformist >>\n用户购买行为
+package "接入层" as L2 {
+  rectangle "Nginx\n静态托管 + 反向代理" as nginx
+  rectangle "Sa-Token SaInterceptor\n中央登录/角色鉴权 (/**)\nOPTIONS 预检放行" as sa
+  rectangle "CorsConfig\nWebSocket /ws 端点" as cors
+}
 
-note bottom
-  限界上下文划分依据: 业务能力垂直切片
-  上下文映射: Customer-Supplier / OHS-PL (开放主机+发布语言) / Conformist
-  应用分层: interface (Controller) / application (UseCase) / domain (Aggregate+ValueObject) / infrastructure (MyBatis/Redis)
+package "控制层 Controller (/api/**)" as L3 {
+  rectangle "Auth · Show · Seat · Order\nGroupOrder · CheckIn · Admin · Health" as ctrls
+}
+
+package "业务层 Service" as L4 {
+  rectangle "AuthService · StaffAccountService\nShowService · SeatService · OrderService\nGroupOrderService · CheckInService\nAdminService · VenueManagementService" as svcs
+  rectangle "事件发布\nSeatStatusPublisher\nDashboardRefreshPublisher" as pubs
+}
+
+package "数据访问层 Mapper (MyBatis-Plus)" as L5 {
+  rectangle "UserAccount · Show · ShowSchedule · ScheduleSeat\nScheduleAreaInventory · VenueArea · Venue · VenueHall\nSeatLayout(+Area/Seat) · TicketOrder · TicketItem Mapper" as mappers
+}
+
+package "领域实体 Entity (13)" as L6 {
+  rectangle "UserAccount · ShowEntity · Venue · VenueHall\nSeatLayout · SeatLayoutArea · SeatLayoutSeat · VenueArea\nShowSchedule · ScheduleSeat · ScheduleAreaInventory\nTicketOrder · TicketItem" as entities
+}
+
+package "基础设施" as L7 {
+  database "MySQL 8\nFlyway V1 / V2 迁移" as mysql
+  database "Redis\n座位锁 encore:seat-lock:*\n拼座会话 encore:group-order:*" as redis
+  queue "STOMP Broker /topic\nschedules/{id}/seats\nadmin/dashboard" as broker
+}
+
+package "横切关注点" as X {
+  rectangle "GlobalExceptionHandler\nApiResponse / ErrorCode (code=0 成功)\nSecurityConfig (BCryptPasswordEncoder)\nPasswordHashMigrationRunner · Knife4j" as cross
+}
+
+feUser --> nginx
+feAdmin --> nginx
+feCheck --> nginx
+feApi --> sa
+feWs --> broker
+nginx --> ctrls
+sa --> ctrls
+ctrls --> svcs
+svcs --> pubs
+svcs --> mappers
+pubs --> broker
+mappers --> entities
+mappers --> mysql
+svcs --> redis
+X .. L3
+X .. L4
+
+note bottom of X
+  采用经典分层架构 (Controller → Service → Mapper → Entity),
+  非 DDD 限界上下文; 模块按业务域纵向切分, 公共能力下沉为横切关注点。
 end note
 @enduml

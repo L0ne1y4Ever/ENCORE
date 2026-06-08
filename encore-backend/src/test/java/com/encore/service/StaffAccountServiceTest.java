@@ -13,6 +13,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -28,9 +30,11 @@ class StaffAccountServiceTest {
     @Mock
     private UserAccountMapper userAccountMapper;
 
+    private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+
     @Test
     void sysadminCreatesCheckerAccount() {
-        StaffAccountService service = new StaffAccountService(userAccountMapper);
+        StaffAccountService service = new StaffAccountService(userAccountMapper, passwordEncoder);
         when(userAccountMapper.selectById("u-sys")).thenReturn(user("u-sys", "sysadmin", "ACTIVE"));
         when(userAccountMapper.selectOne(any())).thenReturn(null);
         ArgumentCaptor<UserAccount> captor = ArgumentCaptor.forClass(UserAccount.class);
@@ -48,14 +52,14 @@ class StaffAccountServiceTest {
 
         verify(userAccountMapper).insert(captor.capture());
         UserAccount saved = captor.getValue();
-        assertThat(saved.getPassword()).isEqualTo("123456");
+        assertThat(passwordEncoder.matches("123456", saved.getPassword())).isTrue();
         assertThat(saved.getDisplayName()).isEqualTo("检票员二号");
         assertThat(saved.getRole()).isEqualTo("checker");
     }
 
     @Test
     void adminCannotManageStaffAccounts() {
-        StaffAccountService service = new StaffAccountService(userAccountMapper);
+        StaffAccountService service = new StaffAccountService(userAccountMapper, passwordEncoder);
         when(userAccountMapper.selectById("u-admin")).thenReturn(user("u-admin", "admin", "ACTIVE"));
 
         try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
@@ -66,7 +70,7 @@ class StaffAccountServiceTest {
 
     @Test
     void duplicateUsernameIsRejected() {
-        StaffAccountService service = new StaffAccountService(userAccountMapper);
+        StaffAccountService service = new StaffAccountService(userAccountMapper, passwordEncoder);
         when(userAccountMapper.selectById("u-sys")).thenReturn(user("u-sys", "sysadmin", "ACTIVE"));
         when(userAccountMapper.selectOne(any())).thenReturn(user("u-checker", "checker", "ACTIVE"));
 
@@ -81,7 +85,7 @@ class StaffAccountServiceTest {
 
     @Test
     void sysadminAccountIsReadonlyInStaffPage() {
-        StaffAccountService service = new StaffAccountService(userAccountMapper);
+        StaffAccountService service = new StaffAccountService(userAccountMapper, passwordEncoder);
         UserAccount sysadmin = user("u-sys", "sysadmin", "ACTIVE");
         when(userAccountMapper.selectById("u-sys")).thenReturn(sysadmin);
 
@@ -98,7 +102,7 @@ class StaffAccountServiceTest {
 
     @Test
     void sysadminCanDisableCheckerAndResetPassword() {
-        StaffAccountService service = new StaffAccountService(userAccountMapper);
+        StaffAccountService service = new StaffAccountService(userAccountMapper, passwordEncoder);
         UserAccount sysadmin = user("u-sys", "sysadmin", "ACTIVE");
         UserAccount checker = user("u-checker", "checker", "ACTIVE");
         checker.setDisplayName("Checker");
@@ -117,7 +121,7 @@ class StaffAccountServiceTest {
         }
 
         assertThat(checker.getStatus()).isEqualTo("INACTIVE");
-        assertThat(checker.getPassword()).isEqualTo("456789");
+        assertThat(passwordEncoder.matches("456789", checker.getPassword())).isTrue();
         verify(userAccountMapper, times(2)).updateById(checker);
     }
 

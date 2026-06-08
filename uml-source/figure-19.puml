@@ -6,27 +6,33 @@ skinparam DefaultFontSize 13
 title 图26  统计报表生成顺序图
 
 actor "票务管理员" as Admin
-participant "Vue 看板页" as FE
-participant "StatisticsController" as Ctrl
-participant "StatisticsService" as SS
-database "MySQL\n(ticket_order / ticket_item / show_schedule)" as DB
+participant "管理端看板 (Vue 3)\nDashboard.vue" as FE
+participant "AdminController\n/api/admin" as Ctrl
+participant "AdminService" as AS
+database "MySQL\nticket_order / ticket_item\nshow / show_schedule" as DB
 participant "ECharts" as Chart
+participant "DashboardRefreshPublisher\n/topic/admin/dashboard" as WS
 
 Admin -> FE : 打开数据看板
-FE -> Ctrl : GET /api/stat/dashboard
-Ctrl -> SS : getDashboard(dateRange)
-SS -> DB : SELECT COUNT(*), SUM(amount)\nFROM ticket_order WHERE date=today
-DB --> SS : 今日订单数 / 销售额
-SS -> DB : 近7天订单按日聚合
-DB --> SS : 趋势数据
-SS -> DB : 热门演出 TOP10
-DB --> SS : 排行榜
-SS -> DB : 各场次上座率\n(已售/总座位)
-DB --> SS : 上座率数据
-SS -> DB : 订单状态分布
-DB --> SS : 状态聚合
-SS --> Ctrl : DashboardVO
-Ctrl --> FE : 200 OK + 数据
-FE -> Chart : 渲染折线 / 柱状 / 饼图
-Chart --> Admin : 显示数据看板
+FE -> Ctrl : GET /api/admin/dashboard
+Ctrl -> AS : dashboard()
+AS -> DB : selectList 订单/票据/演出/场次
+DB --> AS : 实体集合
+AS -> AS : 内存聚合(stream / groupingBy)\nKPI 卡片 + 近7日票房趋势\n+ Top5 热门演出 + 检票汇总
+AS --> Ctrl : DashboardResponse
+Ctrl --> FE : 200 OK + JSON
+FE -> Chart : 渲染折线+柱状(双轴) / Top5 横向柱
+Chart --> Admin : 展示数据看板
+FE -> WS : SUBSCRIBE /topic/admin/dashboard
+
+== 实时刷新 ==
+WS ->> FE : DashboardRefreshEvent\n{reason: ORDER_PAID / TICKET_CHECKED_IN, ...}
+FE -> Ctrl : 重新 GET /api/admin/dashboard
+Ctrl --> FE : 最新数据 -> 局部更新
+
+note over AS, DB
+  聚合在应用层内存完成(非 GROUP BY SQL)；
+  看板仅折线+柱状(无 Sankey/饼图/热力图)。
+  下单/支付/检票触发 publish 推送刷新信号。
+end note
 @enduml

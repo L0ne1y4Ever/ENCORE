@@ -42,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
@@ -157,7 +158,7 @@ class VenueManagementServiceTest {
             service.updateScheduleSeatStatus("sch-1", "seat-1-1", "DISABLED");
         }
 
-        verify(seatStatusPublisher).publishSeatStatus("sch-1", "DISABLED", "DISABLED", List.of("seat-1-1"));
+        verify(seatStatusPublisher).publishSeatStatus("sch-1", "INVENTORY_ADJUSTED", "DISABLED", List.of("seat-1-1"));
         verify(scheduleSeatMapper).updateById(any(ScheduleSeat.class));
     }
 
@@ -266,7 +267,7 @@ class VenueManagementServiceTest {
     void updateAreaInventoryRejectsTotalBelowCommitted() {
         VenueManagementService service = createService();
         when(userAccountMapper.selectById("u-admin")).thenReturn(user("u-admin", "admin"));
-        when(scheduleAreaInventoryMapper.selectById("inv-1")).thenReturn(inventory(100, 85, 10, 5));
+        when(scheduleAreaInventoryMapper.selectByIdForUpdate("inv-1")).thenReturn(inventory(100, 85, 10, 5));
 
         UpdateScheduleAreaInventoryRequest request = new UpdateScheduleAreaInventoryRequest(10, 10, "AVAILABLE");
 
@@ -277,14 +278,14 @@ class VenueManagementServiceTest {
         }
 
         verify(seatService, never()).publishAreaInventory(any(), any(), any());
-        verify(scheduleAreaInventoryMapper, never()).updateById(any(ScheduleAreaInventory.class));
+        verify(scheduleAreaInventoryMapper, never()).adjustInventory(any(), anyInt(), anyInt(), any());
     }
 
     @Test
     void updateAreaInventoryBroadcastsAdjustment() {
         VenueManagementService service = createService();
         when(userAccountMapper.selectById("u-admin")).thenReturn(user("u-admin", "admin"));
-        when(scheduleAreaInventoryMapper.selectById("inv-1")).thenReturn(inventory(100, 100, 0, 0));
+        when(scheduleAreaInventoryMapper.selectByIdForUpdate("inv-1")).thenReturn(inventory(100, 100, 0, 0));
         when(scheduleSeatMapper.selectCount(any())).thenReturn(0L);
         when(scheduleAreaInventoryMapper.selectCount(any())).thenReturn(0L);
         when(showScheduleMapper.selectById("sch-1")).thenReturn(schedule());
@@ -296,7 +297,7 @@ class VenueManagementServiceTest {
             service.updateAreaInventory("sch-1", "inv-1", request);
         }
 
-        verify(scheduleAreaInventoryMapper).updateById(any(ScheduleAreaInventory.class));
+        verify(scheduleAreaInventoryMapper).adjustInventory("inv-1", 120, 120, "AVAILABLE");
         verify(seatService).publishAreaInventory("sch-1", "AREA_ADJUSTED", "inv-1");
     }
 
@@ -402,6 +403,7 @@ class VenueManagementServiceTest {
         user.setId(id);
         user.setUsername(id);
         user.setRole(role);
+        user.setStatus("ACTIVE");
         return user;
     }
 

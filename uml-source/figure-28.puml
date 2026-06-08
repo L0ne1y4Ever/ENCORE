@@ -3,46 +3,35 @@
 skinparam shadowing false
 skinparam DefaultFontName "Microsoft YaHei"
 skinparam DefaultFontSize 12
-title 图28  AI 演出智能推荐流程图
+title 图28  演出推荐 Top8 生成流程图
 
 start
-:用户访问首页或推荐 Tab;
-:前端 GET /api/rec?userId=&size=8;
-:RecController 接收请求;
+:用户访问首页"猜你喜欢";
+:前端 GET /api/shows/recommendations/top8;
+:ShowController -> ShowService.listTopRecommendations();
+:载入 PUBLISHED 演出\n+ 其场次与票务统计(销量/营收/在售);
 
-partition "候选生成 (Recall)" {
-  :查询近 30 日热门演出 Top 50;
-  :查询用户浏览/购买分类\n→ 同分类热门 Top 50;
-  :合并去重\n→ 候选池 (~80 项);
+partition "全局规则排序 (非个性化)" {
+  :按 recommendationComparator 排序;
+  note right
+    排序键优先级:
+    1) 是否存在 ON_SALE 在售场次(可购优先)
+    2) ticketsSold 累计销量
+    3) revenue 累计营收
+    4) sortOrder 运营权重
+    5) createdAt 新近度
+  end note
+  :计算 hotScore\n= ticketsSold*100 + 可售场次*10 + revenue\n(仅用于前端热度展示);
 }
 
-partition "三路打分 (Ranking)" {
-  fork
-    :协同过滤\n用户-演出 共现矩阵, 余弦相似度;
-  fork again
-    :内容过滤\n分类标签 + 时长 + 票价区间相似度;
-  fork again
-    :规则打分\n开场临近度 + 上座率 + 售罄稀缺度;
-  end fork
-  :加权求和\n(0.4 / 0.3 / 0.3 权重可热配);
-  :按总分降序排序;
-}
-
-if (候选池为空 OR 用户冷启动?) then (是)
-  :规则兜底: 取近 30 日热门 Top 8;
-else (否)
-  :取 Top 8;
-endif
-
-:写入 recommendation:user:{id} Redis 缓存\n(TTL 10 分钟);
-:返回 RecommendVO [演出列表];
-:前端首页"猜你喜欢"位渲染;
-
+:截取前 8 个;
+:返回 List<ShowResponse>\n(全站统一结果，不按用户缓存);
+:首页渲染"猜你喜欢";
 stop
 
 note right
-  本期实现: 规则 + 协同过滤 + 内容过滤 三路混合
-  后续扩展: 接入向量数据库 + 用户画像 Embedding
-  接口 P95 ≤ 1.5 秒
+  现状: 全局规则排序的 Top8，对所有用户一致；
+  非协同过滤 / 内容过滤 / 用户画像，无 Redis 推荐缓存。
+  后续路线(规划): 引入用户行为召回与个性化排序。
 end note
 @enduml

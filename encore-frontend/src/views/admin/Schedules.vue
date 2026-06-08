@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Calendar, Edit, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import {
   cancelAdminSchedule,
   createAdminSchedule,
@@ -31,6 +32,7 @@ const router = useRouter()
 
 type DialogMode = 'create' | 'edit'
 type ViewMode = 'list' | 'calendar'
+type ScheduleStatusScope = '' | ScheduleStatus | 'UPCOMING'
 
 interface ScheduleForm {
   id: string
@@ -86,9 +88,13 @@ const operatingId = ref('')
 const dialogVisible = ref(false)
 const dialogMode = ref<DialogMode>('create')
 const viewMode = ref<ViewMode>('list')
+const searchKeyword = ref('')
+const venueFilter = ref('')
+const hallFilter = ref('')
+const dateRange = ref<[string, string] | null>(null)
 const categoryFilter = ref('')
 const modeFilter = ref('')
-const statusFilter = ref('')
+const statusFilter = ref<ScheduleStatusScope>('')
 const sortKey = ref<'startAsc' | 'startDesc' | 'category' | 'availableDesc'>('startAsc')
 
 const toDateTimeValue = (date: Date) => {
@@ -149,12 +155,41 @@ const publishedLayoutsForSelectedHall = computed(() => layoutsForSelectedHall.va
 const categoryOptions = computed(() => {
   return Array.from(new Set(tableData.value.map(row => row.category).filter(Boolean))).sort()
 })
+const filteredHallOptions = computed(() => {
+  if (!venueFilter.value) return halls.value
+  return halls.value.filter(hall => hall.venueId === venueFilter.value)
+})
 
 const filteredSchedules = computed(() => {
+  const keyword = searchKeyword.value.trim().toLowerCase()
   const rows = tableData.value.filter(row => {
+    if (keyword) {
+      const haystack = [
+        row.showTitle,
+        row.category,
+        row.hallName,
+        row.layoutName,
+        row.theaterName,
+        row.priceRange
+      ].join(' ').toLowerCase()
+      if (!haystack.includes(keyword)) return false
+    }
+    if (venueFilter.value) {
+      const hall = halls.value.find(item => item.id === row.hallId)
+      if (hall?.venueId !== venueFilter.value) return false
+    }
+    if (hallFilter.value && row.hallId !== hallFilter.value) return false
+    if (dateRange.value) {
+      const date = row.startTime.slice(0, 10)
+      if (date < dateRange.value[0] || date > dateRange.value[1]) return false
+    }
     if (categoryFilter.value && row.category !== categoryFilter.value) return false
     if (modeFilter.value && row.ticketMode !== modeFilter.value) return false
-    if (statusFilter.value && row.status !== statusFilter.value) return false
+    if (statusFilter.value === 'UPCOMING') {
+      if (row.status !== 'PREPARING' && row.status !== 'COMING_SOON') return false
+    } else if (statusFilter.value && row.status !== statusFilter.value) {
+      return false
+    }
     return true
   })
   return [...rows].sort((left, right) => {
@@ -167,6 +202,18 @@ const filteredSchedules = computed(() => {
     }
     return left.startTime.localeCompare(right.startTime)
   })
+})
+
+const scheduleMetrics = computed(() => {
+  const rows = tableData.value
+  return {
+    total: rows.length,
+    onSale: rows.filter(row => row.status === 'ON_SALE').length,
+    preparing: rows.filter(row => row.status === 'PREPARING' || row.status === 'COMING_SOON').length,
+    cancelled: rows.filter(row => row.status === 'CANCELLED').length,
+    available: rows.reduce((sum, row) => sum + Number(row.availableSeats || 0), 0),
+    sold: rows.reduce((sum, row) => sum + Number(row.soldSeats || 0), 0)
+  }
 })
 
 const calendarGroups = computed(() => {
@@ -236,6 +283,23 @@ const statusTagType = (status: ScheduleStatus) => {
   if (status === 'SOLD_OUT' || status === 'CANCELLED') return 'danger'
   if (status === 'PREPARING' || status === 'PUBLISHED') return 'warning'
   return 'info'
+}
+
+const statusClass = (status: ScheduleStatus) => status.toLowerCase().replaceAll('_', '-')
+
+const selectScheduleStatus = (status: ScheduleStatusScope) => {
+  statusFilter.value = status
+}
+
+const handleVenueFilterChange = () => {
+  if (hallFilter.value && !filteredHallOptions.value.some(hall => hall.id === hallFilter.value)) {
+    hallFilter.value = ''
+  }
+}
+
+const ticketProgress = (row: AdminSchedule) => {
+  if (!row.totalSeats) return 0
+  return Math.min(100, Math.round((row.soldSeats / row.totalSeats) * 100))
 }
 
 const publishTagType = (status: string) => {
@@ -425,113 +489,188 @@ const openInventory = (row: AdminSchedule) => {
         <p>{{ t('admin.schedulesSubtitle') }}</p>
       </div>
       <div class="header-actions">
-        <el-radio-group v-model="viewMode" size="small">
-          <el-radio-button label="list">{{ t('admin.listView') }}</el-radio-button>
-          <el-radio-button label="calendar">{{ t('admin.calendarView') }}</el-radio-button>
-        </el-radio-group>
-        <el-select v-model="categoryFilter" class="compact-filter" clearable :placeholder="t('admin.allCategories')">
-          <el-option v-for="category in categoryOptions" :key="category" :label="category" :value="category" />
-        </el-select>
-        <el-select v-model="modeFilter" class="compact-filter" clearable :placeholder="t('admin.allTicketModes')">
-          <el-option value="SEATED" :label="t('ticketMode.seated')" />
-          <el-option value="ZONED" :label="t('ticketMode.zoned')" />
-          <el-option value="MIXED" :label="t('ticketMode.mixed')" />
-        </el-select>
-        <el-select v-model="statusFilter" class="compact-filter" clearable :placeholder="t('admin.allStatuses')">
-          <el-option v-for="status in scheduleStatusOptions" :key="status" :label="statusLabel(status)" :value="status" />
-        </el-select>
-        <el-select v-model="sortKey" class="sort-filter" :placeholder="t('admin.sortBy')">
-          <el-option value="startAsc" :label="t('admin.sortStartAsc')" />
-          <el-option value="startDesc" :label="t('admin.sortStartDesc')" />
-          <el-option value="category" :label="t('admin.sortCategory')" />
-          <el-option value="availableDesc" :label="t('admin.sortAvailableDesc')" />
-        </el-select>
-        <el-button type="primary" plain :loading="loading" @click="loadSchedules">
+        <el-button type="primary" plain :icon="Refresh" :loading="loading" @click="loadSchedules">
           {{ t('admin.refresh') }}
         </el-button>
-        <el-button type="primary" @click="openCreate">
+        <el-button type="primary" :icon="Plus" @click="openCreate">
           {{ t('admin.addNewSchedule') }}
         </el-button>
       </div>
     </div>
 
-    <div v-if="viewMode === 'calendar'" class="calendar-board" v-loading="loading">
-      <div v-for="group in calendarGroups" :key="group.date" class="day-column">
-        <div class="day-head">
-          <strong>{{ group.date }}</strong>
-          <span>{{ group.weekday }}</span>
-        </div>
-        <button
-          v-for="row in group.rows"
-          :key="row.id"
-          type="button"
-          class="schedule-chip"
-          @click="openEdit(row)"
-        >
-          <span>{{ row.startTime.slice(11, 16) }} · {{ row.showTitle }}</span>
-          <small>{{ row.hallName || row.theaterName }} / {{ statusLabel(row.status) }}</small>
-        </button>
+    <div class="metric-strip">
+      <button type="button" class="metric-card" :class="{ active: !statusFilter }" @click="selectScheduleStatus('')">
+        <span>{{ t('admin.allSchedules') }}</span>
+        <strong>{{ scheduleMetrics.total }}</strong>
+      </button>
+      <button type="button" class="metric-card" :class="{ active: statusFilter === 'ON_SALE' }" @click="selectScheduleStatus('ON_SALE')">
+        <span>{{ t('admin.onSaleSchedules') }}</span>
+        <strong>{{ scheduleMetrics.onSale }}</strong>
+      </button>
+      <button type="button" class="metric-card" :class="{ active: statusFilter === 'UPCOMING' }" @click="selectScheduleStatus('UPCOMING')">
+        <span>{{ t('admin.preparingSchedules') }}</span>
+        <strong>{{ scheduleMetrics.preparing }}</strong>
+      </button>
+      <button type="button" class="metric-card" :class="{ active: statusFilter === 'CANCELLED' }" @click="selectScheduleStatus('CANCELLED')">
+        <span>{{ t('admin.cancelledSchedules') }}</span>
+        <strong>{{ scheduleMetrics.cancelled }}</strong>
+      </button>
+      <div class="metric-card passive">
+        <span>{{ t('admin.totalAvailable') }}</span>
+        <strong>{{ scheduleMetrics.available }}</strong>
       </div>
-      <el-empty v-if="calendarGroups.length === 0" :description="t('admin.empty')" />
+      <div class="metric-card passive">
+        <span>{{ t('admin.totalSold') }}</span>
+        <strong>{{ scheduleMetrics.sold }}</strong>
+      </div>
     </div>
 
-    <div v-else class="table-container">
+    <div class="schedule-workspace">
+      <div class="schedule-toolbar">
+        <el-radio-group v-model="viewMode" size="small" class="view-switcher">
+          <el-radio-button label="list">{{ t('admin.listView') }}</el-radio-button>
+          <el-radio-button label="calendar">{{ t('admin.calendarView') }}</el-radio-button>
+        </el-radio-group>
+        <div class="toolbar-fields">
+          <el-input
+            v-model="searchKeyword"
+            class="search-input"
+            clearable
+            :prefix-icon="Search"
+            :placeholder="t('admin.searchSchedules')"
+          />
+          <el-select v-model="venueFilter" class="compact-filter" clearable :placeholder="t('admin.allVenues')" @change="handleVenueFilterChange">
+            <el-option v-for="venue in venues" :key="venue.id" :label="venue.name" :value="venue.id" />
+          </el-select>
+          <el-select v-model="hallFilter" class="compact-filter" clearable :placeholder="t('admin.allHalls')">
+            <el-option v-for="hall in filteredHallOptions" :key="hall.id" :label="`${hall.venueName} / ${hall.name}`" :value="hall.id" />
+          </el-select>
+          <el-date-picker
+            v-model="dateRange"
+            type="daterange"
+            unlink-panels
+            value-format="YYYY-MM-DD"
+            class="date-filter"
+            :start-placeholder="t('admin.dateStart')"
+            :end-placeholder="t('admin.dateEnd')"
+          />
+          <el-select v-model="categoryFilter" class="compact-filter" clearable :placeholder="t('admin.allCategories')">
+            <el-option v-for="category in categoryOptions" :key="category" :label="category" :value="category" />
+          </el-select>
+          <el-select v-model="modeFilter" class="compact-filter" clearable :placeholder="t('admin.allTicketModes')">
+            <el-option value="SEATED" :label="t('ticketMode.seated')" />
+            <el-option value="ZONED" :label="t('ticketMode.zoned')" />
+            <el-option value="MIXED" :label="t('ticketMode.mixed')" />
+          </el-select>
+          <el-select v-model="statusFilter" class="compact-filter" clearable :placeholder="t('admin.allStatuses')">
+            <el-option value="UPCOMING" :label="t('admin.preparingSchedules')" />
+            <el-option v-for="status in scheduleStatusOptions" :key="status" :label="statusLabel(status)" :value="status" />
+          </el-select>
+          <el-select v-model="sortKey" class="sort-filter" :placeholder="t('admin.sortBy')">
+            <el-option value="startAsc" :label="t('admin.sortStartAsc')" />
+            <el-option value="startDesc" :label="t('admin.sortStartDesc')" />
+            <el-option value="category" :label="t('admin.sortCategory')" />
+            <el-option value="availableDesc" :label="t('admin.sortAvailableDesc')" />
+          </el-select>
+        </div>
+      </div>
+
+      <div v-if="viewMode === 'calendar'" class="calendar-board" v-loading="loading">
+        <div v-for="group in calendarGroups" :key="group.date" class="day-column">
+          <div class="day-head">
+            <div>
+              <strong>{{ group.date }}</strong>
+              <span>{{ group.weekday }}</span>
+            </div>
+            <em>{{ group.rows.length }}</em>
+          </div>
+          <button
+            v-for="row in group.rows"
+            :key="row.id"
+            type="button"
+            class="schedule-chip"
+            :class="statusClass(row.status)"
+            :aria-label="`${row.showTitle} ${formatDate(row.startTime)}`"
+            @click="openEdit(row)"
+          >
+            <span class="chip-time">{{ row.startTime.slice(11, 16) }} - {{ row.endTime.slice(11, 16) }}</span>
+            <strong>{{ row.showTitle }}</strong>
+            <small>{{ row.hallName || row.theaterName }} / {{ statusLabel(row.status) }}</small>
+            <div class="chip-progress">
+              <span :style="{ width: `${ticketProgress(row)}%` }" />
+            </div>
+            <small>{{ row.soldSeats }} / {{ row.totalSeats }} {{ t('admin.soldSeats') }}</small>
+          </button>
+        </div>
+        <el-empty v-if="calendarGroups.length === 0" :description="t('admin.empty')" />
+      </div>
+
+      <div v-else class="table-container">
       <el-table :data="filteredSchedules" style="width: 100%" :empty-text="t('admin.empty')" v-loading="loading">
-        <el-table-column prop="id" label="ID" width="130" />
-        <el-table-column prop="showTitle" :label="t('admin.shows')" min-width="190" />
-        <el-table-column prop="category" :label="t('admin.category')" width="105" />
-        <el-table-column :label="t('admin.hallName')" min-width="150">
-          <template #default="{ row }">{{ row.hallName || row.theaterName }}</template>
-        </el-table-column>
-        <el-table-column :label="t('admin.layoutName')" min-width="160">
-          <template #default="{ row }">{{ row.layoutName || '-' }}</template>
-        </el-table-column>
-        <el-table-column prop="ticketMode" :label="t('admin.ticketMode')" width="110">
+        <el-table-column :label="t('admin.showAndCategory')" min-width="260">
           <template #default="{ row }">
-            <el-tag size="small" :type="modeTagType(row.ticketMode)">
-              {{ t(`ticketMode.${row.ticketMode?.toLowerCase()}`) }}
-            </el-tag>
+            <div class="schedule-show-cell">
+              <div class="show-title">{{ row.showTitle }}</div>
+              <div class="show-meta">
+                <el-tag size="small" effect="plain">{{ row.category || t('admin.uncategorized') }}</el-tag>
+                <span>#{{ row.id }}</span>
+              </div>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column :label="t('admin.time')" min-width="210">
+        <el-table-column :label="t('admin.venueAndLayout')" min-width="220">
           <template #default="{ row }">
-            <div>{{ formatDate(row.startTime) }}</div>
-            <div class="secondary-time">{{ formatDate(row.endTime) }}</div>
+            <div class="venue-cell">
+              <strong>{{ row.hallName || row.theaterName }}</strong>
+              <span>{{ row.layoutName || '-' }}</span>
+              <el-tag size="small" :type="modeTagType(row.ticketMode)" effect="plain">
+                {{ t(`ticketMode.${row.ticketMode?.toLowerCase()}`) }}
+              </el-tag>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column :label="t('admin.saleWindow')" min-width="180">
+        <el-table-column :label="t('admin.scheduleTime')" min-width="210">
           <template #default="{ row }">
-            <div>{{ formatDate(row.saleStartTime) }}</div>
-            <div class="secondary-time">{{ formatDate(row.saleEndTime) }}</div>
+            <div class="time-stack">
+              <strong>{{ formatDate(row.startTime) }}</strong>
+              <span>{{ formatDate(row.endTime) }}</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('admin.saleWindow')" min-width="190">
+          <template #default="{ row }">
+            <div class="time-stack subtle">
+              <span>{{ formatDate(row.saleStartTime) }}</span>
+              <span>{{ formatDate(row.saleEndTime) }}</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('admin.salesProgress')" min-width="170">
+          <template #default="{ row }">
+            <div class="sales-cell">
+              <el-progress :percentage="ticketProgress(row)" :stroke-width="8" :show-text="false" />
+              <div class="ticket-stats">
+                <span>{{ row.soldSeats }} / {{ row.totalSeats }}</span>
+                <span>{{ t('admin.availableSeats') }} {{ row.availableSeats }}</span>
+              </div>
+            </div>
           </template>
         </el-table-column>
         <el-table-column prop="priceRange" :label="t('admin.priceRange')" width="130" />
-        <el-table-column :label="t('admin.availableSeats')" width="110">
+        <el-table-column :label="t('admin.statusAndPublish')" width="140">
           <template #default="{ row }">
-            <span class="available-count">{{ row.availableSeats }}</span>
+            <div class="status-stack">
+              <el-tag :type="statusTagType(row.status)" effect="plain">{{ statusLabel(row.status) }}</el-tag>
+              <el-tag :type="publishTagType(row.publishStatus)" effect="plain">{{ row.publishStatus }}</el-tag>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column :label="t('admin.soldSeats')" width="100">
+        <el-table-column :label="t('admin.action')" width="300" fixed="right">
           <template #default="{ row }">
-            <span class="sold-count">{{ row.soldSeats }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column :label="t('admin.scheduleStatus')" width="120">
-          <template #default="{ row }">
-            <el-tag :type="statusTagType(row.status)" effect="plain">{{ statusLabel(row.status) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column :label="t('admin.publishStatus')" width="110">
-          <template #default="{ row }">
-            <el-tag :type="publishTagType(row.publishStatus)" effect="plain">{{ row.publishStatus }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column :label="t('admin.action')" width="285" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" :disabled="operatingId === row.id" @click="openInventory(row)">
+            <el-button link type="primary" :icon="Calendar" :disabled="operatingId === row.id" @click="openInventory(row)">
               {{ t('admin.inventory') }}
             </el-button>
-            <el-button link type="primary" :disabled="operatingId === row.id" @click="openEdit(row)">
+            <el-button link type="primary" :icon="Edit" :disabled="operatingId === row.id" @click="openEdit(row)">
               {{ t('admin.edit') }}
             </el-button>
             <el-button
@@ -555,6 +694,7 @@ const openInventory = (row: AdminSchedule) => {
           </template>
         </el-table-column>
       </el-table>
+      </div>
     </div>
 
     <el-dialog
@@ -565,102 +705,115 @@ const openInventory = (row: AdminSchedule) => {
       @closed="resetForm"
     >
       <el-form label-position="top" class="schedule-form">
-        <div class="form-grid">
-          <el-form-item :label="t('admin.shows')" required>
-            <el-select v-model="form.showId" filterable class="full-control">
-              <el-option
-                v-for="show in schedulableShows"
-                :key="show.id"
-                :label="show.title"
-                :value="show.id"
+        <div class="form-section">
+          <h3>{{ t('admin.scheduleShowVenue') }}</h3>
+          <div class="form-grid">
+            <el-form-item :label="t('admin.shows')" required class="span-2">
+              <el-select v-model="form.showId" filterable class="full-control">
+                <el-option
+                  v-for="show in schedulableShows"
+                  :key="show.id"
+                  :label="show.title"
+                  :value="show.id"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item :label="t('admin.hallName')" required>
+              <el-select v-model="form.hallId" filterable class="full-control" @change="handleHallChange">
+                <el-option
+                  v-for="hall in halls"
+                  :key="hall.id"
+                  :label="`${hall.venueName} / ${hall.name}`"
+                  :value="hall.id"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item :label="t('admin.layoutName')" required>
+              <el-select v-model="form.layoutId" filterable class="full-control" @change="handleLayoutChange">
+                <el-option
+                  v-for="layout in layoutsForSelectedHall"
+                  :key="layout.id"
+                  :label="`${layout.name} · v${layout.version} · ${layout.status}`"
+                  :value="layout.id"
+                  :disabled="layout.status !== 'PUBLISHED'"
+                />
+              </el-select>
+              <div v-if="publishedLayoutsForSelectedHall.length === 0" class="field-hint">
+                {{ t('admin.noPublishedLayout') }}
+              </div>
+            </el-form-item>
+            <el-form-item :label="t('admin.theater')" required class="span-2">
+              <el-input v-model="form.theaterName" maxlength="128" />
+            </el-form-item>
+          </div>
+        </div>
+        <div class="form-section">
+          <h3>{{ t('admin.scheduleTimeSales') }}</h3>
+          <div class="form-grid">
+            <el-form-item :label="t('admin.startTime')" required>
+              <el-date-picker
+                v-model="form.startTime"
+                type="datetime"
+                value-format="YYYY-MM-DDTHH:mm:ss"
+                class="full-control"
               />
-            </el-select>
-          </el-form-item>
-          <el-form-item :label="t('admin.hallName')" required>
-            <el-select v-model="form.hallId" filterable class="full-control" @change="handleHallChange">
-              <el-option
-                v-for="hall in halls"
-                :key="hall.id"
-                :label="`${hall.venueName} / ${hall.name}`"
-                :value="hall.id"
+            </el-form-item>
+            <el-form-item :label="t('admin.endTime')" required>
+              <el-date-picker
+                v-model="form.endTime"
+                type="datetime"
+                value-format="YYYY-MM-DDTHH:mm:ss"
+                class="full-control"
               />
-            </el-select>
-          </el-form-item>
-          <el-form-item :label="t('admin.layoutName')" required>
-            <el-select v-model="form.layoutId" filterable class="full-control" @change="handleLayoutChange">
-              <el-option
-                v-for="layout in layoutsForSelectedHall"
-                :key="layout.id"
-                :label="`${layout.name} · v${layout.version} · ${layout.status}`"
-                :value="layout.id"
-                :disabled="layout.status !== 'PUBLISHED'"
+            </el-form-item>
+            <el-form-item :label="t('admin.saleStartTime')">
+              <el-date-picker
+                v-model="form.saleStartTime"
+                type="datetime"
+                value-format="YYYY-MM-DDTHH:mm:ss"
+                class="full-control"
               />
-            </el-select>
-            <div v-if="publishedLayoutsForSelectedHall.length === 0" class="field-hint">
-              {{ t('admin.noPublishedLayout') }}
-            </div>
-          </el-form-item>
-          <el-form-item :label="t('admin.theater')" required>
-            <el-input v-model="form.theaterName" maxlength="128" />
-          </el-form-item>
-          <el-form-item :label="t('admin.startTime')" required>
-            <el-date-picker
-              v-model="form.startTime"
-              type="datetime"
-              value-format="YYYY-MM-DDTHH:mm:ss"
-              class="full-control"
-            />
-          </el-form-item>
-          <el-form-item :label="t('admin.endTime')" required>
-            <el-date-picker
-              v-model="form.endTime"
-              type="datetime"
-              value-format="YYYY-MM-DDTHH:mm:ss"
-              class="full-control"
-            />
-          </el-form-item>
-          <el-form-item :label="t('admin.saleStartTime')">
-            <el-date-picker
-              v-model="form.saleStartTime"
-              type="datetime"
-              value-format="YYYY-MM-DDTHH:mm:ss"
-              class="full-control"
-            />
-          </el-form-item>
-          <el-form-item :label="t('admin.saleEndTime')">
-            <el-date-picker
-              v-model="form.saleEndTime"
-              type="datetime"
-              value-format="YYYY-MM-DDTHH:mm:ss"
-              class="full-control"
-            />
-          </el-form-item>
-          <el-form-item :label="t('admin.scheduleStatus')" required>
-            <el-select v-model="form.status" class="full-control">
-              <el-option
-                v-for="status in scheduleStatusOptions"
-                :key="status"
-                :label="statusLabel(status)"
-                :value="status"
+            </el-form-item>
+            <el-form-item :label="t('admin.saleEndTime')">
+              <el-date-picker
+                v-model="form.saleEndTime"
+                type="datetime"
+                value-format="YYYY-MM-DDTHH:mm:ss"
+                class="full-control"
               />
-            </el-select>
-          </el-form-item>
-          <el-form-item :label="t('admin.publishStatus')" required>
-            <el-select v-model="form.publishStatus" class="full-control">
-              <el-option value="DRAFT" :label="t('admin.showStatus.draft')" />
-              <el-option value="PUBLISHED" :label="t('admin.showStatus.published')" />
-            </el-select>
-          </el-form-item>
-          <el-form-item :label="t('admin.priceRange')" required>
-            <el-input v-model="form.priceRange" maxlength="64" />
-          </el-form-item>
-          <el-form-item :label="t('admin.ticketMode')" required>
-            <el-select v-model="form.ticketMode" class="full-control">
-              <el-option value="SEATED" :label="t('ticketMode.seated')" />
-              <el-option value="ZONED" :label="t('ticketMode.zoned')" />
-              <el-option value="MIXED" :label="t('ticketMode.mixed')" />
-            </el-select>
-          </el-form-item>
+            </el-form-item>
+            <el-form-item :label="t('admin.priceRange')" required class="span-2">
+              <el-input v-model="form.priceRange" maxlength="64" />
+            </el-form-item>
+          </div>
+        </div>
+        <div class="form-section">
+          <h3>{{ t('admin.scheduleStatusTicketing') }}</h3>
+          <div class="form-grid">
+            <el-form-item :label="t('admin.scheduleStatus')" required>
+              <el-select v-model="form.status" class="full-control">
+                <el-option
+                  v-for="status in scheduleStatusOptions"
+                  :key="status"
+                  :label="statusLabel(status)"
+                  :value="status"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item :label="t('admin.publishStatus')" required>
+              <el-select v-model="form.publishStatus" class="full-control">
+                <el-option value="DRAFT" :label="t('admin.showStatus.draft')" />
+                <el-option value="PUBLISHED" :label="t('admin.showStatus.published')" />
+              </el-select>
+            </el-form-item>
+            <el-form-item :label="t('admin.ticketMode')" required class="span-2">
+              <el-select v-model="form.ticketMode" class="full-control">
+                <el-option value="SEATED" :label="t('ticketMode.seated')" />
+                <el-option value="ZONED" :label="t('ticketMode.zoned')" />
+                <el-option value="MIXED" :label="t('ticketMode.mixed')" />
+              </el-select>
+            </el-form-item>
+          </div>
         </div>
       </el-form>
       <template #footer>
@@ -681,7 +834,7 @@ const openInventory = (row: AdminSchedule) => {
 }
 
 .page-header {
-  margin-bottom: var(--spacing-6);
+  margin-bottom: var(--spacing-4);
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -690,6 +843,7 @@ const openInventory = (row: AdminSchedule) => {
   h1 {
     font-family: var(--font-family-display);
     font-size: 32px;
+    line-height: 1.2;
   }
 
   p {
@@ -706,20 +860,104 @@ const openInventory = (row: AdminSchedule) => {
   justify-content: flex-end;
 }
 
+.metric-strip {
+  margin-bottom: var(--spacing-4);
+  display: grid;
+  grid-template-columns: repeat(6, minmax(116px, 1fr));
+  gap: var(--spacing-3);
+}
+
+.metric-card {
+  min-width: 0;
+  min-height: 76px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+  padding: var(--spacing-3);
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 160ms ease, background-color 160ms ease;
+
+  span {
+    color: var(--color-text-secondary);
+    font-family: var(--font-family-sans);
+    font-size: 12px;
+  }
+
+  strong {
+    font-family: var(--font-family-sans);
+    font-size: 24px;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+  }
+
+  &:hover,
+  &.active {
+    border-color: rgba(200, 149, 90, 0.38);
+    background: rgba(200, 149, 90, 0.1);
+  }
+
+  &.passive {
+    cursor: default;
+
+    &:hover {
+      border-color: var(--color-border);
+      background: var(--color-bg-elevated);
+    }
+  }
+}
+
+.schedule-workspace {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-bg-elevated);
+  padding: var(--spacing-4);
+}
+
+.schedule-toolbar {
+  margin-bottom: var(--spacing-4);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+}
+
+.view-switcher {
+  flex: 0 0 auto;
+}
+
+.toolbar-fields {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+}
+
+.search-input {
+  width: min(300px, 100%);
+}
+
 .compact-filter {
   width: 132px;
+}
+
+.date-filter {
+  width: 260px;
 }
 
 .sort-filter {
   width: 168px;
 }
 
-.table-container,
-.calendar-board {
-  background-color: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
-  padding: var(--spacing-4);
-  border-radius: var(--radius-sm);
+.table-container {
+  min-width: 0;
 }
 
 .calendar-board {
@@ -740,37 +978,112 @@ const openInventory = (row: AdminSchedule) => {
 .day-head {
   margin-bottom: var(--spacing-3);
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
   color: var(--color-text-secondary);
 
+  div {
+    display: grid;
+    gap: 2px;
+  }
+
   strong {
     color: var(--color-text-primary);
+  }
+
+  span {
+    font-size: 12px;
+  }
+
+  em {
+    min-width: 28px;
+    border-radius: var(--radius-full);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--color-text-secondary);
+    font-style: normal;
+    font-size: 12px;
+    line-height: 24px;
+    text-align: center;
   }
 }
 
 .schedule-chip {
   width: 100%;
   margin-bottom: var(--spacing-2);
-  border: 1px solid rgba(200, 149, 90, 0.25);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid rgba(200, 149, 90, 0.5);
   border-radius: var(--radius-sm);
-  background: rgba(200, 149, 90, 0.08);
+  background: rgba(255, 255, 255, 0.03);
   color: var(--color-text-primary);
-  padding: var(--spacing-2);
+  padding: var(--spacing-3);
   text-align: left;
   cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease;
 
-  span,
-  small {
+  &:hover {
+    border-color: rgba(200, 149, 90, 0.38);
+    background: rgba(200, 149, 90, 0.08);
+  }
+
+  strong,
+  small,
+  .chip-time {
     display: block;
   }
 
+  strong {
+    margin-top: 4px;
+    overflow: hidden;
+    font-size: 14px;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   small {
-    margin-top: 3px;
+    margin-top: 4px;
     color: var(--color-text-secondary);
+    font-size: 12px;
+  }
+
+  &.on-sale {
+    border-left-color: var(--color-success);
+  }
+
+  &.cancelled,
+  &.sold-out {
+    border-left-color: var(--color-error);
+  }
+
+  &.preparing,
+  &.coming-soon,
+  &.published {
+    border-left-color: var(--color-warning);
   }
 }
 
-.table-container {
+.chip-time {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chip-progress {
+  height: 5px;
+  margin-top: var(--spacing-2);
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.08);
+
+  span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--color-warning);
+  }
+}
+
+.schedule-workspace {
   :deep(.el-table) {
     background-color: transparent;
     --el-table-border-color: var(--color-border);
@@ -792,27 +1105,97 @@ const openInventory = (row: AdminSchedule) => {
   }
 }
 
-.secondary-time {
-  margin-top: 2px;
+.schedule-show-cell,
+.venue-cell,
+.time-stack,
+.status-stack {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.show-title,
+.venue-cell strong,
+.time-stack strong {
+  overflow: hidden;
+  color: var(--color-text-primary);
+  font-weight: 600;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.show-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+
+  span {
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.venue-cell span,
+.time-stack span {
+  overflow: hidden;
   color: var(--color-text-secondary);
   font-size: 12px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.available-count {
-  color: var(--color-success);
-  font-weight: 700;
+.time-stack {
+  font-variant-numeric: tabular-nums;
 }
 
-.sold-count {
-  color: var(--color-warning);
-  font-weight: 700;
+.sales-cell {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+
+  :deep(.el-progress-bar__outer) {
+    background-color: rgba(255, 255, 255, 0.08);
+  }
+}
+
+.ticket-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 .schedule-form {
+  display: grid;
+  gap: var(--spacing-4);
+
+  .form-section {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-4);
+    background: rgba(255, 255, 255, 0.02);
+
+    h3 {
+      margin-bottom: var(--spacing-3);
+      font-size: 16px;
+    }
+  }
+
   .form-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: var(--spacing-4);
+  }
+
+  .span-2 {
+    grid-column: span 2;
   }
 
   .full-control {
@@ -826,7 +1209,26 @@ const openInventory = (row: AdminSchedule) => {
   font-size: 12px;
 }
 
-@media (max-width: 960px) {
+:deep(.schedule-dialog) {
+  max-width: calc(100vw - 32px);
+}
+
+@media (max-width: 1120px) {
+  .metric-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .schedule-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .toolbar-fields {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 720px) {
   .page-header {
     flex-direction: column;
   }
@@ -836,8 +1238,31 @@ const openInventory = (row: AdminSchedule) => {
     flex-wrap: wrap;
   }
 
-  .schedule-form .form-grid {
-    grid-template-columns: 1fr;
+  .metric-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .schedule-workspace {
+    padding: var(--spacing-3);
+  }
+
+  .view-switcher,
+  .toolbar-fields,
+  .search-input,
+  .compact-filter,
+  .date-filter,
+  .sort-filter {
+    width: 100%;
+  }
+
+  .schedule-form {
+    .form-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .span-2 {
+      grid-column: auto;
+    }
   }
 }
 </style>

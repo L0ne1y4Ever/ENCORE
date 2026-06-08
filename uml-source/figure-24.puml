@@ -7,141 +7,171 @@ skinparam linetype ortho
 hide circle
 title 图5  ENCORE 数据库实体关系图 (ER)
 
-entity "sys_user" as U {
-  *id : BIGINT <<PK>>
+entity "user_account" as U {
+  *id : VARCHAR <<PK>>
   --
-  username : VARCHAR
-  password_hash : VARCHAR
-  phone : VARCHAR
-  email : VARCHAR
-  status : TINYINT
+  username : VARCHAR <<UNI>>
+  password : VARCHAR (BCrypt)
+  role : VARCHAR
+  display_name : VARCHAR
+  status : VARCHAR
 }
-entity "sys_role" as R {
-  *id : BIGINT <<PK>>
+
+entity "encore_show" as SHOW {
+  *id : VARCHAR <<PK>>
   --
+  title / subtitle : VARCHAR
+  cover_url : VARCHAR
+  description / intro / full_synopsis : TEXT
+  cast_members / creative_team : TEXT
+  duration : INT
+  category : VARCHAR
+  tags : JSON
+  status : VARCHAR
+  sort_order : INT
+}
+
+entity "venue" as V {
+  *id : VARCHAR <<PK>>
+  --
+  name : VARCHAR
+  city / address : VARCHAR
+  status : VARCHAR
+}
+entity "venue_hall" as VH {
+  *id : VARCHAR <<PK>>
+  --
+  venue_id : VARCHAR <<FK>>
+  name : VARCHAR
+  hall_type : VARCHAR
+  capacity : INT
+  clearance_minutes : INT
+  default_layout_id : VARCHAR
+  status : VARCHAR
+}
+entity "seat_layout" as SL {
+  *id : VARCHAR <<PK>>
+  --
+  hall_id : VARCHAR <<FK>>
+  name : VARCHAR
+  ticket_mode : VARCHAR
+  version : INT
+  status : VARCHAR
+}
+entity "seat_layout_area" as SLA {
+  *id : VARCHAR <<PK>>
+  --
+  layout_id : VARCHAR <<FK>>
   code : VARCHAR
-  name : VARCHAR
+  area_type : VARCHAR
+  is_seated : TINYINT
+  capacity : INT
+  base_price : DECIMAL
+  position_data : JSON
 }
-entity "sys_user_role" as UR {
-  *user_id : BIGINT <<FK>>
-  *role_id : BIGINT <<FK>>
-}
-
-entity "show_category" as CAT {
-  *id : BIGINT <<PK>>
+entity "seat_layout_seat" as SLS {
+  *id : VARCHAR <<PK>>
   --
-  name : VARCHAR
-  sort : INT
+  layout_id : VARCHAR <<FK>>
+  area_id : VARCHAR <<FK>>
+  seat_code : VARCHAR
+  row_no / col_no : INT
+  section : VARCHAR
+  price : DECIMAL
 }
-entity "show_info" as SHOW {
-  *id : BIGINT <<PK>>
+entity "venue_area" as VA {
+  *id : VARCHAR <<PK>>
   --
-  category_id : BIGINT <<FK>>
-  title : VARCHAR
-  poster : VARCHAR
-  intro : TEXT
-  duration_min : INT
-}
-
-entity "theater_hall" as H {
-  *id : BIGINT <<PK>>
-  --
-  name : VARCHAR
-  row_count : INT
-  col_count : INT
-}
-entity "hall_seat" as HS {
-  *id : BIGINT <<PK>>
-  --
-  hall_id : BIGINT <<FK>>
-  row_no : INT
-  col_no : INT
-  area : VARCHAR
-  sellable : TINYINT
+  hall_id : VARCHAR <<FK>>
+  code : VARCHAR
+  area_type : VARCHAR
+  is_seated : TINYINT
+  capacity : INT
+  base_price : DECIMAL
+  available_count / locked_count / sold_count : INT
 }
 
 entity "show_schedule" as SCH {
-  *id : BIGINT <<PK>>
+  *id : VARCHAR <<PK>>
   --
-  show_id : BIGINT <<FK>>
-  hall_id : BIGINT <<FK>>
-  start_time : DATETIME
-  end_time : DATETIME
+  show_id : VARCHAR <<FK>>
+  hall_id : VARCHAR
+  layout_id : VARCHAR
+  theater_name : VARCHAR
+  business_date : DATE
+  start_time / end_time : DATETIME
+  sale_start_time / sale_end_time : DATETIME
   status : VARCHAR
+  publish_status : VARCHAR
+  ticket_mode : VARCHAR
+  price_range : VARCHAR
 }
 entity "schedule_seat" as SS {
-  *id : BIGINT <<PK>>
+  *id : VARCHAR <<PK>>
   --
-  schedule_id : BIGINT <<FK>>
-  hall_seat_id : BIGINT <<FK>>
+  schedule_id : VARCHAR <<FK>>
+  area_id : VARCHAR
+  seat_code : VARCHAR
+  row_no / col_no : INT
+  section : VARCHAR
   price : DECIMAL
+  status : VARCHAR
+}
+entity "schedule_area_inventory" as SAI {
+  *id : VARCHAR <<PK>>
+  --
+  schedule_id : VARCHAR <<FK>>
+  area_id : VARCHAR <<FK>>
+  price : DECIMAL
+  total_count : INT
+  available_count : INT
+  locked_count : INT
+  sold_count : INT
   status : VARCHAR
 }
 
 entity "ticket_order" as TO_ {
-  *id : BIGINT <<PK>>
+  *id : VARCHAR <<PK>>
   --
-  user_id : BIGINT <<FK>>
-  schedule_id : BIGINT <<FK>>
+  user_id : VARCHAR <<FK>>
+  schedule_id : VARCHAR <<FK>>
   total_amount : DECIMAL
   status : VARCHAR
-  create_time : DATETIME
-  expire_time : DATETIME
+  created_at / expires_at / paid_at : DATETIME
 }
 entity "ticket_item" as TI {
-  *id : BIGINT <<PK>>
+  *id : VARCHAR <<PK>>
   --
-  order_id : BIGINT <<FK>>
-  schedule_seat_id : BIGINT <<FK>>
-  ticket_code : VARCHAR
-  qr_mock_code : VARCHAR
+  order_id : VARCHAR <<FK>>
+  schedule_id : VARCHAR <<FK>>
+  seat_id : VARCHAR  (SEATED)
+  area_inventory_id : VARCHAR <<FK>> (ZONED)
+  ticket_code : VARCHAR <<UNI>>
   status : VARCHAR
 }
-entity "payment_record" as PR {
-  *id : BIGINT <<PK>>
-  --
-  order_id : BIGINT <<FK>>
-  amount : DECIMAL
-  channel : VARCHAR
-  pay_time : DATETIME
-}
-entity "checkin_record" as CR {
-  *id : BIGINT <<PK>>
-  --
-  ticket_id : BIGINT <<FK>>
-  checker_id : BIGINT <<FK>>
-  check_time : DATETIME
-}
-entity "announcement" as ANN {
-  *id : BIGINT <<PK>>
-  --
-  title : VARCHAR
-  content : TEXT
-  publish_time : DATETIME
-}
-entity "operation_log" as LOG {
-  *id : BIGINT <<PK>>
-  --
-  user_id : BIGINT <<FK>>
-  action : VARCHAR
-  target : VARCHAR
-  detail : TEXT
-  log_time : DATETIME
-}
 
-U ||..o{ UR
-R ||..o{ UR
-CAT ||..o{ SHOW
-SHOW ||..o{ SCH
-H ||..o{ HS
-H ||..o{ SCH
-SCH ||..o{ SS
-HS ||..o{ SS
-U ||..o{ TO_
-SCH ||..o{ TO_
-TO_ ||..o{ TI
-SS ||..|| TI
-TO_ ||..o{ PR
-TI ||..o| CR
-U ||..o{ LOG
+V ||--o{ VH
+VH ||--o{ SL
+SL ||--o{ SLA
+SL ||--o{ SLS
+SLA ||--o{ SLS
+VH ||--o{ VA
+SLA ||..|| VA : 镜像(同 id)
+SHOW ||--o{ SCH
+SL ||..o{ SCH : 快照来源
+SCH ||--o{ SS
+SCH ||--o{ SAI
+VA ||--o{ SAI
+U ||--o{ TO_
+SCH ||--o{ TO_
+TO_ ||--o{ TI
+SCH ||--o{ TI
+SAI ||--o{ TI
+
+note bottom
+  共 13 张业务表。角色 RBAC 内联于 user_account.role 单列(非三表)。
+  支付为内联模拟(ticket_order.paid_at), 检票为翻转 ticket_item.status,
+  均无独立记录表。schedule_seat / schedule_area_inventory 为创建场次时
+  从已发布 seat_layout* 复制的"按场次快照"。Redis 承载座位锁与拼座会话(不落库)。
+end note
 @enduml

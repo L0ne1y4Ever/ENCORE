@@ -15,7 +15,9 @@ rectangle "演出浏览子系统" {
   usecase "查看演出详情" as UC4
   usecase "查看场次信息" as UC5
   usecase "查看座位布局预览" as UC6
-  usecase "查看公告" as UC7
+  usecase "查看区域票档预览" as UC7
+  usecase "舞台视角 3D 预览" as UC8
+  usecase "查看个性化推荐" as UC9
 }
 
 Guest --> UC1
@@ -25,7 +27,10 @@ Guest --> UC4
 Guest --> UC5
 Guest --> UC6
 Guest --> UC7
+Guest --> UC9
 
 UC4 ..> UC5 : <<include>>
 UC5 ..> UC6 : <<extend>>
+UC5 ..> UC7 : <<extend>>
+UC6 ..> UC8 : <<extend>>
 @enduml

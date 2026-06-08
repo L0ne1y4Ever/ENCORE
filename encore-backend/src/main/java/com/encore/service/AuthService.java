@@ -7,10 +7,12 @@ import com.encore.common.ErrorCode;
 import com.encore.dto.LoginRequest;
 import com.encore.dto.LoginResponse;
 import com.encore.dto.RegisterRequest;
+import com.encore.dto.UpdateCurrentUserRequest;
 import com.encore.dto.UserProfileResponse;
 import com.encore.entity.UserAccount;
 import com.encore.exception.BusinessException;
 import com.encore.mapper.UserAccountMapper;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -21,14 +23,16 @@ import java.util.UUID;
 @Service
 public class AuthService {
     private final UserAccountMapper userAccountMapper;
+    private final PasswordEncoder passwordEncoder;
 
-    public AuthService(UserAccountMapper userAccountMapper) {
+    public AuthService(UserAccountMapper userAccountMapper, PasswordEncoder passwordEncoder) {
         this.userAccountMapper = userAccountMapper;
+        this.passwordEncoder = passwordEncoder;
     }
 
     public LoginResponse login(LoginRequest request) {
         UserAccount user = findByUsername(request.username());
-        if (user == null || !"ACTIVE".equals(user.getStatus()) || !request.password().equals(user.getPassword())) {
+        if (user == null || !"ACTIVE".equals(user.getStatus()) || !passwordEncoder.matches(request.password(), user.getPassword())) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户名或密码错误");
         }
 
@@ -59,7 +63,7 @@ public class AuthService {
         UserAccount user = new UserAccount();
         user.setId(generateUserId());
         user.setUsername(username);
-        user.setPassword(password);
+        user.setPassword(passwordEncoder.encode(password));
         user.setRole("user");
         user.setDisplayName(displayName);
         user.setStatus("ACTIVE");
@@ -79,9 +83,28 @@ public class AuthService {
     public UserProfileResponse currentUser() {
         String userId = StpUtil.getLoginIdAsString();
         UserAccount user = userAccountMapper.selectById(userId);
-        if (user == null) {
+        if (user == null || !"ACTIVE".equals(user.getStatus())) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "登录用户不存在");
         }
+        return toProfile(user);
+    }
+
+    @Transactional
+    public UserProfileResponse updateCurrentUser(UpdateCurrentUserRequest request) {
+        String userId = StpUtil.getLoginIdAsString();
+        UserAccount user = userAccountMapper.selectById(userId);
+        if (user == null || !"ACTIVE".equals(user.getStatus())) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "登录用户不存在");
+        }
+
+        String displayName = clean(request.displayName());
+        if (!StringUtils.hasText(displayName) || displayName.length() > 64) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "昵称不能为空");
+        }
+
+        user.setDisplayName(displayName);
+        user.setUpdatedAt(LocalDateTime.now());
+        userAccountMapper.updateById(user);
         return toProfile(user);
     }
 

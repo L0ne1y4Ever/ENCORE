@@ -16,18 +16,19 @@ node "用户终端" {
 node "Web 服务器\n(Nginx 80/443)" as Nginx
 node "应用服务器\n(Spring Boot 8080)" as App
 database "数据库服务器\n(MySQL 8 / 3306)" as DB
-database "缓存服务器\n(Redis 7 / 6379)" as Cache
+database "缓存服务器\n(Redis / 6379)" as Cache
 
 UserPC --> Net
 AdminPC --> Net
 CheckPC --> Net
 Net --> Nginx : HTTPS
-Nginx --> App : HTTP/JSON (内网)
+Nginx --> App : HTTP/JSON + WebSocket(/ws) (内网)
 App --> DB : JDBC (内网)
 App --> Cache : RESP (内网)
 
 note bottom of Nginx
   外网入口仅暴露 80/443
   其余端口在内网通信
+  WebSocket(/ws) 经 Nginx Upgrade 透传
 end note
 @enduml

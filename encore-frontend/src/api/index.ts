@@ -9,9 +9,12 @@ export interface ApiResponse<T> {
 
 const TOKEN_NAME_KEY = 'encore.tokenName'
 const TOKEN_VALUE_KEY = 'encore.tokenValue'
+export const AUTH_EXPIRED_EVENT = 'encore-auth-expired'
+
+const defaultBaseURL = import.meta.env.PROD ? '/' : 'http://localhost:8080'
 
 export const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080',
+  baseURL: import.meta.env.VITE_API_BASE_URL || defaultBaseURL,
   timeout: 10000,
   withCredentials: true
 })
@@ -42,6 +45,10 @@ export async function requestData<T>(request: Promise<AxiosResponse<ApiResponse<
     return body.data
   } catch (error) {
     if (axios.isAxiosError<ApiResponse<unknown>>(error)) {
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        clearAuthToken()
+        window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT))
+      }
       const message = error.response?.data?.msg
       if (message) {
         throw new Error(message)

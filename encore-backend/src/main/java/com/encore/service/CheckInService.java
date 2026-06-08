@@ -104,9 +104,12 @@ public class CheckInService {
         }
 
         LocalDateTime checkedInAt = LocalDateTime.now(clock);
+        int updated = ticketItemMapper.markCheckedInIfUnused(ticket.getId(), checkedInAt);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.CONFLICT, "票据状态已变化，请刷新后重试");
+        }
         ticket.setStatus("CHECKED_IN");
         ticket.setUpdatedAt(checkedInAt);
-        ticketItemMapper.updateById(ticket);
         dashboardRefreshPublisher.publish("TICKET_CHECKED_IN", ticket.getId());
 
         ShowEntity show = schedule == null ? null : showMapper.selectById(schedule.getShowId());
@@ -164,7 +167,7 @@ public class CheckInService {
     private void ensureCheckInRole() {
         String userId = StpUtil.getLoginIdAsString();
         UserAccount user = userAccountMapper.selectById(userId);
-        if (user == null || !CHECKIN_ROLES.contains(user.getRole())) {
+        if (user == null || !"ACTIVE".equals(user.getStatus()) || !CHECKIN_ROLES.contains(user.getRole())) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "当前账号无检票权限");
         }
     }

@@ -2,35 +2,34 @@
 skinparam shadowing false
 skinparam DefaultFontName "Microsoft YaHei"
 skinparam DefaultFontSize 13
-title 图13  用户选座购票活动图
+title 图13  用户选座 / 区域购票活动图
 
 start
 :用户登录系统;
-:浏览演出列表;
-:进入演出详情;
-:选择具体场次;
-:加载场次座位图;
-note right: schedule_seat 表查询
-:查看座位状态 (AVAILABLE / LOCKED / SOLD / DISABLED);
-:选择一个或多个 AVAILABLE 座位;
-if (座位是否仍可售?) then (是)
-  :Redis 临时锁定座位\n (AVAILABLE -> LOCKED);
-  :创建订单 (PENDING_PAYMENT);
-  :启动订单倒计时 (默认 15 分钟);
-  :跳转到支付页面;
-  if (限定时间内完成支付?) then (是)
-    :座位 SOLD;
-    :订单 PAID;
-    :生成电子票 (UNUSED);
-    stop
-  else (否)
-    :订单 EXPIRED;
-    :释放座位锁 -> AVAILABLE;
+:浏览演出 -> 详情 -> 选择场次;
+if (场次售票模式?) then (SEATED 对号入座)
+  :加载场次座位图\n(GET /api/schedules/{id}/seats);
+  :查看座位状态\n(AVAILABLE / LOCKED / SOLD / DISABLED);
+  :选择 1~6 个 AVAILABLE 座位;
+  :POST /seats/lock\nRedis SETNX (AVAILABLE->LOCKED, TTL 15min);
+  if (锁定成功?) then (否)
+    :提示座位已被锁定 / 售出;
     stop
   endif
+else (ZONED/MIXED 区域票)
+  :加载区域票档\n(GET /api/schedules/{id}/areas);
+  :选择区域与数量 (1~4);
+endif
+:POST /api/orders 创建订单 (PENDING_PAYMENT);
+note right: SEATED 校验座位锁\nZONED 原子 lockInventory, 不足则 409
+:启动 15 分钟倒计时, 跳转支付页;
+if (倒计时内完成支付?) then (是)
+  :座位 SOLD / 区域 sold+;
+  :订单 PAID, 票据 UNUSED;
+  stop
 else (否)
-  :提示座位已被他人锁定 / 售出;
-  :返回选座页;
+  :订单 EXPIRED;
+  :释放座位锁 / 回补区域库存, 票据 VOID;
   stop
 endif
 @enduml

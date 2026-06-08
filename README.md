@@ -78,6 +78,8 @@ Then open `http://localhost:5173`. The frontend container proxies `/api` and `/w
 
 If local dev servers are already using `8080` or `5173`, stop them first or override `ENCORE_BACKEND_PORT` / `ENCORE_FRONTEND_PORT` in `.env`.
 
+For server deployment, prefer serving the frontend and API from the same origin through Nginx. Build the frontend with `VITE_API_BASE_URL=/` or leave it unset in production; browser requests should go to `/api/...` on the server, not to `localhost:8080` on the visitor's machine.
+
 ## Demo Accounts
 
 | Username | Password | Role | Use |

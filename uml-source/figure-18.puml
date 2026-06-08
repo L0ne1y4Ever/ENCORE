@@ -6,35 +6,41 @@ skinparam DefaultFontSize 13
 title 图24  检票核销顺序图
 
 actor "检票员" as Checker
-participant "Vue 检票页" as FE
-participant "CheckinController" as Ctrl
-participant "TicketItemService" as TS
-participant "ScheduleService" as SS
-participant "CheckinRecordService" as CRS
-database "MySQL" as DB
+participant "检票端 (Vue 3)" as FE
+participant "CheckInController\n/api/checkin" as Ctrl
+participant "CheckInService" as CS
+database "MySQL\nticket_item / ticket_order\nshow_schedule" as DB
+participant "DashboardRefreshPublisher\n/topic/admin/dashboard" as WS
 
 Checker -> FE : 输入 / 扫描票号
-FE -> Ctrl : POST /api/checkin/verify
-Ctrl -> TS : findByCode(ticketCode)
-TS -> DB : SELECT ticket_item WHERE code=?
-DB --> TS : ticket / null
-alt 票据存在 且 状态=UNUSED
-  TS -> SS : checkScheduleTime(scheduleId)
-  SS --> TS : 在允许检票窗口内
-  TS -> DB : UPDATE ticket_item SET status='CHECKED_IN'
-  TS -> CRS : record(ticketId, checkerId, time)
-  CRS -> DB : INSERT checkin_record
-  TS --> Ctrl : CheckinResultVO(success, 座位号)
-  Ctrl --> FE : 200 OK
-  FE --> Checker : 显示核销成功 + 座位
-else 票据不存在
-  TS --> Ctrl : 404 票据不存在
-  Ctrl --> FE : 错误
-else 票据已检票 / 作废 / 退票
-  TS --> Ctrl : 409 异常
-  Ctrl --> FE : 错误
-else 非当前场次
-  TS --> Ctrl : 425 非当前场次
-  Ctrl --> FE : 错误
+FE -> Ctrl : POST /api/checkin/verify\n{ ticketCode, currentScheduleId? }
+Ctrl -> CS : verify(ticketCode, scheduleId)
+CS -> CS : ensureCheckInRole\n(checker/admin/sysadmin)
+CS -> DB : SELECT ticket_item WHERE ticket_code=?
+DB --> CS : ticket / null
+alt 票码不存在
+  CS --> Ctrl : 404 票码不存在
+else 订单非 PAID
+  CS --> Ctrl : 409 订单未支付或已失效
+else 状态=CHECKED_IN
+  CS --> Ctrl : 409 票据已核销，不能重复入场
+else 状态≠UNUSED（RESERVED/VOID）
+  CS --> Ctrl : 409 票据状态不可核销
+else 票据不属于当前检票场次
+  CS --> Ctrl : 409 票据不属于当前检票场次
+else 不在检票时间窗（开演前2h ~ 结束）
+  CS --> Ctrl : 409 未到检票时间 / 演出已结束
+else 校验通过
+  CS -> DB : UPDATE ticket_item SET status=CHECKED_IN
+  CS -> WS : publish("TICKET_CHECKED_IN")
+  CS --> Ctrl : CheckInResponse(演出/座位/核销时间)
 end
+Ctrl --> FE : 统一 ApiResponse{code,msg,data}
+FE --> Checker : 显示核销结果
+
+note over CS, DB
+  无独立 checkin_record 表，核销即翻转
+  ticket_item.status -> CHECKED_IN；
+  检票窗口 = 开演前 2 小时至演出结束。
+end note
 @enduml

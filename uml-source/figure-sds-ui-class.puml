@@ -1,0 +1,134 @@
+@startuml
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 12
+skinparam class {
+  BackgroundColor #FFF8E7
+  BorderColor #5B0E0E
+}
+skinparam package {
+  BackgroundColor #FBF3DF
+  BorderColor #5B0E0E
+}
+title 图2  ENCORE 界面层 (Vue 3 表现层) 类图
+
+package "应用骨架 app" as appPkg {
+  class "main.ts" as mainTs <<bootstrap>>
+  class "App.vue" as appVue <<root>>
+  class "router/index.ts" as router <<router>> {
+    routes: 用户域 / 管理域 / 检票域
+    +beforeEach() 角色守卫
+    sysadmin 旁路
+  }
+  class "i18n.ts" as i18n <<i18n>> {
+    locales: zh / en
+  }
+}
+
+package "布局 layouts" as layoutPkg {
+  class UserLayout <<layout>>
+  class AdminLayout <<layout>>
+  class CheckinLayout <<layout>>
+}
+
+package "用户端视图 views/user" as userViews {
+  class Home
+  class ShowDetail
+  class SeatSelection
+  class OrderConfirm
+  class Payment
+  class ETicket
+  class Profile
+}
+
+package "管理端视图 views/admin" as adminViews {
+  class Dashboard
+  class Shows
+  class Venues
+  class Layouts
+  class Schedules
+  class ScheduleInventory
+  class Orders
+  class StaffUsers
+}
+
+package "检票/认证视图" as otherViews {
+  class Scanner <<checkin>>
+  class Login <<auth>>
+}
+
+package "复用组件 components" as compPkg {
+  class SeatStagePreview <<three.js 3D>>
+  class ConcertVenuePreview <<SVG 场馆>>
+  class AreaTicketPanel
+  class AdminSeatMapEditor
+  class TicketModeBadge
+  class LanguageSwitch
+}
+
+package "状态管理 stores (Pinia)" as storePkg {
+  class useAuthStore <<store>> {
+    +currentUser: 角色 / 显示名
+    +tokenName / tokenValue
+    +login() +logout() +restore()
+  }
+}
+
+package "接口客户端 api" as apiPkg {
+  class "index.ts" as apiIndex <<axios>> {
+    封装 ApiResponse{code,msg,data}
+    code==0 成功; 失败抛错
+    动态鉴权头 encore-token
+    baseURL = VITE_API_BASE_URL
+  }
+  class auth <<api>>
+  class show <<api>>
+  class seat <<api>>
+  class order <<api>>
+  class groupOrder <<api>>
+  class checkin <<api>>
+  class admin <<api>>
+  class "seatRealtime / adminRealtime" as realtime <<STOMP /ws>>
+}
+
+mainTs --> appVue
+mainTs --> router
+mainTs --> i18n
+appVue --> router
+router ..> useAuthStore : 守卫读取登录态
+
+UserLayout --> Home
+AdminLayout --> Dashboard
+CheckinLayout --> Scanner
+
+SeatSelection --> SeatStagePreview
+SeatSelection --> ConcertVenuePreview
+SeatSelection --> AreaTicketPanel
+SeatSelection --> seat
+SeatSelection ..> realtime : 订阅座位事件
+ShowDetail --> show
+Home --> show
+OrderConfirm --> order
+Payment --> order
+ETicket --> order
+Dashboard --> admin
+Dashboard ..> realtime : 订阅看板刷新
+Shows --> admin
+Schedules --> admin
+Login --> auth
+auth --> useAuthStore
+
+auth --> apiIndex
+show --> apiIndex
+seat --> apiIndex
+order --> apiIndex
+groupOrder --> apiIndex
+checkin --> apiIndex
+admin --> apiIndex
+Scanner --> checkin
+
+note bottom of apiPkg
+  axios 统一封装: 成功码 0, 失败抛错; 动态名鉴权头 encore-token;
+  realtime 基于 @stomp/stompjs 原生 WebSocket (无 SockJS), 订阅 /topic 主题。
+end note
+@enduml

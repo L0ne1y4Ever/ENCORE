@@ -7,25 +7,24 @@ title 图25  剧目与场次管理活动图
 |票务管理员|
 start
 :登录后台;
-:维护演出分类;
-:创建剧目信息\n(海报 / 简介 / 时长 / 票价区间);
-:绑定演出分类;
-:维护演出厅信息;
-:维护演出厅座位布局\n(行号 / 列号 / 区域 / 是否可售);
-:为剧目创建演出场次\n(选择剧目 + 演出厅 + 时间);
-:设置场次票价分区;
-if (演出厅座位布局完整?) then (是)
-  :一键生成场次座位票池\n(schedule_seat 全量 AVAILABLE);
-  :场次状态 DRAFT;
-  if (审核通过?) then (是)
-    :开放售票 (DRAFT -> ON_SALE);
-    stop
-  else (否)
-    :停留 DRAFT;
-    stop
-  endif
+:维护场馆 venue;
+:维护演出厅 venue_hall\n(类型 / 容量 / 清场缓冲);
+:设计座位布局 seat_layout\n(区域 area + 座位 seat, SEATED/ZONED/MIXED);
+:发布布局 (status=PUBLISHED);
+:创建剧目信息\n(标题 / 简介 / 时长 / 分类 / 票价区间);
+:创建演出场次\n(绑定剧目 + 厅/布局 + 时间 + 模式);
+if (绑定了已发布布局?) then (是)
+  :快照布局 ->\nschedule_seat + schedule_area_inventory;
+else (否, SEATED 默认)
+  :按行列生成默认座位池;
+endif
+:校验同厅时间冲突 (清场缓冲);
+:设置发布与售票状态;
+if (发布且开放?) then (是)
+  :publishStatus=PUBLISHED, status=ON_SALE;
+  stop
 else (否)
-  :提示需要先完善座位布局;
+  :保持 DRAFT / PREPARING;
   stop
 endif
 @enduml

@@ -1,0 +1,142 @@
+@startuml
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 12
+skinparam class {
+  BackgroundColor #FFF8E7
+  BorderColor #5B0E0E
+}
+skinparam package {
+  BackgroundColor #FBF3DF
+  BorderColor #5B0E0E
+}
+title 图3  ENCORE 业务逻辑层类图 (Controller → Service → Mapper)
+
+package "控制层 controller" as ctrlPkg {
+  class AuthController
+  class ShowController
+  class SeatController
+  class OrderController
+  class GroupOrderController
+  class CheckInController
+  class AdminController
+  class HealthController
+}
+
+package "业务层 service" as svcPkg {
+  class AuthService {
+    +login(LoginRequest): LoginResponse
+    +register(RegisterRequest): LoginResponse
+    +logout() +currentUser()
+  }
+  class ShowService {
+    +listShows(keyword, category)
+    +listTopRecommendations()
+    +getShowDetail(id)
+    +listSchedules(showId)
+  }
+  class SeatService {
+    +listSeats(scheduleId [,areaId])
+    +listScheduleAreas(scheduleId)
+    +lockSeats(scheduleId, seatIds)
+    +lockSeatsForOwner(...) +releaseLocks(...)
+    +{static} lockKey(scheduleId, seatId)
+    +cleanupExpiredSeatLocks() @Scheduled
+  }
+  class OrderService {
+    +createOrder(CreateOrderRequest)
+    +createGroupOrder(...)
+    +simulatePayment(orderId)
+    +cancelOrder(id) +refundOrder(id)
+    +cleanupExpiredOrders() @Scheduled
+  }
+  class GroupOrderService {
+    +create(req) +join(code, req)
+    +leave(code) +cancel(code)
+    +get(code) +checkout(code)
+  }
+  class CheckInService {
+    +verify(ticketCode [,scheduleId])
+    +listCheckInSchedules()
+  }
+  class AdminService {
+    +dashboard(): KPI 聚合
+    +createShow/updateShow/archiveShow
+    +createSchedule/updateSchedule
+    +refundOrder/forceCheckInOrder
+  }
+  class VenueManagementService {
+    +createVenue/Hall/Layout
+    +snapshotLayoutToSchedule(...)
+    +ensureScheduleConflictFree(...)
+    +updateAreaInventory(...) CAS
+  }
+  class StaffAccountService {
+    +listStaffUsers() +createStaffUser()
+    +updateStaffUser() +resetPassword()
+  }
+  class SeatStatusPublisher <<event>> {
+    /topic/schedules/{id}/seats
+  }
+  class DashboardRefreshPublisher <<event>> {
+    /topic/admin/dashboard
+  }
+  class GroupOrderSession <<redis-json>> {
+    inviteCode / status / members
+  }
+}
+
+package "数据访问层 mapper (MyBatis-Plus)" as mapperPkg {
+  class "13 × BaseMapper<T>\nUserAccount · Show · ShowSchedule · ScheduleSeat\nScheduleAreaInventory(自定义 CAS SQL) · VenueArea\nVenue · VenueHall · SeatLayout(+Area +Seat)\nTicketOrder · TicketItem" as mappers
+}
+
+package "基础设施" as infraPkg {
+  class StringRedisTemplate <<redis>>
+  class SimpMessagingTemplate <<stomp>>
+  class PasswordEncoder <<bcrypt>>
+  class Clock
+}
+
+AuthController --> AuthService
+ShowController --> ShowService
+SeatController --> SeatService
+OrderController --> OrderService
+GroupOrderController --> GroupOrderService
+CheckInController --> CheckInService
+AdminController --> AdminService
+AdminController --> VenueManagementService
+AdminController --> StaffAccountService
+
+OrderService --> SeatService
+GroupOrderService --> SeatService
+GroupOrderService --> OrderService
+AdminService --> VenueManagementService
+AdminService --> SeatService
+
+AuthService --> PasswordEncoder
+StaffAccountService --> PasswordEncoder
+SeatService --> StringRedisTemplate
+GroupOrderService --> StringRedisTemplate
+SeatService --> SeatStatusPublisher
+OrderService --> SeatStatusPublisher
+OrderService --> DashboardRefreshPublisher
+CheckInService --> DashboardRefreshPublisher
+CheckInService --> Clock
+SeatStatusPublisher --> SimpMessagingTemplate
+DashboardRefreshPublisher --> SimpMessagingTemplate
+GroupOrderService ..> GroupOrderSession
+
+AuthService --> mappers
+ShowService --> mappers
+SeatService --> mappers
+OrderService --> mappers
+CheckInService --> mappers
+AdminService --> mappers
+VenueManagementService --> mappers
+StaffAccountService --> mappers
+
+note bottom of mapperPkg
+  12 个为纯 BaseMapper CRUD; 仅 ScheduleAreaInventoryMapper 含
+  @Update/@Select 注解原生 SQL (区域库存 total/available/locked/sold 的 CAS 原子更新)。
+end note
+@enduml

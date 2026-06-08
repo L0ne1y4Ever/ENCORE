@@ -419,14 +419,15 @@ public class VenueManagementService {
         ensureScheduleSeatEditable(scheduleId, seat);
         seat.setStatus(normalized);
         scheduleSeatMapper.updateById(seat);
-        seatStatusPublisher.publishSeatStatus(scheduleId, normalized, normalized, List.of(seatCode));
+        seatStatusPublisher.publishSeatStatus(scheduleId, "INVENTORY_ADJUSTED", normalized, List.of(seatCode));
         return getScheduleInventory(scheduleId);
     }
 
     @Transactional
     public AdminScheduleInventoryResponse updateAreaInventory(String scheduleId, String inventoryId, UpdateScheduleAreaInventoryRequest request) {
         ensureAdminRole();
-        ScheduleAreaInventory inventory = scheduleAreaInventoryMapper.selectById(inventoryId);
+        // 加行锁重读最新计数，避免与并发的下单/支付/退票原子更新发生丢失更新(lost update)。
+        ScheduleAreaInventory inventory = scheduleAreaInventoryMapper.selectByIdForUpdate(inventoryId);
         if (inventory == null || !scheduleId.equals(inventory.getScheduleId())) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "区域库存不存在");
         }
@@ -447,12 +448,12 @@ public class VenueManagementService {
         if (available < 0 || available + minTotal > total) {
             throw new BusinessException(ErrorCode.CONFLICT, "可售库存数量不合法");
         }
-        inventory.setTotalCount(total);
-        inventory.setAvailableCount(available);
-        if (StringUtils.hasText(request.status())) {
-            inventory.setStatus(request.status().trim().toUpperCase());
-        }
-        scheduleAreaInventoryMapper.updateById(inventory);
+        // 仅更新管理员实际调整的列(total/available/status)，绝不回写 locked_count/sold_count，
+        // 这两个计数由下单链路的原子 SQL 独占维护。
+        String nextStatus = StringUtils.hasText(request.status())
+                ? request.status().trim().toUpperCase()
+                : inventory.getStatus();
+        scheduleAreaInventoryMapper.adjustInventory(inventoryId, total, available, nextStatus);
         seatService.publishAreaInventory(scheduleId, "AREA_ADJUSTED", inventoryId);
         return getScheduleInventory(scheduleId);
     }
@@ -848,7 +849,7 @@ public class VenueManagementService {
     }
 
     private String clean(String value) {
-        return value.trim();
+        return value == null ? "" : value.trim();
     }
 
     private String cleanOptional(String value) {
@@ -858,7 +859,7 @@ public class VenueManagementService {
     private void ensureAdminRole() {
         String userId = StpUtil.getLoginIdAsString();
         UserAccount user = userAccountMapper.selectById(userId);
-        if (user == null || !ADMIN_ROLES.contains(user.getRole())) {
+        if (user == null || !"ACTIVE".equals(user.getStatus()) || !ADMIN_ROLES.contains(user.getRole())) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "当前账号无后台管理权限");
         }
     }

@@ -5,32 +5,39 @@ skinparam DefaultFontSize 13
 title 图23  检票核销活动图
 
 start
-:检票员登录检票端;
-:扫描二维码模拟码 或 手动输入票号;
-:系统查询 ticket_item;
+:检票员登录检票端\n(checker / admin / sysadmin);
+:查看可检票场次\n(GET /api/checkin/schedules);
+:扫描或输入票号 ticketCode;
+:POST /api/checkin/verify;
+:按 ticketCode 查询 ticket_item;
 if (找到票据?) then (否)
-  :提示票据不存在;
+  :404 票据不存在;
+  stop
+endif
+if (所属订单 = PAID?) then (否)
+  :409 订单未支付 / 异常;
+  stop
+endif
+if (票据 = 已核销 CHECKED_IN?) then (是)
+  :409 重复检票;
+  stop
+endif
+if (票据 = UNUSED?) then (否)
+  :409 票据已作废 / 退票 (VOID);
+  stop
+endif
+if (场次绑定一致 且 在检票时间窗内?) then (否)
+  :409 非当前场次 / 不在时间窗;
   stop
 else (是)
-  if (票据状态 = UNUSED?) then (否)
-    if (CHECKED_IN) then
-      :提示重复检票;
-    elseif (INVALID) then
-      :提示票据已作废;
-    else
-      :提示已退票;
-    endif
-    stop
-  else (是)
-    if (场次时间在合法窗口内?) then (否)
-      :提示非当前场次, 不可入场;
-      stop
-    else (是)
-      :票据 -> CHECKED_IN;
-      :写入 checkin_record;
-      :提示核销成功并入场;
-      stop
-    endif
-  endif
+  :票据 UNUSED -> CHECKED_IN;
+  :发布 WebSocket TICKET_CHECKED_IN + 看板刷新;
+  :提示核销成功, 准予入场;
+  stop
 endif
+
+note right
+  检票窗口: 开演前 2 小时 ~ 结束时间。
+  核销仅翻转 ticket_item.status, 无独立检票记录表。
+end note
 @enduml

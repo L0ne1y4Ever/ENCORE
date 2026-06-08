@@ -6,28 +6,44 @@ skinparam DefaultFontSize 13
 title 图18  创建订单顺序图
 
 actor "注册用户" as User
-participant "Vue 前端页面" as FE
-participant "OrderController" as Ctrl
+participant "用户端 (Vue 3)" as FE
+participant "OrderController\n/api/orders" as Ctrl
 participant "OrderService" as OS
-participant "ScheduleSeatService" as SS
-database "Redis\n(订单倒计时)" as Redis
-database "MySQL\n(ticket_order)" as DB
+participant "SeatService" as SS
+database "Redis\n座位锁" as Redis
+database "MySQL\nticket_order / ticket_item" as DB
 
-User -> FE : 确认订单
-FE -> Ctrl : POST /api/order
-Ctrl -> OS : createOrder(userId, scheduleId, seatIds)
-OS -> SS : verifyLocked(scheduleId, seatIds, userId)
-SS --> OS : OK / Conflict
-alt 已锁定且锁属于本用户
-  OS -> DB : INSERT ticket_order\n(状态=PENDING_PAYMENT, 倒计时=15min)
-  DB --> OS : orderId
-  OS -> Redis : SET order:{id}:expire (TTL=15min)
-  OS --> Ctrl : OrderVO
-  Ctrl --> FE : 200 OK + orderId
-  FE --> User : 跳转支付页 + 倒计时
-else 锁不属于该用户 / 已过期
-  OS --> Ctrl : 412 Precondition Failed
-  Ctrl --> FE : 错误信息
-  FE --> User : 提示重新选座
+User -> FE : 确认所选座位，提交下单
+FE -> Ctrl : POST /api/orders\n{ scheduleId, seatIds }
+Ctrl -> OS : createOrder(request)
+OS -> SS : ensureOnSaleSchedule(scheduleId)
+OS -> SS : findSeats + ensureSeatAvailableForOrder
+SS --> OS : 座位均 AVAILABLE
+alt 已存在相同待支付订单(同场次同座位)
+  OS --> Ctrl : 返回原 orderId（幂等去重）
+else 新建订单
+  loop 每个座位
+    OS -> SS : isLockedByCurrentUser? 否则 lockSeats 补锁
+    SS -> Redis : SETNX encore:seat-lock:{id}:{seat}
+  end
+  OS -> DB : INSERT ticket_order\n(status=PENDING_PAYMENT,\nexpiresAt=now+15min)
+  loop 每个座位(按座位号排序)
+    OS -> DB : INSERT ticket_item\n(status=RESERVED, ticketCode 即时生成)
+  end
+  OS -> Redis : attachOrderToLocks\n锁值改写为 orderId, TTL=15min
+  note right of OS
+    注册事务同步钩子：若下单事务回滚，
+    afterCompletion 释放这些 Redis 锁，
+    座位立即恢复可售。
+  end note
+  OS --> Ctrl : orderId
 end
+Ctrl --> FE : 200 OK + orderId
+FE --> User : 跳转支付页，15 分钟倒计时
+
+note over Redis, DB
+  座位 LOCKED 不落库；票号在下单即写入(RESERVED)，
+  支付成功后翻转为 UNUSED。超时由 @Scheduled
+  cleanupExpiredOrders 依据 expiresAt 回收。
+end note
 @enduml

@@ -1,6 +1,8 @@
 package com.encore.service;
 
 import cn.dev33.satoken.stp.StpUtil;
+import com.encore.dto.UpdateScheduleRequest;
+import com.encore.exception.BusinessException;
 import com.encore.entity.ScheduleSeat;
 import com.encore.entity.ShowEntity;
 import com.encore.entity.ShowSchedule;
@@ -26,8 +28,10 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -88,6 +92,43 @@ class AdminServiceTest {
                 List.of("seat-1-1")
         );
         verify(dashboardRefreshPublisher).publish("ORDER_REFUNDED", "ord-1");
+    }
+
+    @Test
+    void updateScheduleRejectsLayoutChangeAfterCreation() {
+        AdminService service = createService();
+        ShowSchedule schedule = schedule();
+        schedule.setLayoutId("lay-1");
+        schedule.setHallId("hall-1");
+        schedule.setTicketMode("SEATED");
+        UpdateScheduleRequest request = new UpdateScheduleRequest(
+                "show-1",
+                "hall-1",
+                "lay-2",
+                "Main Hall",
+                LocalDateTime.now().plusDays(2),
+                LocalDateTime.now().plusDays(2).plusHours(2),
+                null,
+                null,
+                "ON_SALE",
+                "PUBLISHED",
+                "$50 - $150",
+                "SEATED"
+        );
+
+        when(userAccountMapper.selectById("u-admin")).thenReturn(user("u-admin", "admin"));
+        when(showScheduleMapper.selectById("sch-1")).thenReturn(schedule);
+        when(showMapper.selectById("show-1")).thenReturn(show());
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-admin");
+
+            assertThatThrownBy(() -> service.updateSchedule("sch-1", request))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("排期创建后不可切换座位布局，请新建排期");
+        }
+
+        verify(showScheduleMapper, never()).updateById(any(ShowSchedule.class));
     }
 
     private AdminService createService() {
@@ -160,6 +201,7 @@ class AdminServiceTest {
         user.setId(id);
         user.setUsername(id);
         user.setRole(role);
+        user.setStatus("ACTIVE");
         return user;
     }
 }

@@ -7,27 +7,32 @@ title 图20  订单支付活动图
 start
 :用户进入支付页;
 :订单状态 PENDING_PAYMENT;
-:校验订单倒计时;
-if (超时?) then (是)
-  :订单 EXPIRED;
-  :释放座位 -> AVAILABLE;
-  :票据未生成;
+:POST /api/orders/{id}/pay;
+if (订单已是 PAID?) then (是)
+  :幂等返回成功;
+  stop
+endif
+if (已超过 expiresAt?) then (是)
+  :调度任务置 EXPIRED;
+  :释放座位锁 / 回补区域库存;
+  :票据置 VOID;
   stop
 else (否)
-  :用户确认模拟支付;
-  :提交支付参数;
-  if (模拟支付通过?) then (是)
-    :写入 payment_record;
-    :订单 PAID;
-    :座位 SOLD;
-    :批量生成 ticket_item (UNUSED);
-    :返回成功;
-    stop
-  else (否)
-    :订单保持 PENDING_PAYMENT;
-    :允许用户重试;
-    :若用户取消 -> CANCELLED, 释放座位;
-    stop
+  :模拟支付通过 (无真实支付网关);
+  :订单 PAID, 记录 paidAt;
+  if (售票模式?) then (SEATED)
+    :座位 -> SOLD;
+  else (ZONED/MIXED)
+    :sellInventory (locked -> sold);
   endif
+  :票据 RESERVED -> UNUSED;
+  :发布 WebSocket SOLD / AREA_SOLD + 看板刷新;
+  stop
 endif
+
+note right
+  支付为内联模拟, 无 payment_record 表。
+  PENDING_PAYMENT 期间用户可主动取消 ->
+  CANCELLED 并释放座位/库存。
+end note
 @enduml

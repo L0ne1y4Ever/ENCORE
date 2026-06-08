@@ -1,0 +1,61 @@
+@startuml
+!pragma teoz true
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 13
+title 图31  拼座邀请协作下单顺序图
+
+actor "发起人(Host)" as Host
+actor "受邀成员(Member)" as Member
+participant "GroupOrderController\n/api/group-orders" as GC
+participant "GroupOrderService" as GS
+participant "SeatService" as SS
+participant "OrderService" as OS
+database "Redis\n拼座会话 + 座位锁" as R
+participant "SeatStatusPublisher\n/topic/schedules/{id}/seats" as WS
+
+== 发起拼座 ==
+Host -> GC : POST /api/group-orders\n{ scheduleId, seatIds }
+GC -> GS : create(request)
+GS -> SS : lockSeatsForOwner(owner="group:{inviteCode}", TTL=15min)
+SS -> R : SETNX encore:seat-lock:{id}:{seat} = group:{inviteCode}
+SS -> WS : publishSeatStatus(LOCKED)
+GS -> R : SET encore:group-order:{inviteCode}\n(status=OPEN, members=[Host], TTL=15min)
+GS --> GC : GroupOrderResponse(inviteCode, members)
+GC --> Host : 200 + 邀请码
+
+== 成员查看并加入 ==
+Member -> GC : GET /api/group-orders/{inviteCode}
+GC --> Member : 当前成员与座位
+Member -> GC : POST /api/group-orders/{inviteCode}/join\n{ seatIds }
+GC -> GS : join(inviteCode, request)
+GS -> GS : 校验 座位未被他人认领(409)\n总数<=6(400)
+GS -> SS : lockSeatsForOwner(group 锁) + 释放该成员让出的座位
+SS -> WS : publishSeatStatus(LOCKED / GROUP_RELEASED)
+GS -> R : 更新会话 members（保留剩余 TTL）
+GS --> GC : GroupOrderResponse
+GC --> Member : 200 已加入
+
+note over GS, R
+  退出: DELETE /{inviteCode}/members/me（发起人不可退出）;
+  取消: DELETE /{inviteCode}（仅发起人，释放全部锁，CANCELLED）。
+end note
+
+== 发起人结算 ==
+Host -> GC : POST /api/group-orders/{inviteCode}/checkout
+GC -> GS : checkout(inviteCode)
+GS -> SS : ensureLocksOwnedBy(group 锁均有效, 否则 409)
+GS -> OS : createGroupOrder(scheduleId, seatIds, owner)
+OS -> SS : transferLocksOwner(group:{inviteCode} -> orderId)
+OS -> R : 锁值改写为 orderId
+OS --> GS : orderId
+GS -> R : 会话置 CHECKED_OUT
+GS --> GC : orderId
+GC --> Host : 200 + orderId
+Host -> OS : POST /api/orders/{orderId}/pay\n（沿用图21 支付流程）
+
+note over R, WS
+  拼座座位锁 owner = "group:{inviteCode}"，与个人锁互斥；
+  会话与锁均 15 分钟 TTL，超时由定时任务回收并广播。
+end note
+@enduml

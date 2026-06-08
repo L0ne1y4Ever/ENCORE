@@ -10,6 +10,7 @@ import com.encore.dto.UpdateStaffUserRequest;
 import com.encore.entity.UserAccount;
 import com.encore.exception.BusinessException;
 import com.encore.mapper.UserAccountMapper;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -26,9 +27,11 @@ public class StaffAccountService {
     private static final Set<String> STATUSES = Set.of("ACTIVE", "INACTIVE");
 
     private final UserAccountMapper userAccountMapper;
+    private final PasswordEncoder passwordEncoder;
 
-    public StaffAccountService(UserAccountMapper userAccountMapper) {
+    public StaffAccountService(UserAccountMapper userAccountMapper, PasswordEncoder passwordEncoder) {
         this.userAccountMapper = userAccountMapper;
+        this.passwordEncoder = passwordEncoder;
     }
 
     public List<AdminStaffUserResponse> listStaffUsers() {
@@ -61,7 +64,7 @@ public class StaffAccountService {
         UserAccount user = new UserAccount();
         user.setId(generateUserId());
         user.setUsername(username);
-        user.setPassword(password);
+        user.setPassword(passwordEncoder.encode(password));
         user.setRole(role);
         user.setDisplayName(displayName);
         user.setStatus(status);
@@ -93,7 +96,7 @@ public class StaffAccountService {
         ensureEditable(user);
         String password = clean(request.password());
         validatePassword(password);
-        user.setPassword(password);
+        user.setPassword(passwordEncoder.encode(password));
         user.setUpdatedAt(LocalDateTime.now());
         userAccountMapper.updateById(user);
         return toResponse(user);
@@ -102,7 +105,7 @@ public class StaffAccountService {
     private void ensureSysadminRole() {
         String userId = StpUtil.getLoginIdAsString();
         UserAccount user = userAccountMapper.selectById(userId);
-        if (user == null || !"sysadmin".equals(user.getRole())) {
+        if (user == null || !"ACTIVE".equals(user.getStatus()) || !"sysadmin".equals(user.getRole())) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "仅系统管理员可管理员工账号");
         }
     }

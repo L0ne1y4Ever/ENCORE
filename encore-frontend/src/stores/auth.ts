@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { getCurrentUserApi, loginApi, logoutApi, registerApi } from '../api/auth'
+import { getCurrentUserApi, loginApi, logoutApi, registerApi, updateCurrentUserApi } from '../api/auth'
+import { AUTH_EXPIRED_EVENT } from '../api'
 import type { UserProfile } from '../api/auth'
 
 const USER_KEY = 'encore.currentUser'
@@ -26,11 +27,23 @@ function saveStoredUser(user: UserProfile | null) {
 
 export const useAuthStore = defineStore('auth', () => {
   const currentUser = ref<UserProfile | null>(readStoredUser())
+  const sessionChecked = ref(!currentUser.value)
+
+  function clearStoredSession() {
+    currentUser.value = null
+    saveStoredUser(null)
+    sessionChecked.value = true
+  }
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener(AUTH_EXPIRED_EVENT, clearStoredSession)
+  }
   
   async function login(username: string, password: string) {
     const user = await loginApi(username, password)
     currentUser.value = user
     saveStoredUser(user)
+    sessionChecked.value = true
     return true
   }
 
@@ -38,6 +51,7 @@ export const useAuthStore = defineStore('auth', () => {
     const user = await registerApi(username, password, displayName)
     currentUser.value = user
     saveStoredUser(user)
+    sessionChecked.value = true
     return true
   }
 
@@ -45,8 +59,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       await logoutApi()
     } finally {
-      currentUser.value = null
-      saveStoredUser(null)
+      clearStoredSession()
     }
   }
 
@@ -55,19 +68,34 @@ export const useAuthStore = defineStore('auth', () => {
       const user = await getCurrentUserApi()
       currentUser.value = user
       saveStoredUser(user)
+      sessionChecked.value = true
       return user
     } catch {
-      currentUser.value = null
-      saveStoredUser(null)
+      clearStoredSession()
       return null
     }
   }
 
-  function updateNickname(newNickname: string) {
-    if (currentUser.value) {
-      currentUser.value.nickname = newNickname
-      saveStoredUser(currentUser.value)
+  async function ensureSession() {
+    if (!currentUser.value) {
+      sessionChecked.value = true
+      return null
     }
+    if (sessionChecked.value) {
+      return currentUser.value
+    }
+    return refreshCurrentUser()
+  }
+
+  async function updateNickname(newNickname: string) {
+    const user = await updateCurrentUserApi(newNickname)
+    const normalizedUser = {
+      ...user,
+      nickname: user.displayName
+    }
+    currentUser.value = normalizedUser
+    saveStoredUser(normalizedUser)
+    return normalizedUser
   }
 
   return {
@@ -76,6 +104,7 @@ export const useAuthStore = defineStore('auth', () => {
     register,
     logout,
     refreshCurrentUser,
+    ensureSession,
     updateNickname
   }
 })

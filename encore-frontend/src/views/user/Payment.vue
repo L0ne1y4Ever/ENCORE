@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { Check, CreditCard, Tickets, Wallet } from '@element-plus/icons-vue'
 import { getOrderDetail, simulatePayment } from '../../api/order'
 import type { Order } from '../../mock/orders'
 import { useI18n } from 'vue-i18n'
@@ -25,148 +26,237 @@ onMounted(async () => {
 
 const handlePay = async () => {
   paying.value = true
-  const success = await simulatePayment(orderId)
-  paying.value = false
-  if (success) {
-    // 支付成功，跳转到电子票页面
-    router.replace(`/ticket/${orderId}`)
-  } else {
-    alert(t('payment.failed'))
+  try {
+    const success = await simulatePayment(orderId)
+    if (success) {
+      router.replace(`/ticket/${orderId}`)
+    } else {
+      window.alert(t('payment.failed'))
+    }
+  } catch {
+    window.alert(t('payment.failed'))
+  } finally {
+    paying.value = false
   }
 }
 </script>
 
 <template>
-  <div class="payment-page" v-if="!loading && order">
-    <div class="content">
-      <h1 class="page-title">{{ t('payment.title') }}</h1>
+  <div v-if="loading" class="payment-page loading-page">
+    {{ t('common.loading') }}
+  </div>
 
-      <div class="order-info">
-        <div class="meta">{{ t('payment.orderId') }}: {{ order.id }}</div>
-        <div class="amount">${{ order.totalAmount }}</div>
-      </div>
-
-      <div class="mock-gateway">
-        <div class="gateway-title">{{ t('payment.gateway') }}</div>
+  <div v-else-if="order" class="payment-page">
+    <div class="payment-shell">
+      <section class="payment-summary">
+        <span class="eyebrow">{{ t('payment.title') }}</span>
+        <h1>{{ t('payment.securePayment') }}</h1>
         <p>{{ t('payment.description') }}</p>
+        <div class="order-chip">{{ t('payment.orderId') }} {{ order.id }}</div>
+      </section>
 
-        <button class="btn-pay" @click="handlePay" :disabled="paying">
-          {{ paying ? t('common.processing') : t('payment.pay', { amount: order.totalAmount }) }}
+      <section class="gateway-card">
+        <ol class="stepper" aria-label="Checkout steps">
+          <li class="done"><Tickets /> <span>{{ t('order.stepSelect') }}</span></li>
+          <li class="done"><Check /> <span>{{ t('order.stepConfirm') }}</span></li>
+          <li class="active"><Wallet /> <span>{{ t('order.stepPay') }}</span></li>
+        </ol>
+
+        <div class="amount-panel">
+          <span>{{ t('order.totalAmount') }}</span>
+          <strong>${{ order.totalAmount }}</strong>
+          <small>{{ t('payment.gateway') }}</small>
+        </div>
+
+        <button class="btn-pay" type="button" @click="handlePay" :disabled="paying">
+          <CreditCard />
+          <span>{{ paying ? t('common.processing') : t('payment.pay', { amount: order.totalAmount }) }}</span>
         </button>
-      </div>
+      </section>
     </div>
   </div>
 </template>
 
 <style scoped lang="scss">
 .payment-page {
-  display: flex;
-  justify-content: center;
+  min-height: calc(100vh - 76px);
+  display: grid;
+  place-items: center;
+  padding: var(--spacing-6) var(--spacing-4);
+  background:
+    linear-gradient(180deg, rgba(76, 175, 125, 0.08) 0%, rgba(8, 8, 8, 0) 320px),
+    var(--color-bg-base);
+}
+
+.loading-page {
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-sans);
+}
+
+.payment-shell {
+  width: min(980px, 100%);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 460px);
+  gap: var(--spacing-5);
   align-items: center;
-  min-height: calc(100vh - 80px);
 }
 
-.content {
-  width: 100%;
-  max-width: 480px;
-  padding: var(--spacing-6);
-}
-
-.page-title {
-  font-family: var(--font-family-display);
-  font-size: 40px;
-  text-align: center;
-  margin-bottom: var(--spacing-8);
-}
-
-.order-info {
-  text-align: center;
-  margin-bottom: var(--spacing-8);
-  background-color: var(--color-bg-elevated);
-  padding: var(--spacing-6);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border);
-  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-
-  .meta {
-    font-size: 14px;
-    color: var(--color-text-secondary);
-    margin-bottom: var(--spacing-2);
+.payment-summary {
+  .eyebrow {
+    color: var(--color-success);
     font-family: var(--font-family-sans);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-  }
-
-  .amount {
-    font-family: var(--font-family-display);
-    font-size: 56px;
+    font-size: 12px;
     font-weight: 900;
-    color: var(--color-accent);
-    line-height: 1;
-  }
-}
-
-.mock-gateway {
-  border: 1px dashed var(--color-border-strong);
-  border-radius: var(--radius-md);
-  padding: var(--spacing-6);
-  text-align: center;
-  background-color: rgba(255, 255, 255, 0.02);
-
-  .gateway-title {
-    font-family: var(--font-family-sans);
-    font-size: 14px;
-    font-weight: 700;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
-    letter-spacing: 0.15em;
-    color: var(--color-text-primary);
-    margin-bottom: var(--spacing-4);
+  }
 
-    &::before, &::after {
-      content: '—';
-      margin: 0 var(--spacing-2);
-      color: var(--color-text-secondary);
-      font-weight: 300;
-    }
+  h1 {
+    margin-top: var(--spacing-3);
+    font-size: clamp(40px, 6vw, 72px);
+    line-height: 1;
   }
 
   p {
-    font-family: var(--font-family-sans);
-    font-size: 14px;
+    max-width: 460px;
+    margin-top: var(--spacing-3);
     color: var(--color-text-secondary);
-    margin-bottom: var(--spacing-8);
+    font-family: var(--font-family-sans);
+    font-size: 17px;
+    line-height: 1.6;
+  }
+}
+
+.order-chip {
+  width: max-content;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  font-family: var(--font-family-sans);
+  font-size: 12px;
+  font-weight: 800;
+  margin-top: var(--spacing-4);
+  padding: 8px 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gateway-card {
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-bg-elevated);
+  padding: var(--spacing-4);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.38);
+}
+
+.stepper {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-2);
+  margin: 0 0 var(--spacing-4);
+  padding: 0;
+
+  li {
+    min-height: 64px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+    display: grid;
+    place-items: center;
+    gap: 5px;
+    font-family: var(--font-family-sans);
+    font-size: 12px;
+    font-weight: 800;
+    text-align: center;
+
+    svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    &.done,
+    &.active {
+      border-color: rgba(76, 175, 125, 0.45);
+      color: var(--color-success);
+    }
+
+    &.active {
+      background: rgba(76, 175, 125, 0.08);
+    }
+  }
+}
+
+.amount-panel {
+  border: 1px solid rgba(76, 175, 125, 0.32);
+  border-radius: var(--radius-md);
+  background: rgba(76, 175, 125, 0.08);
+  display: grid;
+  gap: 8px;
+  padding: var(--spacing-5);
+  text-align: center;
+
+  span,
+  small {
+    color: var(--color-text-secondary);
+    font-family: var(--font-family-sans);
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  strong {
+    color: var(--color-success);
+    font-family: var(--font-family-display);
+    font-size: 60px;
+    line-height: 1;
   }
 }
 
 .btn-pay {
   width: 100%;
-  padding: 18px;
-  background-color: var(--color-success);
-  color: #fff;
+  min-height: 54px;
+  margin-top: var(--spacing-4);
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: 4px;
+  background: #e50914;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-2);
   font-family: var(--font-family-sans);
   font-size: 16px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  cursor: pointer;
-  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
-  will-change: transform;
+  font-weight: 900;
 
-  &:hover:not(:disabled) {
-    background-color: #55c28a;
-    box-shadow: 0 4px 20px rgba(76, 175, 125, 0.3);
+  svg {
+    width: 18px;
+    height: 18px;
   }
 
-  &:active:not(:disabled) {
-    transform: scale(0.98);
+  &:hover:not(:disabled) {
+    background: #f6121d;
+    filter: none;
   }
 
   &:disabled {
-    background-color: var(--color-bg-elevated);
-    color: var(--color-text-ghost);
+    opacity: 0.55;
     cursor: not-allowed;
+  }
+}
+
+@media (max-width: 820px) {
+  .payment-shell {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .stepper {
+    grid-template-columns: 1fr;
   }
 }
 </style>

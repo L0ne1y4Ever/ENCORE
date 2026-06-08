@@ -6,34 +6,40 @@ title 图1  ENCORE 核心业务总活动图
 
 |票务管理员|
 start
-:创建演出分类与剧目;
-:维护演出厅与座位布局;
-:为剧目创建演出场次;
-:根据演出厅生成场次座位票池;
-:开放场次售票 (ON_SALE);
+:维护场馆与演出厅;
+:设计并发布座位布局\n(SEATED / ZONED / MIXED);
+:创建剧目信息;
+:创建演出场次\n(绑定厅/布局 + 时间);
+:快照布局为场次座位/区域库存\n(schedule_seat + schedule_area_inventory);
+:发布并开放售票\n(publishStatus=PUBLISHED, status=ON_SALE);
 |注册用户|
 :浏览演出与场次;
-:进入可视化选座;
-:选择座位;
-note right: 座位状态 LOCKED, 创建待支付订单
-:在订单倒计时内模拟支付;
+if (售票模式?) then (SEATED)
+  :可视化选座, Redis 锁定座位;
+else (ZONED/MIXED)
+  :选择区域票档, 原子扣减区域库存;
+endif
+note right: 创建待支付订单, 票据置 RESERVED
+:在 15 分钟倒计时内模拟支付;
 if (支付成功?) then (是)
-  :订单 PAID, 座位 SOLD;
-  :系统生成电子票;
+  :订单 PAID;
+  :座位 SOLD / 区域 sold+;
+  :票据 RESERVED -> UNUSED (电子票);
 else (否 / 超时)
   :订单 EXPIRED 或 CANCELLED;
-  :座位释放为 AVAILABLE;
+  :释放座位锁 / 回补区域库存;
+  :票据置 VOID;
   stop
 endif
 |检票员|
 :扫描 / 输入票号;
-:系统核验票据;
+:校验票据与场次时间窗;
 if (有效?) then (是)
   :核销入场, 票据 CHECKED_IN;
 else (否)
-  :提示异常;
+  :提示异常 (重复 / 作废 / 非本场次);
 endif
 |票务管理员|
-:统计销售额 / 上座率 / 热门演出;
+:数据看板统计\n(营收 / 上座率 / Top 剧目);
 stop
 @enduml

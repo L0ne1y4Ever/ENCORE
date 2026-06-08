@@ -6,34 +6,39 @@ skinparam DefaultFontSize 12
 title 图17  three.js 3D 座位舞台视角预览组件视图
 
 package "用户端 (Vue 3 + TypeScript)" {
-  component [SeatPicker.vue\n2D 座位平面图] as SP
-  component [Seat3DPreview.vue\n3D 视角弹层] as S3D
-  component [SceneController\n场景生命周期] as SCC
+  component [选座页\n传入 seats，监听 toggle-seat] as PARENT
+  component [SeatStagePreview.vue\n3D 座位舞台预览(可点选)] as S3D
 }
 
-package "three.js 渲染层" {
-  component [Scene\n剧院 3D 场景] as SCN
-  component [PerspectiveCamera\n(StagePOV)] as CAM
+package "three.js 渲染层 (原生, 无框架封装)" {
+  component [Scene\n舞台 + 座位网格] as SCN
+  component [PerspectiveCamera] as CAM
   component [WebGLRenderer\nCanvas 输出] as RND
-  component [SeatModel.glb\n座位 + 剧院 + 舞台模型] as MDL
-  component [OrbitControls\n小幅旋转浏览] as CTL
-  component [requestAnimationFrame\nLoop 60 Hz] as RAF
+  component [Raycaster + Vector2\n指针拾取座位] as RAY
+  component [MeshStandardMaterial\nmaterialCache 按状态着色] as MAT
+  component [自定义指针拖拽\nyaw/pitch(非 OrbitControls)] as CTL
+  component [requestAnimationFrame\n渲染循环] as RAF
+  component [Minimap Canvas\n2D 缩略导航] as MAP
 }
 
-SP --> S3D : props.seatId\n(用户点击座位)
-S3D --> SCC : initScene(seatId)
-SCC --> SCN : add(mesh)
-SCC --> CAM : setPositionFromSeat(seatId)
-SCC --> CTL : enable(限制 yaw±30°)
-SCC --> MDL : loader.load('.glb')
+PARENT --> S3D : props.seats / props.selectedSeatIds
+S3D --> SCN : 程序化构建座位 Mesh
+S3D --> CAM
+S3D --> RND
+S3D --> MAT : 按 AVAILABLE/LOCKED/SOLD/SELECTED 取色
+S3D --> MAP : 同步当前视角
 SCN --> RND : scene
 CAM --> RND : camera
 RAF --> RND : tick()
+CTL --> CAM : 更新 yaw/pitch
+S3D --> RAY : 指针按下
+RAY --> S3D : 命中 seatCode
+S3D --> PARENT : emit('toggle-seat', seatCode)
 
 note bottom of S3D
-  组件入口: <Seat3DPreview :seatId="..." :scheduleId="..."/>
-  目标体验: 弹出"从该座位看舞台"的实时 3D 视野
-  性能预算: 帧率 ≥ 30 FPS, 首屏加载 ≤ 3 秒
-  降级路径: WebGL 不可用时, 退回静态全景图
+  组件入口: <SeatStagePreview :seats :selectedSeatIds @toggle-seat />
+  座位为程序化几何(无 .glb 模型)，materialCache 复用材质；
+  点击经 Raycaster 命中后回传父组件切换选中；
+  WebGL 不可用时降级为提示，不阻塞 2D 选座。
 end note
 @enduml

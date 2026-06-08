@@ -49,7 +49,7 @@ const handleSubmit = () => {
   <div class="area-ticket-panel">
     <div class="area-header">
       <div class="title-wrap">
-        <span class="area-badge" :style="{ backgroundColor: props.area.color + '20', color: props.area.color }">
+        <span class="area-badge">
           {{ props.area.areaType }}
         </span>
         <h3>{{ props.area.name }}</h3>
@@ -161,7 +161,10 @@ const handleSubmit = () => {
     font-size: 10px;
     font-weight: 700;
     padding: 2px 8px;
-    border-radius: var(--radius-full);
+    border-radius: 3px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: transparent;
+    color: rgba(255, 255, 255, 0.7);
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
@@ -301,21 +304,21 @@ const handleSubmit = () => {
   .btn-checkout {
     width: 100%;
     padding: 16px;
-    background-color: var(--color-accent);
-    color: #080808;
+    background-color: #e50914;
+    color: #fff;
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: 4px;
     font-family: var(--font-family-sans);
     font-size: 16px;
     font-weight: 700;
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 4px 20px rgba(200, 149, 90, 0.25);
+    box-shadow: none;
 
     &:hover:not(:disabled) {
-      background-color: #d6a469;
-      transform: translateY(-2px);
-      box-shadow: 0 6px 24px rgba(200, 149, 90, 0.35);
+      background-color: #f6121d;
+      transform: translateY(-1px);
+      box-shadow: none;
     }
 
     &:disabled {

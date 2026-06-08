@@ -1,0 +1,66 @@
+@startuml
+!pragma teoz true
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 13
+title 图30  区域售票(ZONED/MIXED)下单顺序图
+
+actor "注册用户" as User
+participant "用户端 (Vue 3)" as FE
+participant "SeatController\n/api/schedules/{id}" as SC
+participant "OrderController\n/api/orders" as OC
+participant "OrderService" as OS
+database "MySQL\nschedule_area_inventory\nticket_order / ticket_item" as DB
+participant "SeatStatusPublisher\n/topic/schedules/{id}/seats" as WS
+
+User -> FE : 打开区域售票场次
+FE -> SC : GET /api/schedules/{id}/areas
+SC --> FE : List<ScheduleAreaResponse>\n(price / total / available / locked / sold / status)
+FE -> WS : SUBSCRIBE /topic/schedules/{id}/seats
+note right of FE
+  MIXED 中的"看台/座位区"按 schedule_seat 实时
+  派生计数，纯站票区按 area_inventory 计数。
+end note
+
+== 选择区域 + 数量(1-4)并下单 ==
+User -> FE : 选区域，选张数
+FE -> OC : POST /api/orders\n{ scheduleId, areaInventoryId, quantity }
+OC -> OS : createOrder(request)
+OS -> OS : ensureOnSaleSchedule\n校验 quantity∈[1,4]、区域归属
+alt 已存在相同待支付区域订单
+  OS --> OC : 返回原 orderId（幂等）
+else 原子锁库存
+  OS -> DB : lockInventory\nUPDATE schedule_area_inventory\nSET available-=q, locked+=q\nWHERE status='AVAILABLE' AND available>=q
+  alt 影响行数 = 0
+    DB --> OS : 0
+    OS --> OC : 409 区域余票不足，锁定库存失败
+  else 成功
+    DB --> OS : 1
+    OS -> DB : INSERT ticket_order\n(PENDING_PAYMENT, expiresAt=now+15min)
+    loop quantity 张
+      OS -> DB : INSERT ticket_item\n(RESERVED, seatId=null,\nareaInventoryId 绑定, ticketCode)
+    end
+    OS -> WS : publishAreaInventory(AREA_LOCKED)
+    WS ->> FE : areas:[{available,locked,sold}]
+    OS --> OC : orderId
+  end
+end
+OC --> FE : 200 + orderId
+
+== 支付 ==
+User -> FE : 模拟支付
+FE -> OC : POST /api/orders/{id}/pay
+OC -> OS : simulatePayment(orderId)
+OS -> DB : sellInventory\nUPDATE ... SET locked-=q, sold+=q WHERE locked>=q
+OS -> DB : UPDATE ticket_item SET status=UNUSED\nUPDATE ticket_order SET status=PAID
+OS -> WS : publishAreaInventory(AREA_SOLD)
+WS ->> FE : areas:[...]
+OS --> OC : true
+OC --> FE : 200 支付成功
+
+note over OS, DB
+  库存四个原子计数(total/available/locked/sold)经
+  WHERE 余量>=q 的 CAS 更新维护：
+  下单 lock、支付 sell、超时/取消 unlock、退款 refund。
+end note
+@enduml

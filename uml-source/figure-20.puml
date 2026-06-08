@@ -8,156 +8,215 @@ skinparam class {
 }
 title 图4  ENCORE 核心领域类图
 
-class User {
-  - id : Long
+' ===== 账号 =====
+class UserAccount {
+  - id : String
   - username : String
-  - passwordHash : String
-  - phone : String
-  - email : String
-  - status : Integer
-  + login()
-  + register()
-}
-class Role {
-  - id : Long
-  - code : String
-  - name : String
-}
-class UserRole {
-  - userId : Long
-  - roleId : Long
+  - password : String  (BCrypt)
+  - role : String  (user/admin/checker/sysadmin)
+  - displayName : String
+  - status : String
 }
 
-class ShowCategory {
-  - id : Long
-  - name : String
-  - sort : Integer
-}
-class ShowInfo {
-  - id : Long
+' ===== 演出 =====
+class ShowEntity {
+  - id : String
   - title : String
-  - poster : String
-  - intro : String
-  - durationMin : Integer
-  - categoryId : Long
-  - priceMin : BigDecimal
-  - priceMax : BigDecimal
+  - subtitle : String
+  - coverUrl : String
+  - description / intro / fullSynopsis : String
+  - castMembers / creativeTeam : String
+  - duration : Integer
+  - category : String
+  - tags : List<String>  (JSON)
+  - status : ShowStatus
+  - sortOrder : Integer
 }
 
-class TheaterHall {
-  - id : Long
+' ===== 场馆与座位布局(模板) =====
+class Venue {
+  - id : String
   - name : String
-  - rowCount : Integer
-  - colCount : Integer
+  - city / address : String
+  - status : String
 }
-class HallSeat {
-  - id : Long
-  - hallId : Long
-  - rowNo : Integer
-  - colNo : Integer
-  - area : String
-  - sellable : Boolean
+class VenueHall {
+  - id : String
+  - venueId : String
+  - name : String
+  - hallType : String
+  - capacity : Integer
+  - clearanceMinutes : Integer
+  - defaultLayoutId : String
+  - status : String
+}
+class SeatLayout {
+  - id : String
+  - hallId : String
+  - name : String
+  - ticketMode : TicketMode
+  - version : Integer
+  - status : String  (DRAFT/PUBLISHED)
+}
+class SeatLayoutArea {
+  - id : String
+  - layoutId : String
+  - code : String
+  - areaType : String
+  - isSeated : Boolean
+  - capacity : Integer
+  - basePrice : BigDecimal
+  - positionData : String  (JSON)
+}
+class SeatLayoutSeat {
+  - id : String
+  - layoutId : String
+  - areaId : String
+  - seatCode : String
+  - rowNo / colNo : Integer
+  - section : String
+  - price : BigDecimal
+}
+class VenueArea {
+  - id : String  (镜像 SeatLayoutArea)
+  - hallId : String
+  - code : String
+  - isSeated : Boolean
+  - capacity : Integer
+  - basePrice : BigDecimal
+  - availableCount / lockedCount / soldCount : Integer
 }
 
+' ===== 排期(按场次快照) =====
 class ShowSchedule {
-  - id : Long
-  - showId : Long
-  - hallId : Long
-  - startTime : DateTime
-  - endTime : DateTime
+  - id : String
+  - showId : String
+  - hallId : String
+  - layoutId : String
+  - theaterName : String
+  - startTime / endTime : DateTime
+  - saleStartTime / saleEndTime : DateTime
   - status : ScheduleStatus
-  + open()
-  + stop()
-  + finish()
+  - publishStatus : String  (DRAFT/PUBLISHED)
+  - ticketMode : TicketMode
+  - priceRange : String
 }
 class ScheduleSeat {
-  - id : Long
-  - scheduleId : Long
-  - hallSeatId : Long
+  - id : String
+  - scheduleId : String
+  - areaId : String
+  - seatCode : String
+  - rowNo / colNo : Integer
+  - section : String
   - price : BigDecimal
   - status : SeatStatus
-  + lock()
-  + release()
+  + lock() / release() / sell()
+}
+class ScheduleAreaInventory {
+  - id : String
+  - scheduleId : String
+  - areaId : String
+  - price : BigDecimal
+  - totalCount : Integer
+  - availableCount : Integer
+  - lockedCount : Integer
+  - soldCount : Integer
+  - status : String
+  + lock() / unlock() / sell() / refund()
 }
 
+' ===== 订单与票务 =====
 class TicketOrder {
-  - id : Long
-  - userId : Long
-  - scheduleId : Long
+  - id : String
+  - userId : String
+  - scheduleId : String
   - totalAmount : BigDecimal
   - status : OrderStatus
-  - createTime : DateTime
-  - expireTime : DateTime
-  + pay()
-  + cancel()
-  + expire()
+  - createdAt / expiresAt / paidAt : DateTime
+  + pay() / cancel() / refund() / expire()
 }
 class TicketItem {
-  - id : Long
-  - orderId : Long
-  - scheduleSeatId : Long
+  - id : String
+  - orderId : String
+  - scheduleId : String
+  - seatId : String  (SEATED 座位号)
+  - areaInventoryId : String  (ZONED 区域)
   - ticketCode : String
-  - qrMockCode : String
   - status : TicketStatus
-  + checkIn()
-  + invalidate()
-}
-class PaymentRecord {
-  - id : Long
-  - orderId : Long
-  - amount : BigDecimal
-  - channel : String
-  - payTime : DateTime
-}
-class CheckinRecord {
-  - id : Long
-  - ticketId : Long
-  - checkerId : Long
-  - checkTime : DateTime
+  + checkIn() / void()
 }
 
+enum ShowStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+enum TicketMode {
+  SEATED
+  ZONED
+  MIXED
+}
 enum ScheduleStatus {
   DRAFT
+  PUBLISHED
+  COMING_SOON
+  PREPARING
   ON_SALE
-  STOP_SALE
-  FINISHED
+  SOLD_OUT
   CANCELLED
+  ENDED
 }
 enum SeatStatus {
   AVAILABLE
-  LOCKED
   SOLD
   DISABLED
+  LOCKED
 }
 enum OrderStatus {
   PENDING_PAYMENT
   PAID
-  CANCELLED
   EXPIRED
+  CANCELLED
   REFUNDED
 }
 enum TicketStatus {
+  RESERVED
   UNUSED
   CHECKED_IN
-  INVALID
-  REFUNDED
+  VOID
 }
 
-User "1" -- "*" UserRole
-Role "1" -- "*" UserRole
-ShowCategory "1" -- "*" ShowInfo
-ShowInfo "1" -- "*" ShowSchedule
-TheaterHall "1" -- "*" HallSeat
-TheaterHall "1" -- "*" ShowSchedule
+Venue "1" -- "*" VenueHall
+VenueHall "1" -- "*" SeatLayout
+SeatLayout "1" -- "*" SeatLayoutArea
+SeatLayout "1" -- "*" SeatLayoutSeat
+SeatLayoutArea "1" -- "*" SeatLayoutSeat
+SeatLayoutArea "1" ..> "1" VenueArea : 镜像
+ShowEntity "1" -- "*" ShowSchedule
+VenueHall "1" o-- "*" ShowSchedule
+SeatLayout "1" ..> "*" ShowSchedule : 快照来源
 ShowSchedule "1" -- "*" ScheduleSeat
-HallSeat "1" -- "*" ScheduleSeat
+ShowSchedule "1" -- "*" ScheduleAreaInventory
+VenueArea "1" -- "*" ScheduleAreaInventory
+VenueArea "1" ..> "*" ScheduleSeat : areaId
+UserAccount "1" -- "*" TicketOrder
+ShowSchedule "1" -- "*" TicketOrder
 TicketOrder "1" -- "*" TicketItem
-ScheduleSeat "1" -- "1" TicketItem
-TicketOrder "1" -- "*" PaymentRecord
-TicketItem "1" -- "0..1" CheckinRecord
-User "1" -- "*" TicketOrder
+ScheduleSeat "1" -- "0..1" TicketItem
+ScheduleAreaInventory "1" -- "*" TicketItem
+
+ShowEntity -- ShowStatus
+SeatLayout -- TicketMode
 ShowSchedule -- ScheduleStatus
 ScheduleSeat -- SeatStatus
 TicketOrder -- OrderStatus
 TicketItem -- TicketStatus
+
+note as N1
+  贫血领域模型: 实体仅持有数据(Lombok @Data + MyBatis-Plus),
+  状态迁移行为由 Service 层驱动。
+  ScheduleSeat / ScheduleAreaInventory 是发布布局在创建场次时的
+  "按场次快照", 与 SeatLayout* 模板解耦; SeatStatus.LOCKED 为
+  Redis 锁的运行期叠加态, 不落库。
+end note
 @enduml

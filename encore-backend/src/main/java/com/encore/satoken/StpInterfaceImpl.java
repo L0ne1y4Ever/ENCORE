@@ -23,7 +23,7 @@ public class StpInterfaceImpl implements StpInterface {
     @Override
     public List<String> getRoleList(Object loginId, String loginType) {
         UserAccount user = userAccountMapper.selectById(String.valueOf(loginId));
-        if (user == null || user.getRole() == null) {
+        if (user == null || user.getRole() == null || !"ACTIVE".equals(user.getStatus())) {
             return List.of();
         }
         return List.of(user.getRole());

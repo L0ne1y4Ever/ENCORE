@@ -260,7 +260,7 @@ onMounted(() => {
   position: absolute;
   top: var(--spacing-6);
   right: var(--spacing-6);
-  font-family: monospace;
+  font-family: var(--font-family-sans);
   font-size: 12px;
   padding: 4px 8px;
   border: 1px solid #FFFFFF;
@@ -392,7 +392,7 @@ onMounted(() => {
     border-bottom: 4px solid #FFFFFF;
     color: #FFFFFF;
     font-size: 64px;
-    font-family: monospace;
+    font-family: var(--font-family-sans);
     text-align: center;
     padding: var(--spacing-2) 0;
     outline: none;

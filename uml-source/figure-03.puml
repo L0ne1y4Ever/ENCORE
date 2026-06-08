@@ -23,39 +23,36 @@ actor 系统管理员 as SysAdmin
 User --|> Guest
 
 rectangle "ENCORE 票务管理系统" {
-  usecase "浏览演出" as UC1
-  usecase "搜索演出" as UC2
-  usecase "查看演出详情" as UC3
-  usecase "查看场次" as UC4
-  usecase "注册登录" as UC5
-  usecase "可视化选座" as UC6
-  usecase "创建订单" as UC7
-  usecase "模拟支付" as UC8
-  usecase "查看电子票" as UC9
-  usecase "查看我的订单" as UC10
-  usecase "舞台视角预览" as UC22
-  usecase "拼座邀请" as UC23
-  usecase "退票/改签申请" as UC24
+  usecase "浏览/搜索演出" as UC1
+  usecase "查看演出详情" as UC2
+  usecase "查看场次" as UC3
+  usecase "查看座位/区域预览" as UC4
+  usecase "个性化推荐" as UC5
+  usecase "注册/登录" as UC6
 
-  usecase "剧目管理" as UC11
-  usecase "演出厅与座位管理" as UC12
-  usecase "场次排期管理" as UC13
-  usecase "场次座位票池管理" as UC14
-  usecase "订单管理" as UC15
-  usecase "公告管理" as UC16
-  usecase "统计报表查看" as UC17
-  usecase "批量排期" as UC25
-  usecase "退改审核" as UC26
-  usecase "报表导出" as UC27
-  usecase "AI 运营助手" as UC30
+  usecase "可视化选座" as UC7
+  usecase "区域购票(ZONED/MIXED)" as UC8
+  usecase "创建订单" as UC9
+  usecase "模拟支付" as UC10
+  usecase "取消/退票" as UC11
+  usecase "我的订单/电子票" as UC12
+  usecase "拼座邀请" as UC13
+  usecase "舞台视角 3D 预览" as UC14
 
-  usecase "检票核销" as UC18
-  usecase "异常票据处理" as UC19
-  usecase "离线检票缓存" as UC28
+  usecase "剧目管理" as UC15
+  usecase "场馆与演出厅管理" as UC16
+  usecase "座位布局管理" as UC17
+  usecase "场次排期管理" as UC18
+  usecase "座位/区域库存管理" as UC19
+  usecase "订单管理" as UC20
+  usecase "数据看板" as UC21
+  usecase "公告/优惠/报表" as UC22
 
-  usecase "用户与角色管理" as UC20
-  usecase "操作日志查看" as UC21
-  usecase "系统参数配置" as UC29
+  usecase "检票核销" as UC23
+  usecase "异常票据处理" as UC24
+
+  usecase "员工账号管理" as UC25
+  usecase "重置密码/启停账号" as UC26
 }
 
 Guest --> UC1
@@ -63,33 +60,41 @@ Guest --> UC2
 Guest --> UC3
 Guest --> UC4
 Guest --> UC5
+Guest --> UC6
 
-User --> UC6
 User --> UC7
 User --> UC8
 User --> UC9
 User --> UC10
-User --> UC22
-User --> UC23
-User --> UC24
+User --> UC11
+User --> UC12
+User --> UC13
+User --> UC14
 
-Admin --> UC11
-Admin --> UC12
-Admin --> UC13
-Admin --> UC14
 Admin --> UC15
 Admin --> UC16
 Admin --> UC17
-Admin --> UC25
-Admin --> UC26
-Admin --> UC27
-Admin --> UC30
+Admin --> UC18
+Admin --> UC19
+Admin --> UC20
+Admin --> UC21
+Admin --> UC22
 
-Checker --> UC18
-Checker --> UC19
-Checker --> UC28
+Checker --> UC23
+Checker --> UC24
 
-SysAdmin --> UC20
-SysAdmin --> UC21
-SysAdmin --> UC29
+SysAdmin --> UC25
+SysAdmin --> UC26
+
+UC2 ..> UC3 : <<include>>
+UC3 ..> UC4 : <<include>>
+UC7 ..> UC9 : <<include>>
+UC8 ..> UC9 : <<include>>
+UC9 ..> UC10 : <<include>>
+UC10 ..> UC12 : <<include>>
+UC7 ..> UC13 : <<extend>>
+UC7 ..> UC14 : <<extend>>
+UC17 ..> UC18 : <<include>>
+UC18 ..> UC19 : <<include>>
+UC23 ..> UC24 : <<extend>>
 @enduml

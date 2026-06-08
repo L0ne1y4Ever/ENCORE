@@ -9,47 +9,43 @@ title 图9  票务管理员后台管理用例图
 actor 票务管理员 as Admin
 
 rectangle "票务后台子系统" {
-  usecase "演出分类管理" as UC1
-  usecase "剧目信息管理" as UC2
+  usecase "剧目信息管理" as UC1
+  usecase "场馆管理" as UC2
   usecase "演出厅管理" as UC3
   usecase "座位布局管理" as UC4
-  usecase "场次排期管理" as UC5
-  usecase "场次座位票池管理" as UC6
-  usecase "订单查询与管理" as UC7
-  usecase "公告管理" as UC8
-  usecase "查看数据看板" as UC9
-  usecase "查看销售统计" as UC10
-  usecase "批量复制排期" as UC11
-  usecase "退改申请审核" as UC12
-  usecase "导出票房报表" as UC13
-  usecase "优惠策略管理" as UC14
-  usecase "运营提醒处理" as UC15
-  usecase "AI 运营助手" as UC16
+  usecase "发布/同步布局" as UC5
+  usecase "场次排期管理" as UC6
+  usecase "座位/区域库存管理" as UC7
+  usecase "订单查询与管理" as UC8
+  usecase "订单退款/强制核销" as UC9
+  usecase "查看数据看板" as UC10
+  usecase "公告管理" as UC11
+  usecase "优惠策略管理" as UC12
+  usecase "批量复制排期" as UC13
+  usecase "退改申请审核" as UC14
+  usecase "导出票房报表" as UC15
 }
 
 Admin --> UC1
 Admin --> UC2
 Admin --> UC3
 Admin --> UC4
-Admin --> UC5
 Admin --> UC6
 Admin --> UC7
 Admin --> UC8
-Admin --> UC9
 Admin --> UC10
 Admin --> UC11
 Admin --> UC12
 Admin --> UC13
 Admin --> UC14
 Admin --> UC15
-Admin --> UC16
 
-UC5 ..> UC6 : <<include>>
-UC5 ..> UC11 : <<extend>>
-UC2 ..> UC1 : <<include>>
+UC2 ..> UC3 : <<include>>
 UC3 ..> UC4 : <<include>>
-UC9 ..> UC10 : <<extend>>
-UC9 ..> UC13 : <<extend>>
-UC9 ..> UC16 : <<extend>>
-UC7 ..> UC12 : <<extend>>
+UC4 ..> UC5 : <<include>>
+UC6 ..> UC7 : <<include>>
+UC6 ..> UC13 : <<extend>>
+UC8 ..> UC9 : <<extend>>
+UC8 ..> UC14 : <<extend>>
+UC10 ..> UC15 : <<extend>>
 @enduml

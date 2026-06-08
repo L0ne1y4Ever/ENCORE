@@ -43,6 +43,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -60,6 +61,7 @@ public class AdminService {
             "DRAFT", "PUBLISHED", "COMING_SOON", "PREPARING", "ON_SALE", "SOLD_OUT", "CANCELLED", "ENDED"
             );
     private static final Set<String> SHOW_STATUSES = Set.of("DRAFT", "PUBLISHED", "ARCHIVED");
+    private static final Set<String> TICKET_MODES = Set.of("SEATED", "ZONED", "MIXED");
 
     private final ShowScheduleMapper showScheduleMapper;
     private final ShowMapper showMapper;
@@ -356,6 +358,7 @@ public class AdminService {
         ShowSchedule schedule = getSchedule(scheduleId);
         ensureSchedulableShow(request.showId());
         validateScheduleTime(request.startTime(), request.endTime());
+        ensureScheduleStructureStable(schedule, request);
 
         schedule.setShowId(clean(request.showId()));
         schedule.setHallId(cleanOptional(request.hallId()));
@@ -370,7 +373,7 @@ public class AdminService {
         schedule.setPublishStatus(StringUtils.hasText(request.publishStatus()) ? request.publishStatus().trim().toUpperCase() : schedule.getPublishStatus());
         schedule.setPriceRange(clean(request.priceRange()));
         if (request.ticketMode() != null) {
-            schedule.setTicketMode(request.ticketMode());
+            schedule.setTicketMode(normalizeTicketMode(request.ticketMode()));
         }
         if (StringUtils.hasText(schedule.getHallId())) {
             venueManagementService.ensureScheduleConflictFree(scheduleId, schedule.getHallId(), schedule.getStartTime(), schedule.getEndTime());
@@ -488,8 +491,32 @@ public class AdminService {
     private void ensureAdminRole() {
         String userId = StpUtil.getLoginIdAsString();
         UserAccount user = userAccountMapper.selectById(userId);
-        if (user == null || !ADMIN_ROLES.contains(user.getRole())) {
+        if (user == null || !"ACTIVE".equals(user.getStatus()) || !ADMIN_ROLES.contains(user.getRole())) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "当前账号无后台管理权限");
+        }
+    }
+
+    private void ensureScheduleStructureStable(ShowSchedule schedule, UpdateScheduleRequest request) {
+        String currentLayoutId = cleanOptional(schedule.getLayoutId());
+        String nextLayoutId = cleanOptional(request.layoutId());
+        if (!Objects.equals(currentLayoutId, nextLayoutId)) {
+            throw new BusinessException(ErrorCode.CONFLICT, "排期创建后不可切换座位布局，请新建排期");
+        }
+
+        String currentHallId = cleanOptional(schedule.getHallId());
+        String nextHallId = cleanOptional(request.hallId());
+        if (!Objects.equals(currentHallId, nextHallId)) {
+            throw new BusinessException(ErrorCode.CONFLICT, "排期创建后不可切换场馆厅，请新建排期");
+        }
+
+        if (StringUtils.hasText(request.ticketMode())) {
+            String currentMode = StringUtils.hasText(schedule.getTicketMode())
+                    ? schedule.getTicketMode().trim().toUpperCase()
+                    : "SEATED";
+            String nextMode = normalizeTicketMode(request.ticketMode());
+            if (!Objects.equals(currentMode, nextMode)) {
+                throw new BusinessException(ErrorCode.CONFLICT, "排期创建后不可切换票制，请新建排期");
+            }
         }
     }
 
@@ -500,6 +527,17 @@ public class AdminService {
         String normalized = status.trim().toUpperCase();
         if (!SCHEDULE_STATUSES.contains(normalized)) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "不支持的场次状态");
+        }
+        return normalized;
+    }
+
+    private String normalizeTicketMode(String mode) {
+        if (!StringUtils.hasText(mode)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "售票模式不能为空");
+        }
+        String normalized = mode.trim().toUpperCase();
+        if (!TICKET_MODES.contains(normalized)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "不支持的售票模式");
         }
         return normalized;
     }
@@ -589,7 +627,7 @@ public class AdminService {
     }
 
     private String clean(String value) {
-        return value.trim();
+        return value == null ? "" : value.trim();
     }
 
     private String cleanOptional(String value) {

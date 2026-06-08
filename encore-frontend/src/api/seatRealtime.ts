@@ -24,6 +24,7 @@ export interface SeatStatusEvent {
   reason:
     | 'LOCKED' | 'SOLD' | 'EXPIRED' | 'REFUNDED' | 'CANCELLED' | 'LOCK_EXPIRED' | 'GROUP_RELEASED'
     | 'AREA_LOCKED' | 'AREA_SOLD' | 'AREA_RELEASED' | 'AREA_REFUNDED' | 'AREA_ADJUSTED'
+    | 'LAYOUT_SYNC' | 'INVENTORY_ADJUSTED'
   timestamp: string
   seats: SeatStatusChange[]
   areas?: AreaStatusChange[]

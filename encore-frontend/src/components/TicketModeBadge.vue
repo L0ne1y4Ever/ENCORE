@@ -42,28 +42,26 @@ const badgeClass = computed(() => {
   font-size: 11px;
   font-weight: 700;
   padding: 3px 10px;
-  border-radius: var(--radius-full);
+  border-radius: 3px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.7);
+  box-shadow: none;
 
   &.badge-seated {
-    color: var(--color-accent);
-    background-color: rgba(200, 149, 90, 0.1);
-    border: 1px solid rgba(200, 149, 90, 0.3);
+    color: rgba(255, 255, 255, 0.7);
   }
 
   &.badge-zoned {
-    color: #4fc3f7;
-    background-color: rgba(79, 195, 247, 0.1);
-    border: 1px solid rgba(79, 195, 247, 0.3);
+    color: rgba(255, 255, 255, 0.7);
   }
 
   &.badge-mixed {
-    color: #b388ff;
-    background-color: rgba(179, 136, 255, 0.1);
-    border: 1px solid rgba(179, 136, 255, 0.3);
+    border-color: #fff;
+    color: #fff;
   }
 
   .pulse-dot {

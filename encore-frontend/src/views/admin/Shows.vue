@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Delete, Edit, Plus, Refresh, Search, Upload } from '@element-plus/icons-vue'
 import {
   archiveAdminShow,
   createAdminShow,
@@ -40,6 +41,7 @@ const saving = ref(false)
 const operatingId = ref('')
 const dialogVisible = ref(false)
 const dialogMode = ref<DialogMode>('create')
+const searchKeyword = ref('')
 const categoryFilter = ref('')
 const statusFilter = ref('')
 const sortKey = ref<'sortOrder' | 'category' | 'title' | 'scheduleDesc'>('sortOrder')
@@ -64,7 +66,17 @@ const emptyForm = (): ShowForm => ({
 const form = reactive<ShowForm>(emptyForm())
 
 const filteredShows = computed(() => {
+  const keyword = searchKeyword.value.trim().toLowerCase()
   const rows = tableData.value.filter(row => {
+    if (keyword) {
+      const haystack = [
+        row.title,
+        row.subtitle,
+        row.category,
+        row.tags.join(' ')
+      ].join(' ').toLowerCase()
+      if (!haystack.includes(keyword)) return false
+    }
     if (categoryFilter.value && row.category !== categoryFilter.value) return false
     if (statusFilter.value && row.status !== statusFilter.value) return false
     return true
@@ -75,6 +87,17 @@ const filteredShows = computed(() => {
     if (sortKey.value === 'scheduleDesc') return right.scheduleCount - left.scheduleCount || left.sortOrder - right.sortOrder
     return left.sortOrder - right.sortOrder || left.title.localeCompare(right.title)
   })
+})
+
+const showMetrics = computed(() => {
+  const rows = tableData.value
+  return {
+    total: rows.length,
+    published: rows.filter(row => row.status === 'PUBLISHED').length,
+    draft: rows.filter(row => row.status === 'DRAFT').length,
+    archived: rows.filter(row => row.status === 'ARCHIVED').length,
+    scheduled: rows.filter(row => row.scheduleCount > 0).length
+  }
 })
 
 const resetForm = () => {
@@ -107,6 +130,10 @@ const statusTagType = (status: AdminShowStatus) => {
   if (status === 'PUBLISHED') return 'success'
   if (status === 'ARCHIVED') return 'info'
   return 'warning'
+}
+
+const selectStatusMetric = (status: AdminShowStatus | '') => {
+  statusFilter.value = status
 }
 
 const replaceShow = (updated: AdminShow) => {
@@ -238,38 +265,82 @@ const handleDelete = async (row: AdminShow) => {
 <template>
   <div class="shows-page">
     <div class="page-header">
-      <h1>{{ t('admin.showsManagement') }}</h1>
+      <div>
+        <h1>{{ t('admin.showsManagement') }}</h1>
+        <p>{{ t('admin.showsManagementSubtitle') }}</p>
+      </div>
       <div class="header-actions">
-        <el-select v-model="categoryFilter" class="compact-filter" clearable :placeholder="t('admin.allCategories')">
-          <el-option v-for="category in categoryOptions" :key="category" :label="categoryLabel(category)" :value="category" />
-        </el-select>
-        <el-select v-model="statusFilter" class="compact-filter" clearable :placeholder="t('admin.allStatuses')">
-          <el-option value="DRAFT" :label="statusLabel('DRAFT')" />
-          <el-option value="PUBLISHED" :label="statusLabel('PUBLISHED')" />
-          <el-option value="ARCHIVED" :label="statusLabel('ARCHIVED')" />
-        </el-select>
-        <el-select v-model="sortKey" class="sort-filter" :placeholder="t('admin.sortBy')">
-          <el-option value="sortOrder" :label="t('admin.sortOrder')" />
-          <el-option value="category" :label="t('admin.sortCategory')" />
-          <el-option value="title" :label="t('admin.sortTitle')" />
-          <el-option value="scheduleDesc" :label="t('admin.sortScheduleDesc')" />
-        </el-select>
-        <el-button type="primary" plain :loading="loading" @click="loadShows">
+        <el-button type="primary" plain :icon="Refresh" :loading="loading" @click="loadShows">
           {{ t('admin.refresh') }}
         </el-button>
-        <el-button type="primary" @click="openCreate">
+        <el-button type="primary" :icon="Plus" @click="openCreate">
           {{ t('admin.addNewShow') }}
         </el-button>
       </div>
     </div>
 
+    <div class="metric-strip">
+      <button type="button" class="metric-card" :class="{ active: !statusFilter }" @click="selectStatusMetric('')">
+        <span>{{ t('admin.allShows') }}</span>
+        <strong>{{ showMetrics.total }}</strong>
+      </button>
+      <button type="button" class="metric-card" :class="{ active: statusFilter === 'PUBLISHED' }" @click="selectStatusMetric('PUBLISHED')">
+        <span>{{ statusLabel('PUBLISHED') }}</span>
+        <strong>{{ showMetrics.published }}</strong>
+      </button>
+      <button type="button" class="metric-card" :class="{ active: statusFilter === 'DRAFT' }" @click="selectStatusMetric('DRAFT')">
+        <span>{{ statusLabel('DRAFT') }}</span>
+        <strong>{{ showMetrics.draft }}</strong>
+      </button>
+      <button type="button" class="metric-card" :class="{ active: statusFilter === 'ARCHIVED' }" @click="selectStatusMetric('ARCHIVED')">
+        <span>{{ statusLabel('ARCHIVED') }}</span>
+        <strong>{{ showMetrics.archived }}</strong>
+      </button>
+      <div class="metric-card passive">
+        <span>{{ t('admin.scheduledShows') }}</span>
+        <strong>{{ showMetrics.scheduled }}</strong>
+      </div>
+    </div>
+
     <div class="table-container">
+      <div class="table-toolbar">
+        <el-input
+          v-model="searchKeyword"
+          class="search-input"
+          clearable
+          :prefix-icon="Search"
+          :placeholder="t('admin.searchShows')"
+        />
+        <div class="toolbar-filters">
+          <el-select v-model="categoryFilter" class="compact-filter" clearable :placeholder="t('admin.allCategories')">
+            <el-option v-for="category in categoryOptions" :key="category" :label="categoryLabel(category)" :value="category" />
+          </el-select>
+          <el-select v-model="statusFilter" class="compact-filter" clearable :placeholder="t('admin.allStatuses')">
+            <el-option value="DRAFT" :label="statusLabel('DRAFT')" />
+            <el-option value="PUBLISHED" :label="statusLabel('PUBLISHED')" />
+            <el-option value="ARCHIVED" :label="statusLabel('ARCHIVED')" />
+          </el-select>
+          <el-select v-model="sortKey" class="sort-filter" :placeholder="t('admin.sortBy')">
+            <el-option value="sortOrder" :label="t('admin.sortOrder')" />
+            <el-option value="category" :label="t('admin.sortCategory')" />
+            <el-option value="title" :label="t('admin.sortTitle')" />
+            <el-option value="scheduleDesc" :label="t('admin.sortScheduleDesc')" />
+          </el-select>
+        </div>
+      </div>
       <el-table :data="filteredShows" style="width: 100%" :empty-text="t('admin.empty')" v-loading="loading">
-        <el-table-column prop="id" label="ID" width="125" />
-        <el-table-column :label="t('admin.title')" min-width="240">
+        <el-table-column :label="t('admin.title')" min-width="310">
           <template #default="{ row }">
-            <div class="show-title">{{ row.title }}</div>
-            <div class="show-subtitle">{{ row.subtitle }}</div>
+            <div class="show-cell">
+              <img class="cover-thumb" :src="row.coverUrl" :alt="row.title" loading="lazy" />
+              <div class="show-copy">
+                <div class="show-title">{{ row.title }}</div>
+                <div class="show-subtitle">{{ row.subtitle }}</div>
+                <div class="show-tags">
+                  <span v-for="tag in row.tags.slice(0, 3)" :key="tag">{{ tag }}</span>
+                </div>
+              </div>
+            </div>
           </template>
         </el-table-column>
         <el-table-column :label="t('admin.category')" width="120">
@@ -277,7 +348,9 @@ const handleDelete = async (row: AdminShow) => {
             {{ categoryLabel(row.category) }}
           </template>
         </el-table-column>
-        <el-table-column prop="duration" :label="t('admin.durationMinutes')" width="130" />
+        <el-table-column :label="t('admin.durationMinutes')" width="120">
+          <template #default="{ row }">{{ row.duration }} {{ t('detail.minutes') }}</template>
+        </el-table-column>
         <el-table-column :label="t('admin.showStatusLabel')" width="130">
           <template #default="{ row }">
             <el-tag :type="statusTagType(row.status)" effect="plain">
@@ -285,17 +358,24 @@ const handleDelete = async (row: AdminShow) => {
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="scheduleCount" :label="t('admin.scheduleCount')" width="120" />
-        <el-table-column prop="sortOrder" :label="t('admin.sortOrder')" width="110" />
+        <el-table-column :label="t('admin.scheduleCount')" width="120">
+          <template #default="{ row }">
+            <strong class="numeric-cell">{{ row.scheduleCount }}</strong>
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('admin.sortOrder')" width="100">
+          <template #default="{ row }">{{ row.sortOrder }}</template>
+        </el-table-column>
         <el-table-column :label="t('admin.actions')" width="270" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" :disabled="operatingId === row.id" @click="openEdit(row)">
+            <el-button link type="primary" :icon="Edit" :disabled="operatingId === row.id" @click="openEdit(row)">
               {{ t('admin.edit') }}
             </el-button>
             <el-button
               v-if="row.status !== 'PUBLISHED'"
               link
               type="success"
+              :icon="Upload"
               :loading="operatingId === row.id"
               @click="setShowStatus(row, 'PUBLISHED')"
             >
@@ -313,6 +393,7 @@ const handleDelete = async (row: AdminShow) => {
             <el-button
               link
               type="danger"
+              :icon="Delete"
               :loading="operatingId === row.id"
               :disabled="row.status === 'ARCHIVED'"
               @click="handleDelete(row)"
@@ -332,57 +413,65 @@ const handleDelete = async (row: AdminShow) => {
       @closed="resetForm"
     >
       <el-form label-position="top" class="show-form">
-        <div class="form-grid">
-          <el-form-item :label="t('admin.title')" required>
-            <el-input v-model="form.title" maxlength="128" show-word-limit />
-          </el-form-item>
-          <el-form-item :label="t('admin.subtitle')" required>
-            <el-input v-model="form.subtitle" maxlength="128" show-word-limit />
-          </el-form-item>
-          <el-form-item :label="t('admin.category')" required>
-            <el-select v-model="form.category" class="full-control">
-              <el-option
-                v-for="category in categoryOptions"
-                :key="category"
-                :label="categoryLabel(category)"
-                :value="category"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item :label="t('admin.durationMinutes')" required>
-            <el-input-number v-model="form.duration" :min="1" :step="5" class="full-control" />
-          </el-form-item>
-          <el-form-item :label="t('admin.coverUrl')" required class="span-2">
-            <el-input v-model="form.coverUrl" maxlength="512" />
-          </el-form-item>
-          <el-form-item :label="t('admin.tags')" class="span-2">
-            <el-input v-model="form.tagsText" :placeholder="t('admin.tagsPlaceholder')" />
-          </el-form-item>
-          <el-form-item :label="t('admin.sortOrder')">
-            <el-input-number v-model="form.sortOrder" :step="10" class="full-control" />
-          </el-form-item>
-          <el-form-item :label="t('admin.showStatusLabel')">
-            <el-select v-model="form.status" class="full-control">
-              <el-option label="DRAFT" value="DRAFT" />
-              <el-option label="PUBLISHED" value="PUBLISHED" />
-              <el-option label="ARCHIVED" value="ARCHIVED" />
-            </el-select>
-          </el-form-item>
-          <el-form-item :label="t('admin.description')" required class="span-2">
-            <el-input v-model="form.description" type="textarea" :rows="5" maxlength="2000" show-word-limit />
-          </el-form-item>
-          <el-form-item :label="t('admin.intro')" class="span-2">
-            <el-input v-model="form.intro" type="textarea" :rows="3" maxlength="2000" show-word-limit />
-          </el-form-item>
-          <el-form-item :label="t('admin.castMembers')" class="span-2">
-            <el-input v-model="form.castMembers" type="textarea" :rows="3" maxlength="2000" show-word-limit />
-          </el-form-item>
-          <el-form-item :label="t('admin.creativeTeam')" class="span-2">
-            <el-input v-model="form.creativeTeam" type="textarea" :rows="3" maxlength="2000" show-word-limit />
-          </el-form-item>
-          <el-form-item :label="t('admin.fullSynopsis')" class="span-2">
-            <el-input v-model="form.fullSynopsis" type="textarea" :rows="5" maxlength="4000" show-word-limit />
-          </el-form-item>
+        <div class="form-section">
+          <h3>{{ t('admin.showBasicInfo') }}</h3>
+          <div class="form-grid">
+            <el-form-item :label="t('admin.title')" required>
+              <el-input v-model="form.title" maxlength="128" show-word-limit />
+            </el-form-item>
+            <el-form-item :label="t('admin.subtitle')" required>
+              <el-input v-model="form.subtitle" maxlength="128" show-word-limit />
+            </el-form-item>
+            <el-form-item :label="t('admin.category')" required>
+              <el-select v-model="form.category" class="full-control">
+                <el-option
+                  v-for="category in categoryOptions"
+                  :key="category"
+                  :label="categoryLabel(category)"
+                  :value="category"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item :label="t('admin.durationMinutes')" required>
+              <el-input-number v-model="form.duration" :min="1" :step="5" class="full-control" />
+            </el-form-item>
+            <el-form-item :label="t('admin.coverUrl')" required class="span-2">
+              <el-input v-model="form.coverUrl" maxlength="512" />
+            </el-form-item>
+            <el-form-item :label="t('admin.tags')" class="span-2">
+              <el-input v-model="form.tagsText" :placeholder="t('admin.tagsPlaceholder')" />
+            </el-form-item>
+            <el-form-item :label="t('admin.sortOrder')">
+              <el-input-number v-model="form.sortOrder" :step="10" class="full-control" />
+            </el-form-item>
+            <el-form-item :label="t('admin.showStatusLabel')">
+              <el-select v-model="form.status" class="full-control">
+                <el-option :label="statusLabel('DRAFT')" value="DRAFT" />
+                <el-option :label="statusLabel('PUBLISHED')" value="PUBLISHED" />
+                <el-option :label="statusLabel('ARCHIVED')" value="ARCHIVED" />
+              </el-select>
+            </el-form-item>
+          </div>
+        </div>
+        <div class="form-section">
+          <h3>{{ t('admin.showContentInfo') }}</h3>
+          <div class="form-grid">
+            <el-form-item :label="t('admin.description')" required class="span-2">
+              <el-input v-model="form.description" type="textarea" :rows="5" maxlength="2000" show-word-limit />
+            </el-form-item>
+            <el-form-item :label="t('admin.intro')" class="span-2">
+              <el-input v-model="form.intro" type="textarea" :rows="3" maxlength="2000" show-word-limit />
+            </el-form-item>
+            <el-form-item :label="t('admin.castMembers')" class="span-2">
+              <el-input v-model="form.castMembers" type="textarea" :rows="3" maxlength="2000" show-word-limit />
+            </el-form-item>
+            <el-form-item :label="t('admin.creativeTeam')" class="span-2">
+              <el-input v-model="form.creativeTeam" type="textarea" :rows="3" maxlength="2000" show-word-limit />
+            </el-form-item>
+            <el-form-item :label="t('admin.fullSynopsis')" class="span-2">
+              <el-input v-model="form.fullSynopsis" type="textarea" :rows="5" maxlength="4000" show-word-limit />
+            </el-form-item>
+          </div>
         </div>
       </el-form>
       <template #footer>
@@ -403,15 +492,21 @@ const handleDelete = async (row: AdminShow) => {
 }
 
 .page-header {
-  margin-bottom: var(--spacing-6);
+  margin-bottom: var(--spacing-4);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--spacing-4);
 
   h1 {
     font-family: var(--font-family-display);
     font-size: 32px;
+    line-height: 1.2;
+  }
+
+  p {
+    margin-top: var(--spacing-2);
+    color: var(--color-text-secondary);
   }
 }
 
@@ -421,6 +516,56 @@ const handleDelete = async (row: AdminShow) => {
   gap: var(--spacing-3);
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.metric-strip {
+  margin-bottom: var(--spacing-4);
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: var(--spacing-3);
+}
+
+.metric-card {
+  min-width: 0;
+  min-height: 76px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+  padding: var(--spacing-3);
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 160ms ease, background-color 160ms ease;
+
+  span {
+    color: var(--color-text-secondary);
+    font-family: var(--font-family-sans);
+    font-size: 12px;
+  }
+
+  strong {
+    font-family: var(--font-family-sans);
+    font-size: 24px;
+    line-height: 1.1;
+  }
+
+  &:hover,
+  &.active {
+    border-color: rgba(200, 149, 90, 0.38);
+    background: rgba(200, 149, 90, 0.1);
+  }
+
+  &.passive {
+    cursor: default;
+
+    &:hover {
+      border-color: var(--color-border);
+      background: var(--color-bg-elevated);
+    }
+  }
 }
 
 .compact-filter {
@@ -435,7 +580,27 @@ const handleDelete = async (row: AdminShow) => {
   background-color: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
   padding: var(--spacing-4);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
+
+  .table-toolbar {
+    margin-bottom: var(--spacing-3);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-3);
+  }
+
+  .search-input {
+    width: min(360px, 100%);
+  }
+
+  .toolbar-filters {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: var(--spacing-2);
+  }
 
   :deep(.el-table) {
     background-color: transparent;
@@ -458,6 +623,27 @@ const handleDelete = async (row: AdminShow) => {
   }
 }
 
+.show-cell {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+}
+
+.cover-thumb {
+  width: 52px;
+  height: 70px;
+  flex: 0 0 auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.show-copy {
+  min-width: 0;
+}
+
 .show-title {
   color: var(--color-text-primary);
   font-weight: 600;
@@ -471,7 +657,46 @@ const handleDelete = async (row: AdminShow) => {
   line-height: 1.4;
 }
 
+.show-tags {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+
+  span {
+    max-width: 88px;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-full);
+    padding: 2px 8px;
+    color: var(--color-text-secondary);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.numeric-cell {
+  font-family: var(--font-family-sans);
+  font-variant-numeric: tabular-nums;
+}
+
 .show-form {
+  display: grid;
+  gap: var(--spacing-4);
+
+  .form-section {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-4);
+    background: rgba(255, 255, 255, 0.02);
+
+    h3 {
+      margin-bottom: var(--spacing-3);
+      font-size: 16px;
+    }
+  }
+
   .form-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -500,6 +725,23 @@ const handleDelete = async (row: AdminShow) => {
   .header-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .metric-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .table-container {
+    .table-toolbar {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .search-input,
+    .compact-filter,
+    .sort-filter {
+      width: 100%;
+    }
   }
 
   .show-form {

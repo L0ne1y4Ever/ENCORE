@@ -1,6 +1,21 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import type { UserRole } from '../api/auth'
+
+function homeForRole(role?: UserRole | string) {
+  if (role === 'admin' || role === 'sysadmin') return '/admin'
+  if (role === 'checker') return '/checkin'
+  return '/'
+}
+
+function canAccessRole(requiredRole: unknown, userRole?: UserRole | string) {
+  if (!requiredRole) return true
+  if (requiredRole === 'admin') return userRole === 'admin' || userRole === 'sysadmin'
+  if (requiredRole === 'sysadmin') return userRole === 'sysadmin'
+  if (requiredRole === 'checker') return userRole === 'checker' || userRole === 'admin' || userRole === 'sysadmin'
+  return requiredRole === userRole
+}
 
 const routes: Array<RouteRecordRaw> = [
   {
@@ -30,7 +45,7 @@ const routes: Array<RouteRecordRaw> = [
       { path: '', name: 'AdminDashboard', component: () => import('../views/admin/Dashboard.vue') },
       { path: 'shows', name: 'AdminShows', component: () => import('../views/admin/Shows.vue') },
       { path: 'venues', name: 'AdminVenues', component: () => import('../views/admin/Venues.vue') },
-      { path: 'layouts', name: 'AdminLayouts', component: () => import('../views/admin/Layouts.vue') },
+      { path: 'layouts', redirect: '/admin/venues?tab=layouts' },
       { path: 'schedules', name: 'AdminSchedules', component: () => import('../views/admin/Schedules.vue') },
       { path: 'schedules/:id/inventory', name: 'AdminScheduleInventory', component: () => import('../views/admin/ScheduleInventory.vue') },
       { path: 'orders', name: 'AdminOrders', component: () => import('../views/admin/Orders.vue') },
@@ -52,27 +67,28 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach((to, _from, next) => {
+router.beforeEach(async (to, _from, next) => {
   const authStore = useAuthStore()
   const requiresAuth = to.matched.some(record => record.meta.requiresAuth)
   const requiredRole = [...to.matched].reverse().find(record => record.meta.role)?.meta.role
+  if ((requiresAuth || to.path === '/login') && authStore.currentUser) {
+    await authStore.ensureSession()
+  }
 
   if (requiresAuth && !authStore.currentUser) {
     next({ path: '/login', query: { redirect: to.fullPath } })
   } else if (requiresAuth && authStore.currentUser) {
     const userRole = authStore.currentUser.role
-    if (requiredRole && requiredRole !== userRole && userRole !== 'sysadmin') {
+    if (!canAccessRole(requiredRole, userRole)) {
       // 越权访问，回到自己所属域的首页
-      if (userRole === 'admin') next('/admin')
-      else if (userRole === 'checker') next('/checkin')
-      else next('/')
+      next(homeForRole(userRole))
     } else {
       next()
     }
   } else {
     // 比如访问 /login
     if (to.path === '/login' && authStore.currentUser) {
-      next('/') // 已登录不应再进 login
+      next(homeForRole(authStore.currentUser.role)) // 已登录不应再进 login
     } else {
       next()
     }

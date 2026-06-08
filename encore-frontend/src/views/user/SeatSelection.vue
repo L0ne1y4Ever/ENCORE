@@ -676,10 +676,13 @@ const stageDisplayLabel = computed(() => {
 
       <!-- SEATED flow or MIXED Stand view -->
       <template v-else>
-        <h2>
-          {{ t('seat.selection') }}
-          <TicketModeBadge v-if="schedule" :mode="schedule.ticketMode" style="margin-left: 8px; vertical-align: middle;" />
-        </h2>
+        <div class="summary-header">
+          <div>
+            <p class="summary-kicker">{{ t('seat.orderSummary') }}</p>
+            <h2>{{ t('seat.selection') }}</h2>
+          </div>
+          <TicketModeBadge v-if="schedule" :mode="schedule.ticketMode" />
+        </div>
 
         <div class="realtime-panel" aria-live="polite">
           <div class="realtime-status" :class="`state-${realtimeState}`">
@@ -689,7 +692,6 @@ const stageDisplayLabel = computed(() => {
           <div class="realtime-notice" v-if="realtimeNotice">
             {{ t(realtimeNotice) }}
           </div>
-          <div class="lock-tip">{{ t('seat.lockTip') }}</div>
         </div>
 
         <section class="group-panel" v-if="showGroupFeatures && (isGroupMode || groupOrder)" aria-live="polite">
@@ -730,6 +732,45 @@ const stageDisplayLabel = computed(() => {
           </template>
         </section>
 
+        <div class="summary-meta">
+          <div>
+            <span>{{ t('seat.selectedCount') }}</span>
+            <strong>{{ selectedSeatIds.size }}/{{ maxSelect }}</strong>
+          </div>
+          <div>
+            <span>{{ t('seat.orderExpires') }}</span>
+            <strong>15:00</strong>
+          </div>
+        </div>
+
+        <div class="selection-block">
+          <div class="block-head">
+            <span>{{ t('seat.yourSelection') }}</span>
+            <small>{{ t('seat.lockTip') }}</small>
+          </div>
+
+          <transition-group name="list-anim" tag="div" class="selected-list">
+            <div class="empty-msg" v-if="selectedSeats.length === 0" key="empty">{{ t('seat.noSeats') }}</div>
+            <div v-for="s in selectedSeats" :key="s.id" class="ticket-item">
+              <div class="ticket-details">
+                <div class="ticket-header">
+                  <span class="ticket-badge">{{ s.section }}</span>
+                  <button class="ticket-close btn-interactive" type="button" @click="toggleSeat(s)" :title="t('common.cancel')">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
+                </div>
+                <div class="ticket-body">
+                  <span class="seat-name">{{ t('seat.info', { row: s.row, col: s.col }) }}</span>
+                  <span class="seat-price">${{ s.price }}</span>
+                </div>
+              </div>
+            </div>
+          </transition-group>
+        </div>
+
         <div class="legend">
           <div class="legend-item"><div class="box status-available"></div> {{ t('seat.available') }}</div>
           <div class="legend-item"><div class="box status-locked"></div> {{ t('seat.locked') }}</div>
@@ -737,40 +778,21 @@ const stageDisplayLabel = computed(() => {
           <div class="legend-item"><div class="box selected"></div> {{ t('seat.yourSelection') }}</div>
         </div>
 
-        <transition-group name="list-anim" tag="div" class="selected-list">
-          <div class="empty-msg" v-if="selectedSeats.length === 0" key="empty">{{ t('seat.noSeats') }}</div>
-          <div v-for="s in selectedSeats" :key="s.id" class="ticket-item">
-            <div class="ticket-details">
-              <div class="ticket-header">
-                <span class="ticket-badge">{{ s.section }}</span>
-                <button class="ticket-close btn-interactive" type="button" @click="toggleSeat(s)" :title="t('common.cancel')">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                  </svg>
-                </button>
-              </div>
-              <div class="ticket-body">
-                <span class="seat-name">{{ t('seat.info', { row: s.row, col: s.col }) }}</span>
-                <span class="seat-price">${{ s.price }}</span>
-              </div>
-            </div>
+        <div class="checkout-dock">
+          <div class="total-bar">
+            <span>{{ t('seat.total') }}</span>
+            <span class="amount">${{ totalAmount }}</span>
           </div>
-        </transition-group>
 
-        <div class="total-bar">
-          <span>{{ t('seat.total') }}</span>
-          <span class="amount">${{ totalAmount }}</span>
+          <button
+            v-if="!isGroupMode"
+            class="btn-checkout"
+            :disabled="selectedSeatIds.size === 0 || locking"
+            @click="submitLock"
+          >
+            {{ locking ? t('seat.locking') : t('seat.checkout') }}
+          </button>
         </div>
-
-        <button
-          v-if="!isGroupMode"
-          class="btn-checkout"
-          :disabled="selectedSeatIds.size === 0 || locking"
-          @click="submitLock"
-        >
-          {{ locking ? t('seat.locking') : t('seat.checkout') }}
-        </button>
 
         <button
           v-if="!isGroupMode && showGroupFeatures"
@@ -822,7 +844,8 @@ const stageDisplayLabel = computed(() => {
 <style scoped lang="scss">
 .seat-selection {
   display: flex;
-  height: calc(100vh - 80px);
+  min-height: calc(100vh - 76px);
+  height: calc(100vh - 76px);
   width: 100%;
 
   @media (max-width: 900px) {
@@ -852,7 +875,7 @@ const stageDisplayLabel = computed(() => {
   .spinner {
     width: 40px;
     height: 40px;
-    border: 3px solid rgba(200, 149, 90, 0.1);
+    border: 3px solid rgba(200, 149, 90, 0.12);
     border-top-color: var(--color-accent);
     border-radius: 50%;
     animation: spin 1s linear infinite;
@@ -972,7 +995,7 @@ const stageDisplayLabel = computed(() => {
     transform: translateY(-2px);
     border-color: var(--color-accent);
     background-color: var(--color-bg-elevated);
-    box-shadow: 0 4px 12px rgba(200, 149, 90, 0.15);
+    box-shadow: 0 4px 12px rgba(200, 149, 90, 0.16);
   }
 
   &::before,
@@ -1016,10 +1039,11 @@ const stageDisplayLabel = computed(() => {
     font-family: var(--font-family-sans);
     font-size: 10px;
     font-weight: 700;
-    color: var(--color-accent);
-    background-color: rgba(200, 149, 90, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: transparent;
+    color: rgba(255, 255, 255, 0.7);
     padding: 2px 6px;
-    border-radius: var(--radius-full);
+    border-radius: 3px;
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
@@ -1079,8 +1103,8 @@ const stageDisplayLabel = computed(() => {
     align-items: center;
     gap: 8px;
     padding: 8px 16px;
-    border-radius: var(--radius-full);
-    border: 1px solid var(--color-border-strong);
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
     background-color: transparent;
     color: var(--color-text-secondary);
     font-family: var(--font-family-sans);
@@ -1095,10 +1119,10 @@ const stageDisplayLabel = computed(() => {
     }
 
     &.active {
-      background-color: var(--color-accent);
-      border-color: var(--color-accent);
-      color: #080808;
-      box-shadow: 0 4px 12px rgba(200, 149, 90, 0.25);
+      background-color: transparent;
+      border-color: #fff;
+      color: #fff;
+      box-shadow: none;
     }
 
     .icon {
@@ -1130,8 +1154,8 @@ const stageDisplayLabel = computed(() => {
   .stage-apron {
     height: 10px;
     border-radius: 50% / 100% 100% 0 0;
-    background: linear-gradient(180deg, var(--color-accent) 0%, rgba(200, 149, 90, 0.1) 100%);
-    box-shadow: 0 -4px 16px rgba(200, 149, 90, 0.35);
+    background: linear-gradient(180deg, var(--color-accent) 0%, rgba(200, 149, 90, 0.12) 100%);
+    box-shadow: 0 -4px 16px rgba(200, 149, 90, 0.3);
     border: 1px solid var(--color-accent);
     border-bottom: none;
   }
@@ -1210,7 +1234,7 @@ const stageDisplayLabel = computed(() => {
   &:hover:not(:disabled) {
     border-color: var(--color-accent);
     transform: scale(1.15);
-    box-shadow: 0 4px 8px rgba(200, 149, 90, 0.15);
+    box-shadow: 0 4px 8px rgba(200, 149, 90, 0.18);
   }
 
   &.status-available {
@@ -1256,7 +1280,7 @@ const stageDisplayLabel = computed(() => {
   &.selected {
     background-color: var(--color-accent) !important;
     border-color: var(--color-accent) !important;
-    box-shadow: 0 0 10px rgba(200, 149, 90, 0.45);
+    box-shadow: 0 0 10px rgba(200, 149, 90, 0.42);
 
     .seat-dot {
       width: 6px;
@@ -1272,30 +1296,71 @@ const stageDisplayLabel = computed(() => {
 }
 
 .side-panel {
-  width: 400px;
+  width: 420px;
+  height: calc(100vh - 76px);
   flex-shrink: 0;
-  background-color: var(--color-bg-elevated);
+  position: sticky;
+  top: 76px;
+  overflow-y: auto;
+  background:
+    linear-gradient(180deg, rgba(200, 149, 90, 0.07) 0%, rgba(17, 17, 17, 0) 180px),
+    var(--color-bg-elevated);
   border-left: 1px solid var(--color-border);
   padding: var(--spacing-4);
   display: flex;
   flex-direction: column;
+  gap: var(--spacing-4);
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--color-border-strong);
+    border-radius: var(--radius-full);
+  }
 
   @media (max-width: 900px) {
     width: 100%;
+    height: auto;
+    position: static;
+    overflow: visible;
     border-left: none;
     border-top: 1px solid var(--color-border);
     padding: var(--spacing-4);
   }
 
+  .summary-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--spacing-3);
+    border-bottom: 1px solid var(--color-border);
+    padding-bottom: var(--spacing-4);
+  }
+
+  .summary-kicker {
+    margin: 0 0 4px;
+    color: var(--color-accent);
+    font-family: var(--font-family-sans);
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
   h2 {
     font-family: var(--font-family-display);
-    font-size: 24px;
-    margin-bottom: var(--spacing-4);
+    font-size: 28px;
+    line-height: 1.1;
   }
 
   .realtime-panel {
-    min-height: 42px;
-    margin-bottom: var(--spacing-4);
+    min-height: 38px;
     font-family: var(--font-family-sans);
     font-size: 12px;
   }
@@ -1331,10 +1396,62 @@ const stageDisplayLabel = computed(() => {
     color: var(--color-text-ghost);
   }
 
-  .lock-tip {
-    margin-top: var(--spacing-1);
-    color: var(--color-text-ghost);
-    line-height: 1.4;
+  .summary-meta {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-3);
+
+    div {
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-base);
+      padding: var(--spacing-3);
+      display: grid;
+      gap: 4px;
+    }
+
+    span {
+      color: var(--color-text-secondary);
+      font-family: var(--font-family-sans);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    strong {
+      color: var(--color-text-primary);
+      font-family: var(--font-family-sans);
+      font-size: 22px;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+  }
+
+  .selection-block {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: rgba(8, 8, 8, 0.42);
+    padding: var(--spacing-3);
+  }
+
+  .block-head {
+    display: grid;
+    gap: 4px;
+    margin-bottom: var(--spacing-3);
+
+    span {
+      color: var(--color-text-primary);
+      font-family: var(--font-family-sans);
+      font-size: 14px;
+      font-weight: 900;
+    }
+
+    small {
+      color: var(--color-text-secondary);
+      font-family: var(--font-family-sans);
+      line-height: 1.45;
+    }
   }
 
   .group-panel {
@@ -1470,7 +1587,6 @@ const stageDisplayLabel = computed(() => {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: var(--spacing-3);
-    margin-bottom: var(--spacing-6);
     font-size: 12px;
     color: var(--color-text-secondary);
 
@@ -1482,11 +1598,8 @@ const stageDisplayLabel = computed(() => {
   }
 
   .selected-list {
-    max-height: 260px;
+    max-height: 280px;
     overflow-y: auto;
-    margin-bottom: var(--spacing-4);
-    border-top: 1px solid var(--color-border);
-    padding-top: var(--spacing-4);
     padding-right: 4px;
 
     &::-webkit-scrollbar {
@@ -1510,7 +1623,6 @@ const stageDisplayLabel = computed(() => {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: var(--spacing-4);
     font-family: var(--font-family-sans);
     font-size: 16px;
 
@@ -1521,13 +1633,21 @@ const stageDisplayLabel = computed(() => {
     }
   }
 
+  .checkout-dock {
+    margin-top: auto;
+    border-top: 1px solid var(--color-border);
+    padding-top: var(--spacing-4);
+    display: grid;
+    gap: var(--spacing-3);
+  }
+
   .btn-checkout {
     width: 100%;
     padding: 16px;
-    background-color: var(--color-text-primary);
-    color: var(--color-bg-base);
+    background-color: #e50914;
+    color: #fff;
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: 4px;
     font-family: var(--font-family-sans);
     font-size: 16px;
     font-weight: 700;
@@ -1535,7 +1655,7 @@ const stageDisplayLabel = computed(() => {
     transition: background-color 150ms ease;
 
     &:hover:not(:disabled) {
-      background-color: var(--color-accent);
+      background-color: #f6121d;
     }
 
     &:disabled {
@@ -1549,9 +1669,9 @@ const stageDisplayLabel = computed(() => {
     width: 100%;
     min-height: 48px;
     margin-top: var(--spacing-3);
-    border: 1px solid var(--color-border-strong);
-    border-radius: var(--radius-sm);
-    background: transparent;
+    border: none;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
     color: var(--color-text-primary);
     cursor: pointer;
     font-family: var(--font-family-sans);
@@ -1560,19 +1680,18 @@ const stageDisplayLabel = computed(() => {
     transition: border-color 150ms ease, color 150ms ease;
 
     &:hover:not(:disabled) {
-      border-color: var(--color-accent);
-      color: var(--color-accent);
+      background: rgba(255, 255, 255, 0.16);
+      color: #fff;
     }
 
     &:disabled {
-      border-color: var(--color-border);
       color: var(--color-text-ghost);
       cursor: not-allowed;
     }
 
     &.danger:hover:not(:disabled) {
-      border-color: #f0a86b;
-      color: #f0a86b;
+      background: rgba(229, 9, 20, 0.08);
+      color: rgba(255, 101, 112, 0.95);
     }
   }
 

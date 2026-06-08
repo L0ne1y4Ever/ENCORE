@@ -106,7 +106,10 @@ public class ShowService {
                 .map(ShowEntity::getId)
                 .toList();
         List<ShowSchedule> schedules = showScheduleMapper.selectList(new LambdaQueryWrapper<ShowSchedule>()
-                .in(ShowSchedule::getShowId, showIds));
+                .in(ShowSchedule::getShowId, showIds))
+                .stream()
+                .filter(this::isPublicSchedule)
+                .toList();
         Map<String, ShowSchedule> scheduleById = schedules.stream()
                 .collect(Collectors.toMap(ShowSchedule::getId, Function.identity(), (left, right) -> left));
         Map<String, Long> availableSchedulesByShow = schedules.stream()

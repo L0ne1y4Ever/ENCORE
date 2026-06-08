@@ -43,3 +43,7 @@ export async function logoutApi(): Promise<void> {
 export function getCurrentUserApi(): Promise<UserProfile> {
   return requestData<UserProfile>(apiClient.get('/api/auth/me'))
 }
+
+export function updateCurrentUserApi(displayName: string): Promise<UserProfile> {
+  return requestData<UserProfile>(apiClient.patch('/api/auth/me', { displayName }))
+}

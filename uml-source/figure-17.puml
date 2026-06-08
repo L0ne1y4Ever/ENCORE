@@ -6,35 +6,54 @@ skinparam DefaultFontSize 13
 title 图21  模拟支付与电子票生成顺序图
 
 actor "注册用户" as User
-participant "Vue 支付页" as FE
-participant "PaymentController" as Ctrl
+participant "用户端 (Vue 3)\n支付页" as FE
+participant "OrderController\n/api/orders" as Ctrl
 participant "OrderService" as OS
-participant "PaymentRecordService" as PRS
-participant "TicketItemService" as TS
-database "MySQL" as DB
+database "Redis\n座位锁" as Redis
+database "MySQL\nticket_order / ticket_item\nschedule_seat / area_inventory" as DB
+participant "DashboardRefreshPublisher\n/topic/admin/dashboard" as WS
 
 User -> FE : 点击 "模拟支付"
-FE -> Ctrl : POST /api/payment/mock
-Ctrl -> OS : payOrder(orderId, userId)
-OS -> DB : SELECT ticket_order FOR UPDATE
-DB --> OS : order(PENDING_PAYMENT)
-alt 倒计时未过期
-  OS -> PRS : recordPayment(orderId, amount, "MOCK")
-  PRS -> DB : INSERT payment_record
-  OS -> DB : UPDATE ticket_order SET status='PAID'
-  OS -> DB : UPDATE schedule_seat SET status='SOLD'
-  OS -> TS : batchCreate(orderId, scheduleSeatIds)
-  TS -> DB : INSERT ticket_item\n(状态=UNUSED, 票号=雪花ID,\n二维码模拟码)
-  DB --> TS : ticketIds
-  TS --> OS : tickets
-  OS --> Ctrl : PaymentResultVO(success)
-  Ctrl --> FE : 200 OK + 票号列表
-  FE --> User : 跳转 "我的电子票"
-else 倒计时已过期
-  OS -> DB : UPDATE ticket_order SET status='EXPIRED'
-  OS -> DB : UPDATE schedule_seat SET status='AVAILABLE'
-  OS --> Ctrl : 408 订单已超时
-  Ctrl --> FE : 错误信息
-  FE --> User : 提示重新选座
+FE -> Ctrl : POST /api/orders/{id}/pay
+Ctrl -> OS : simulatePayment(orderId)
+OS -> OS : ensureOrderOwner + expireIfNeeded
+alt 已是 PAID
+  OS --> Ctrl : true（幂等）
+else 非 PENDING_PAYMENT（超时/取消）
+  OS --> Ctrl : false
+else PENDING_PAYMENT
+  OS -> DB : 读取 ticket_item 列表
+  alt ZONED 区域票
+    OS -> DB : sellInventory\nUPDATE schedule_area_inventory\nSET locked-=q, sold+=q WHERE locked>=q
+    alt 影响行数 = 0（库存异常）
+      OS -> OS : markExpired -> 返回 false
+    else 成功
+      OS -> DB : UPDATE ticket_item SET status=UNUSED
+    end
+  else SEATED 座位票
+    loop 每张票
+      OS -> Redis : isLockedByOrder?（锁值==orderId）
+    end
+    alt 锁均有效且座位仍 AVAILABLE
+      loop 每张票
+        OS -> DB : UPDATE schedule_seat SET status=SOLD
+        OS -> DB : UPDATE ticket_item SET status=UNUSED
+      end
+    else 锁失效 / 座位变动
+      OS -> OS : markExpired 或 抛 409 座位状态已变化
+    end
+  end
+  OS -> DB : UPDATE ticket_order SET status=PAID, paidAt=now
+  OS -> Redis : 释放座位锁（SEATED）
+  OS -> WS : publish("ORDER_PAID")
+  OS --> Ctrl : true
 end
+Ctrl --> FE : 200 OK
+FE --> User : 跳转 "我的电子票"，展示票号 ticketCode
+
+note over OS, DB
+  票号 ticketCode 在下单时已生成(RESERVED)，
+  支付仅翻转 RESERVED -> UNUSED；无独立
+  payment_record 表，支付为模拟内联实现。
+end note
 @enduml

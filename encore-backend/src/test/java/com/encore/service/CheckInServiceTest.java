@@ -32,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -71,6 +72,7 @@ class CheckInServiceTest {
         when(ticketOrderMapper.selectById(ticket.getOrderId())).thenReturn(order);
         when(showScheduleMapper.selectById(ticket.getScheduleId())).thenReturn(schedule);
         when(showMapper.selectById(schedule.getShowId())).thenReturn(show);
+        when(ticketItemMapper.markCheckedInIfUnused(eq(ticket.getId()), eq(WINDOW_NOW))).thenReturn(1);
 
         try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
             stp.when(StpUtil::getLoginIdAsString).thenReturn("u-801");
@@ -81,9 +83,7 @@ class CheckInServiceTest {
             assertThat(response.showTitle()).isEqualTo("THE PHANTOM OF THE OPERA");
             assertThat(response.status()).isEqualTo("CHECKED_IN");
             assertThat(response.checkedInAt()).isEqualTo(WINDOW_NOW);
-            verify(ticketItemMapper).updateById(argThat((TicketItem updated) ->
-                    "CHECKED_IN".equals(updated.getStatus()) && WINDOW_NOW.equals(updated.getUpdatedAt())
-            ));
+            verify(ticketItemMapper).markCheckedInIfUnused(ticket.getId(), WINDOW_NOW);
             verify(dashboardRefreshPublisher).publish("TICKET_CHECKED_IN", ticket.getId());
         }
     }
@@ -99,6 +99,7 @@ class CheckInServiceTest {
         when(ticketItemMapper.selectOne(any())).thenReturn(ticket);
         when(ticketOrderMapper.selectById(ticket.getOrderId())).thenReturn(paidOrder());
         when(showMapper.selectById(schedule.getShowId())).thenReturn(show());
+        when(ticketItemMapper.markCheckedInIfUnused(eq(ticket.getId()), eq(WINDOW_NOW))).thenReturn(1);
 
         try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
             stp.when(StpUtil::getLoginIdAsString).thenReturn("u-801");
@@ -107,9 +108,7 @@ class CheckInServiceTest {
 
             assertThat(response.scheduleId()).isEqualTo("sch-101");
             assertThat(response.status()).isEqualTo("CHECKED_IN");
-            verify(ticketItemMapper).updateById(argThat((TicketItem updated) ->
-                    "CHECKED_IN".equals(updated.getStatus()) && WINDOW_NOW.equals(updated.getUpdatedAt())
-            ));
+            verify(ticketItemMapper).markCheckedInIfUnused(ticket.getId(), WINDOW_NOW);
             verify(dashboardRefreshPublisher).publish("TICKET_CHECKED_IN", ticket.getId());
         }
     }
@@ -228,6 +227,7 @@ class CheckInServiceTest {
         when(ticketOrderMapper.selectById(ticket.getOrderId())).thenReturn(paidOrder());
         when(showScheduleMapper.selectById(ticket.getScheduleId())).thenReturn(schedule);
         when(showMapper.selectById(schedule.getShowId())).thenReturn(show());
+        when(ticketItemMapper.markCheckedInIfUnused(eq(ticket.getId()), eq(SHOW_START.minusHours(2)))).thenReturn(1);
 
         try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
             stp.when(StpUtil::getLoginIdAsString).thenReturn("u-801");
@@ -236,7 +236,7 @@ class CheckInServiceTest {
 
             assertThat(response.status()).isEqualTo("CHECKED_IN");
             assertThat(response.checkedInAt()).isEqualTo(SHOW_START.minusHours(2));
-            verify(ticketItemMapper).updateById(any(TicketItem.class));
+            verify(ticketItemMapper).markCheckedInIfUnused(ticket.getId(), SHOW_START.minusHours(2));
         }
     }
 
@@ -251,6 +251,7 @@ class CheckInServiceTest {
         when(ticketOrderMapper.selectById(ticket.getOrderId())).thenReturn(paidOrder());
         when(showScheduleMapper.selectById(ticket.getScheduleId())).thenReturn(schedule);
         when(showMapper.selectById(schedule.getShowId())).thenReturn(show());
+        when(ticketItemMapper.markCheckedInIfUnused(eq(ticket.getId()), eq(SHOW_END))).thenReturn(1);
 
         try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
             stp.when(StpUtil::getLoginIdAsString).thenReturn("u-801");
@@ -259,7 +260,31 @@ class CheckInServiceTest {
 
             assertThat(response.status()).isEqualTo("CHECKED_IN");
             assertThat(response.checkedInAt()).isEqualTo(SHOW_END);
-            verify(ticketItemMapper).updateById(any(TicketItem.class));
+            verify(ticketItemMapper).markCheckedInIfUnused(ticket.getId(), SHOW_END);
+        }
+    }
+
+    @Test
+    void verifyRejectsConcurrentStatusChangeDuringAtomicUpdate() {
+        CheckInService service = createService();
+        TicketItem ticket = ticket("UNUSED");
+        ShowSchedule schedule = schedule();
+
+        when(userAccountMapper.selectById("u-801")).thenReturn(user("checker"));
+        when(ticketItemMapper.selectOne(any())).thenReturn(ticket);
+        when(ticketOrderMapper.selectById(ticket.getOrderId())).thenReturn(paidOrder());
+        when(showScheduleMapper.selectById(ticket.getScheduleId())).thenReturn(schedule);
+        when(ticketItemMapper.markCheckedInIfUnused(eq(ticket.getId()), eq(WINDOW_NOW))).thenReturn(0);
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-801");
+
+            assertThatThrownBy(() -> service.verify("TK-VALID"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("票据状态已变化，请刷新后重试")
+                    .extracting("code")
+                    .isEqualTo(ErrorCode.CONFLICT);
+            verify(dashboardRefreshPublisher, never()).publish(any(), any());
         }
     }
 
@@ -469,6 +494,7 @@ class CheckInServiceTest {
         UserAccount user = new UserAccount();
         user.setId("u-801");
         user.setRole(role);
+        user.setStatus("ACTIVE");
         return user;
     }
 

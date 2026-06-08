@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getShowDetail, getShowSchedules } from '../../api/show'
-import type { Show, Schedule } from '../../mock/shows'
 import { useI18n } from 'vue-i18n'
+import { ArrowRight, Calendar, Clock, Location, PriceTag } from '@element-plus/icons-vue'
+import { getShowDetail, getShowSchedules } from '../../api/show'
+import type { Schedule, Show } from '../../mock/shows'
+import { formatScheduleDay, formatScheduleTime, handlePosterError, lowestPriceLabel, posterImageSrc } from '../../utils/ticketing'
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -18,6 +20,28 @@ const introText = computed(() => show.value?.intro || show.value?.description ||
 const castText = computed(() => show.value?.castMembers || t('detail.pendingContent'))
 const creativeText = computed(() => show.value?.creativeTeam || t('detail.pendingContent'))
 const fullSynopsisText = computed(() => show.value?.fullSynopsis || show.value?.description || '')
+const lowestPrice = computed(() => {
+  const price = schedules.value.map(item => lowestPriceLabel(item.priceRange)).find(Boolean)
+  return price || t('home.pricePending')
+})
+const onSaleSchedules = computed(() => schedules.value.filter(item => item.status === 'ON_SALE'))
+
+const scheduleGroups = computed(() => {
+  const groups = new Map<string, Schedule[]>()
+  for (const schedule of schedules.value) {
+    const key = schedule.startTime.slice(0, 10)
+    const list = groups.get(key) || []
+    list.push(schedule)
+    groups.set(key, list)
+  }
+  return Array.from(groups.entries())
+    .map(([date, rows]) => ({
+      date,
+      label: formatScheduleDay(`${date}T00:00:00`, locale.value),
+      rows: rows.sort((left, right) => left.startTime.localeCompare(right.startTime))
+    }))
+    .sort((left, right) => left.date.localeCompare(right.date))
+})
 
 onMounted(async () => {
   const id = route.params.id as string
@@ -40,134 +64,187 @@ const handleReserve = () => {
 
 const submitReservation = () => {
   if (!reserveEmail.value) return
-  alert(t('reservation.successMsg', { count: '8,205' }))
+  window.alert(t('reservation.successMsg', { count: '8,205' }))
   showReserveModal.value = false
 }
 
-const formatDate = (dateStr: string) => {
-  const d = new Date(dateStr)
-  const dateLocale = locale.value === 'zh' ? 'zh-CN' : 'en-US'
-  return d.toLocaleDateString(dateLocale, { month: 'short', day: 'numeric', year: 'numeric' })
+const scrollToSchedules = () => {
+  document.getElementById('schedule-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
-const formatTime = (dateStr: string) => {
-  const d = new Date(dateStr)
-  const dateLocale = locale.value === 'zh' ? 'zh-CN' : 'en-US'
-  return d.toLocaleTimeString(dateLocale, { hour: 'numeric', minute: '2-digit' })
+const statusLabel = (status: Schedule['status']) => {
+  if (status === 'ON_SALE') return t('home.onSaleNow')
+  if (status === 'PREPARING' || status === 'COMING_SOON') return t('detail.reserve')
+  if (status === 'SOLD_OUT') return t('admin.scheduleStatusMap.soldOut')
+  return t('detail.unavailable')
+}
+
+const ticketModeLabel = (mode?: string) => {
+  if (!mode) return t('ticketMode.seated')
+  return t(`ticketMode.${mode.toLowerCase()}`)
 }
 </script>
 
 <template>
-  <div class="show-detail stagger-fade-up" v-if="!loading && show">
-    <!-- 高斯模糊背景 + 前景海报 -->
-    <div class="detail-hero">
-      <div class="bg-blur-container">
-        <img :src="show.coverUrl" class="bg-blur-img" />
-        <div class="bg-overlay"></div>
-      </div>
+  <div v-if="loading" class="detail-loading">
+    {{ t('common.loading') }}
+  </div>
 
-      <div class="hero-content">
-        <div class="poster-container stagger-fade-up stagger-delay-1">
-          <img :src="show.coverUrl" :alt="show.title" class="poster-img" />
+  <div v-else-if="show" class="show-detail">
+    <section class="detail-hero">
+      <img
+        class="hero-bg"
+        :src="posterImageSrc(show.coverUrl, show.title)"
+        :alt="show.title"
+        @error="handlePosterError($event, show.title)"
+      />
+      <div class="hero-scrim" />
+      <div class="hero-inner">
+        <div class="poster-frame">
+          <img
+            :src="posterImageSrc(show.coverUrl, show.title)"
+            :alt="show.title"
+            @error="handlePosterError($event, show.title)"
+          />
         </div>
-        <div class="hero-text stagger-fade-up stagger-delay-2">
-          <div class="badge">{{ show.category }}</div>
-          <h1 class="title">{{ show.title }}</h1>
-          <p class="subtitle">{{ show.subtitle }}</p>
+
+        <div class="hero-copy">
+          <span class="category-badge">{{ show.category }}</span>
+          <h1>{{ show.title }}</h1>
+          <p>{{ show.subtitle }}</p>
+          <div class="quick-facts">
+            <span><Clock /> {{ show.duration }} {{ t('detail.minutes') }}</span>
+            <span><PriceTag /> {{ t('home.ticketFrom') }} {{ lowestPrice }}</span>
+            <span><Calendar /> {{ onSaleSchedules.length }} {{ t('home.onSaleSchedules') }}</span>
+          </div>
+          <div class="hero-tags">
+            <span v-for="tag in show.tags" :key="tag">{{ tag }}</span>
+          </div>
+          <div class="hero-actions">
+            <button class="primary-cta" type="button" @click="scrollToSchedules">
+              {{ onSaleSchedules.length > 0 ? t('detail.book') : t('detail.reserve') }}
+              <ArrowRight />
+            </button>
+            <button class="secondary-cta" type="button" @click="router.push('/')">
+              {{ t('common.back') }}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </section>
 
-    <!-- 杂志风正文排版 -->
-    <div class="content-container stagger-fade-up stagger-delay-3">
-      <main class="main-desc">
-        <section class="synopsis">
-          <h2 class="section-title">{{ t('detail.synopsis') }}</h2>
-          <p class="drop-cap">{{ introText }}</p>
+    <div class="detail-body">
+      <main class="content-column">
+        <section class="content-section synopsis">
+          <span class="section-kicker">{{ t('detail.synopsis') }}</span>
+          <p>{{ introText }}</p>
         </section>
 
-        <section class="detail-rich-section">
-          <h2 class="section-title">{{ t('detail.castMembers') }}</h2>
+        <section id="schedule-list" class="content-section schedule-section">
+          <div class="section-heading">
+            <div>
+              <span class="section-kicker">{{ t('detail.selectSchedule') }}</span>
+              <h2>{{ t('detail.availableDates') }}</h2>
+            </div>
+            <span class="schedule-count">{{ schedules.length }}</span>
+          </div>
+
+          <div v-if="scheduleGroups.length > 0" class="date-groups">
+            <div v-for="group in scheduleGroups" :key="group.date" class="date-group">
+              <div class="date-label">{{ group.label }}</div>
+              <div class="schedule-list">
+                <article
+                  v-for="sch in group.rows"
+                  :key="sch.id"
+                  class="schedule-card"
+                  :class="{ presale: sch.status === 'PREPARING' || sch.status === 'COMING_SOON', disabled: sch.status !== 'ON_SALE' && sch.status !== 'PREPARING' && sch.status !== 'COMING_SOON' }"
+                >
+                  <div class="time-box">
+                    <strong>{{ formatScheduleTime(sch.startTime, locale) }}</strong>
+                    <span>{{ formatScheduleTime(sch.endTime, locale) }}</span>
+                  </div>
+                  <div class="schedule-main">
+                    <div class="venue-line">
+                      <Location />
+                      <span>{{ sch.theaterName }}</span>
+                    </div>
+                    <div class="schedule-tags">
+                      <span>{{ ticketModeLabel(sch.ticketMode) }}</span>
+                      <span>{{ statusLabel(sch.status) }}</span>
+                    </div>
+                  </div>
+                  <div class="schedule-price">
+                    <span>{{ t('home.ticketFrom') }}</span>
+                    <strong>{{ lowestPriceLabel(sch.priceRange) || sch.priceRange }}</strong>
+                  </div>
+                  <button
+                    v-if="sch.status === 'ON_SALE'"
+                    class="book-btn"
+                    type="button"
+                    @click="goSeatSelection(sch.id)"
+                  >
+                    {{ t('detail.book') }}
+                  </button>
+                  <button
+                    v-else-if="sch.status === 'PREPARING' || sch.status === 'COMING_SOON'"
+                    class="reserve-btn"
+                    type="button"
+                    @click="handleReserve"
+                  >
+                    {{ t('detail.reserve') }}
+                  </button>
+                  <button v-else class="book-btn" type="button" disabled>
+                    {{ t('detail.unavailable') }}
+                  </button>
+                </article>
+              </div>
+            </div>
+          </div>
+          <div v-else class="empty-state">
+            {{ t('detail.emptySchedules') }}
+          </div>
+        </section>
+
+        <section class="content-section">
+          <span class="section-kicker">{{ t('detail.castMembers') }}</span>
           <p>{{ castText }}</p>
         </section>
 
-        <section class="detail-rich-section">
-          <h2 class="section-title">{{ t('detail.creativeTeam') }}</h2>
+        <section class="content-section">
+          <span class="section-kicker">{{ t('detail.creativeTeam') }}</span>
           <p>{{ creativeText }}</p>
         </section>
 
-        <section class="detail-rich-section">
-          <h2 class="section-title">{{ t('detail.fullSynopsis') }}</h2>
+        <section class="content-section">
+          <span class="section-kicker">{{ t('detail.fullSynopsis') }}</span>
           <p>{{ fullSynopsisText }}</p>
-        </section>
-
-        <!-- 场次卡片列表 -->
-        <section class="schedules-section">
-          <h2 class="section-title">{{ t('detail.selectSchedule') }}</h2>
-          <div class="schedule-grid">
-            <div
-              class="schedule-card btn-interactive"
-              v-for="sch in schedules"
-              :key="sch.id"
-              :class="{'disabled': sch.status !== 'ON_SALE' && sch.status !== 'PREPARING' && sch.status !== 'COMING_SOON'}"
-            >
-              <div class="sch-date-box">
-                <div class="sch-time">{{ formatTime(sch.startTime) }}</div>
-                <div class="sch-date">{{ formatDate(sch.startTime) }}</div>
-              </div>
-              <div class="sch-info">
-                <div class="sch-theater">{{ sch.theaterName }}</div>
-                <div class="sch-price">{{ sch.priceRange }}</div>
-              </div>
-              <div class="sch-action">
-                <button
-                  v-if="sch.status === 'PREPARING' || sch.status === 'COMING_SOON'"
-                  class="btn-outline reserve-btn"
-                  @click.stop="handleReserve"
-                >
-                  {{ t('detail.reserve') }}
-                </button>
-                <button
-                  v-else
-                  class="btn-solid"
-                  :disabled="sch.status !== 'ON_SALE'"
-                  @click.stop="goSeatSelection(sch.id)"
-                >
-                  {{ sch.status === 'ON_SALE' ? t('detail.book') : t('detail.unavailable') }}
-                </button>
-              </div>
-            </div>
-            <div v-if="schedules.length === 0" class="empty-state">
-              {{ t('detail.emptySchedules') }}
-            </div>
-          </div>
         </section>
       </main>
 
-      <aside class="meta-sidebar">
-        <div class="meta-block">
-          <div class="meta-label">{{ t('detail.duration') }}</div>
-          <div class="meta-value">{{ show.duration }} {{ t('detail.minutes') }}</div>
-        </div>
-        <div class="meta-block">
-          <div class="meta-label">{{ t('detail.tags') }}</div>
-          <div class="tags">
-            <span v-for="tag in show.tags" :key="tag" class="tag">{{ tag }}</span>
-          </div>
+      <aside class="purchase-sidebar">
+        <div class="sidebar-card">
+          <span>{{ t('detail.ticketGuide') }}</span>
+          <strong>{{ lowestPrice }}</strong>
+          <p>{{ t('detail.ticketGuideCopy') }}</p>
+          <button class="primary-cta" type="button" @click="scrollToSchedules">
+            {{ t('detail.selectSchedule') }}
+          </button>
         </div>
       </aside>
     </div>
 
-    <!-- Reservation Modal -->
     <transition name="fade">
-      <div class="modal-overlay" v-if="showReserveModal" @click.self="showReserveModal = false">
+      <div v-if="showReserveModal" class="modal-overlay" @click.self="showReserveModal = false">
         <div class="modal-content">
           <h2>{{ t('reservation.title') }}</h2>
           <p>{{ t('reservation.subtitle') }}</p>
-          <input type="email" v-model="reserveEmail" :placeholder="t('reservation.email')" class="modal-input" />
+          <label>
+            <span>{{ t('reservation.email') }}</span>
+            <input v-model="reserveEmail" type="email" :placeholder="t('reservation.email')" />
+          </label>
           <div class="modal-actions">
-            <button class="btn-cancel btn-interactive" @click="showReserveModal = false">{{ t('common.cancel') }}</button>
-            <button class="btn-confirm btn-interactive" @click="submitReservation">{{ t('common.confirm') }}</button>
+            <button class="btn-cancel" type="button" @click="showReserveModal = false">{{ t('common.cancel') }}</button>
+            <button class="btn-confirm" type="button" @click="submitReservation">{{ t('common.confirm') }}</button>
           </div>
         </div>
       </div>
@@ -176,346 +253,411 @@ const formatTime = (dateStr: string) => {
 </template>
 
 <style scoped lang="scss">
+.detail-loading {
+  min-height: calc(100vh - 76px);
+  display: grid;
+  place-items: center;
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-sans);
+}
+
 .show-detail {
   width: 100%;
+  overflow-x: hidden;
 }
 
-/* 沉浸式首屏 */
 .detail-hero {
+  min-height: min(720px, calc(100vh - 76px));
   position: relative;
-  min-height: 60vh;
   display: flex;
   align-items: flex-end;
-  padding: var(--spacing-8) var(--spacing-6) var(--spacing-6);
   overflow: hidden;
-
-  .bg-blur-container {
-    position: absolute;
-    inset: -10%; /* 扩展边缘防止模糊漏底 */
-    z-index: 0;
-
-    .bg-blur-img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      filter: blur(40px) brightness(0.6) saturate(1.2);
-      transform: scale(1.1);
-    }
-
-    .bg-overlay {
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(to top, var(--color-bg-base) 0%, rgba(8, 8, 8, 0.4) 100%);
-    }
-  }
-
-  .hero-content {
-    position: relative;
-    z-index: 10;
-    max-width: 1200px;
-    width: 100%;
-    margin: 0 auto;
-    display: flex;
-    align-items: flex-end;
-    gap: var(--spacing-6);
-
-    @media (max-width: 768px) {
-      flex-direction: column;
-      align-items: flex-start;
-    }
-  }
-
-  .poster-container {
-    flex-shrink: 0;
-    width: 240px;
-    border-radius: var(--radius-md);
-    overflow: hidden;
-    box-shadow: 0 24px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.1);
-
-    .poster-img {
-      width: 100%;
-      display: block;
-      aspect-ratio: 3/4;
-      object-fit: cover;
-    }
-
-    @media (max-width: 768px) {
-      width: 160px;
-    }
-  }
-
-  .hero-text {
-    flex: 1;
-    padding-bottom: var(--spacing-2);
-
-    .badge {
-      display: inline-block;
-      padding: 4px 12px;
-      background-color: var(--color-accent);
-      color: #000;
-      font-family: var(--font-family-sans);
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      margin-bottom: var(--spacing-3);
-    }
-
-    .title {
-      font-family: var(--font-family-display);
-      font-size: clamp(40px, 5vw, 64px);
-      font-weight: 900;
-      line-height: 1.1;
-      margin-bottom: var(--spacing-2);
-      letter-spacing: 0.02em;
-      color: #fff;
-    }
-
-    .subtitle {
-      font-family: var(--font-family-sans);
-      font-size: 20px;
-      color: rgba(255, 255, 255, 0.7);
-      font-weight: 300;
-    }
-  }
 }
 
-/* 杂志风内容区 */
-.content-container {
-  display: flex;
-  gap: var(--spacing-8);
-  padding: var(--spacing-8) var(--spacing-6);
-  max-width: 1200px;
+.hero-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: saturate(0.9) contrast(1.05);
+}
+
+.hero-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(8, 8, 8, 0.96) 0%, rgba(8, 8, 8, 0.72) 48%, rgba(8, 8, 8, 0.24) 100%),
+    linear-gradient(180deg, rgba(8, 8, 8, 0.1) 0%, var(--color-bg-base) 100%);
+}
+
+.hero-inner {
+  position: relative;
+  z-index: 2;
+  width: min(1200px, calc(100% - 40px));
   margin: 0 auto;
+  padding: var(--spacing-7) 0 var(--spacing-6);
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  align-items: end;
+  gap: var(--spacing-6);
+}
 
-  @media (max-width: 768px) {
-    flex-direction: column-reverse;
+.poster-frame {
+  border: 1px solid rgba(240, 237, 232, 0.2);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 28px 64px rgba(0, 0, 0, 0.58);
+
+  img {
+    width: 100%;
+    aspect-ratio: 3 / 4;
+    display: block;
+    object-fit: cover;
   }
 }
 
-.main-desc {
-  flex: 1;
+.hero-copy {
   min-width: 0;
 
-  section {
-    margin-bottom: var(--spacing-8);
+  h1 {
+    margin-top: var(--spacing-3);
+    font-size: clamp(42px, 6vw, 82px);
+    line-height: 0.98;
   }
 
-  .section-title {
+  > p {
+    max-width: 620px;
+    margin-top: var(--spacing-3);
+    color: rgba(240, 237, 232, 0.78);
     font-family: var(--font-family-sans);
-    font-size: 14px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.2em;
-    color: var(--color-text-secondary);
-    margin-bottom: var(--spacing-5);
-    border-top: 1px solid var(--color-border-strong);
-    padding-top: var(--spacing-2);
-  }
-
-  .synopsis {
-    .drop-cap {
-      font-family: var(--font-family-cjk);
-      font-size: 18px;
-      line-height: 1.8;
-      color: var(--color-text-primary);
-      font-weight: 300;
-
-      /* 首字下沉效果 */
-      &::first-letter {
-        float: left;
-        font-family: var(--font-family-display);
-        font-size: 4em;
-        line-height: 0.8;
-        padding-top: 4px;
-        padding-right: 8px;
-        color: var(--color-accent);
-      }
-    }
-  }
-
-  .detail-rich-section {
-    p {
-      color: var(--color-text-primary);
-      font-family: var(--font-family-cjk);
-      font-size: 16px;
-      font-weight: 300;
-      line-height: 1.85;
-      white-space: pre-line;
-    }
+    font-size: 19px;
+    line-height: 1.55;
   }
 }
 
-/* 侧边栏元数据 */
-.meta-sidebar {
-  flex: 0 0 300px;
-
-  .meta-block {
-    margin-bottom: var(--spacing-6);
-
-    .meta-label {
-      font-family: var(--font-family-sans);
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      color: var(--color-text-secondary);
-      margin-bottom: var(--spacing-2);
-      border-bottom: 1px solid var(--color-border);
-      padding-bottom: var(--spacing-1);
-    }
-
-    .meta-value {
-      font-size: 16px;
-      font-weight: 500;
-    }
-
-    .tags {
-      display: flex;
-      flex-wrap: wrap;
-      gap: var(--spacing-2);
-
-      .tag {
-        font-size: 12px;
-        font-family: var(--font-family-sans);
-        padding: 4px 12px;
-        background-color: var(--color-bg-elevated);
-        border: 1px solid var(--color-border);
-        color: var(--color-text-secondary);
-        border-radius: var(--radius-sm);
-      }
-    }
-  }
-}
-
-/* 场次日历卡片 */
-.schedule-grid {
-  display: grid;
-  gap: var(--spacing-4);
-
-  .schedule-card {
-    display: flex;
-    align-items: center;
-    background-color: var(--color-bg-elevated);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: var(--spacing-4);
-    gap: var(--spacing-4);
-
-    &:hover {
-      border-color: var(--color-border-strong);
-      background-color: rgba(255, 255, 255, 0.02);
-    }
-
-    &.disabled {
-      opacity: 0.5;
-      pointer-events: none;
-    }
-
-    @media (max-width: 600px) {
-      flex-direction: column;
-      align-items: flex-start;
-    }
-
-    .sch-date-box {
-      flex: 0 0 120px;
-      border-right: 1px solid var(--color-border);
-      padding-right: var(--spacing-4);
-
-      .sch-time {
-        font-family: var(--font-family-display);
-        font-size: 24px;
-        font-weight: 700;
-        color: var(--color-text-primary);
-      }
-
-      .sch-date {
-        font-family: var(--font-family-sans);
-        font-size: 14px;
-        color: var(--color-text-secondary);
-      }
-
-      @media (max-width: 600px) {
-        border-right: none;
-        border-bottom: 1px solid var(--color-border);
-        padding-right: 0;
-        padding-bottom: var(--spacing-2);
-        width: 100%;
-      }
-    }
-
-    .sch-info {
-      flex: 1;
-
-      .sch-theater {
-        font-size: 16px;
-        font-weight: 500;
-        margin-bottom: 4px;
-      }
-
-      .sch-price {
-        font-family: var(--font-family-sans);
-        font-size: 14px;
-        color: var(--color-accent);
-      }
-    }
-
-    .sch-action {
-      flex-shrink: 0;
-    }
-  }
-}
-
-/* 按钮样式 */
-.btn-solid {
-  background-color: var(--color-text-primary);
-  color: var(--color-bg-base);
-  border: none;
-  padding: 10px 24px;
+.category-badge,
+.hero-tags span,
+.quick-facts span,
+.schedule-tags span {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
   font-family: var(--font-family-sans);
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 8px 12px;
+}
+
+.category-badge {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.7);
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+
+  &::before {
+    content: '';
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #e50914;
+    margin-right: 8px;
+  }
+}
+
+.quick-facts,
+.hero-tags,
+.hero-actions {
+  margin-top: var(--spacing-4);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+}
+
+.quick-facts span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  svg {
+    width: 15px;
+    height: 15px;
+    color: var(--color-accent);
+  }
+}
+
+.primary-cta,
+.secondary-cta,
+.book-btn,
+.reserve-btn {
+  min-height: 46px;
+  border-radius: 4px;
   cursor: pointer;
-  border-radius: var(--radius-sm);
-  transition: all 150ms ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-family-sans);
+  font-weight: 900;
+  padding: 0 18px;
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+
+  svg {
+    width: 17px;
+    height: 17px;
+  }
+}
+
+.primary-cta,
+.book-btn {
+  border: none;
+  background: #e50914;
+  color: #fff;
 
   &:hover:not(:disabled) {
-    background-color: var(--color-accent);
-    color: #fff;
-  }
-
-  &:disabled {
-    background-color: var(--color-bg-overlay);
-    color: var(--color-text-ghost);
-    cursor: not-allowed;
+    background: #f6121d;
   }
 }
 
-.btn-outline {
-  background-color: transparent;
-  border: 1px solid var(--color-accent);
-  color: var(--color-accent);
-  padding: 10px 24px;
-  font-family: var(--font-family-sans);
-  font-size: 14px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  transition: all 150ms ease;
+.secondary-cta,
+.reserve-btn {
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
 
   &:hover {
-    background-color: rgba(200, 149, 90, 0.1);
+    background: rgba(255, 255, 255, 0.16);
+    color: #fff;
   }
 }
 
-/* Modal 动效与样式 */
+.book-btn:disabled {
+  background: var(--color-border);
+  color: var(--color-text-ghost);
+  cursor: not-allowed;
+}
+
+.detail-body {
+  width: min(1200px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: var(--spacing-7) 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: var(--spacing-6);
+}
+
+.content-column {
+  min-width: 0;
+}
+
+.content-section {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--spacing-4);
+  margin-bottom: var(--spacing-7);
+
+  p {
+    color: var(--color-text-primary);
+    font-family: var(--font-family-cjk);
+    font-size: 16px;
+    line-height: 1.85;
+    white-space: pre-line;
+  }
+}
+
+.synopsis p {
+  font-size: 18px;
+}
+
+.section-kicker {
+  color: var(--color-accent);
+  display: block;
+  font-family: var(--font-family-sans);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  margin-bottom: var(--spacing-3);
+  text-transform: uppercase;
+}
+
+.section-heading {
+  margin-bottom: var(--spacing-4);
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--spacing-4);
+
+  h2 {
+    font-size: 34px;
+  }
+}
+
+.schedule-count {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  font-family: var(--font-family-sans);
+  font-size: 13px;
+  font-weight: 800;
+  padding: 8px 12px;
+}
+
+.date-groups,
+.schedule-list {
+  display: grid;
+  gap: var(--spacing-3);
+}
+
+.date-label {
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-sans);
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  margin-bottom: var(--spacing-2);
+  text-transform: uppercase;
+}
+
+.schedule-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+  display: grid;
+  grid-template-columns: 116px minmax(0, 1fr) 120px auto;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3);
+
+  &.presale {
+    border-color: rgba(255, 255, 255, 0.14);
+  }
+
+  &.disabled {
+    opacity: 0.62;
+  }
+}
+
+.time-box {
+  border-right: 1px solid var(--color-border);
+  display: grid;
+  gap: 3px;
+  font-family: var(--font-family-sans);
+  padding-right: var(--spacing-3);
+
+  strong {
+    color: var(--color-text-primary);
+    font-size: 22px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  span {
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.schedule-main {
+  min-width: 0;
+  display: grid;
+  gap: var(--spacing-2);
+}
+
+.venue-line {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text-primary);
+  font-family: var(--font-family-sans);
+  font-weight: 800;
+
+  svg {
+    width: 16px;
+    height: 16px;
+    color: var(--color-accent);
+  }
+
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.schedule-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+
+  span {
+    padding: 5px 9px;
+  }
+}
+
+.schedule-price {
+  display: grid;
+  gap: 4px;
+  font-family: var(--font-family-sans);
+
+  span {
+    color: var(--color-text-secondary);
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  strong {
+    color: rgba(255, 255, 255, 0.94);
+    font-size: 20px;
+  }
+}
+
+.purchase-sidebar {
+  min-width: 0;
+}
+
+.sidebar-card {
+  position: sticky;
+  top: 100px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  background: var(--color-bg-elevated);
+  padding: var(--spacing-4);
+  display: grid;
+  gap: var(--spacing-3);
+
+  span,
+  p {
+    color: var(--color-text-secondary);
+    font-family: var(--font-family-sans);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  strong {
+    color: rgba(255, 255, 255, 0.94);
+    font-family: var(--font-family-display);
+    font-size: 42px;
+    line-height: 1;
+  }
+}
+
+.empty-state {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-sans);
+  padding: var(--spacing-5);
+}
+
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 200ms ease;
+  transition: opacity 180ms ease;
 }
+
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
@@ -524,75 +666,137 @@ const formatTime = (dateStr: string) => {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background-color: rgba(0, 0, 0, 0.85);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   z-index: 1000;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: grid;
+  place-items: center;
+  padding: var(--spacing-4);
 }
 
 .modal-content {
-  background-color: var(--color-bg-elevated);
-  padding: var(--spacing-6);
+  width: min(440px, 100%);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  width: 90%;
-  max-width: 440px;
-  box-shadow: 0 24px 48px rgba(0,0,0,0.5);
+  background: var(--color-bg-elevated);
+  padding: var(--spacing-5);
 
   h2 {
-    font-family: var(--font-family-display);
     font-size: 28px;
     margin-bottom: var(--spacing-2);
   }
 
   p {
-    font-size: 15px;
     color: var(--color-text-secondary);
-    margin-bottom: var(--spacing-6);
+    font-family: var(--font-family-sans);
+    margin-bottom: var(--spacing-4);
   }
 
-  .modal-input {
-    width: 100%;
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid var(--color-border-strong);
-    padding: var(--spacing-2) 0;
-    margin-bottom: var(--spacing-8);
+  label {
+    display: grid;
+    gap: 8px;
+    color: var(--color-text-secondary);
+    font-family: var(--font-family-sans);
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  input {
+    min-height: 48px;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-base);
     color: var(--color-text-primary);
     font-size: 16px;
     outline: none;
-    transition: border-color 200ms ease;
+    padding: 0 12px;
 
     &:focus {
-      border-bottom-color: var(--color-accent);
+      border-color: var(--color-accent);
     }
   }
+}
 
-  .modal-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--spacing-4);
+.modal-actions {
+  margin-top: var(--spacing-5);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-2);
 
-    button {
-      background: transparent;
-      border: none;
-      font-family: var(--font-family-sans);
-      font-size: 15px;
-      font-weight: 600;
-      cursor: pointer;
-      padding: 8px 16px;
-    }
+  button {
+    min-height: 42px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: var(--font-family-sans);
+    font-weight: 800;
+    padding: 0 16px;
+  }
+}
 
-    .btn-cancel {
-      color: var(--color-text-secondary);
-    }
+.btn-cancel {
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-text-secondary);
 
-    .btn-confirm {
-      color: var(--color-accent);
-    }
+  &:hover {
+    background: rgba(255, 255, 255, 0.16);
+    color: #fff;
+  }
+}
+
+.btn-confirm {
+  border: none;
+  background: #e50914;
+  color: #fff;
+
+  &:hover {
+    background: #f6121d;
+  }
+}
+
+@media (max-width: 900px) {
+  .hero-inner,
+  .detail-body {
+    grid-template-columns: 1fr;
+  }
+
+  .poster-frame {
+    width: 180px;
+  }
+
+  .purchase-sidebar {
+    order: -1;
+  }
+
+  .sidebar-card {
+    position: static;
+  }
+}
+
+@media (max-width: 680px) {
+  .detail-hero {
+    min-height: 680px;
+  }
+
+  .hero-inner,
+  .detail-body {
+    width: min(100% - 24px, 1200px);
+  }
+
+  .schedule-card {
+    grid-template-columns: 1fr;
+  }
+
+  .time-box {
+    border-right: none;
+    border-bottom: 1px solid var(--color-border);
+    padding: 0 0 var(--spacing-2);
+  }
+
+  .book-btn,
+  .reserve-btn {
+    width: 100%;
   }
 }
 </style>

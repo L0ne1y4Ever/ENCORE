@@ -4,31 +4,30 @@ left to right direction
 skinparam shadowing false
 skinparam DefaultFontName "Microsoft YaHei"
 skinparam DefaultFontSize 13
-title 图11  系统管理员权限管理用例图
+title 图11  系统管理员账号管理用例图
 
 actor 系统管理员 as SysAdmin
 
-rectangle "系统管理子系统" {
-  usecase "用户账号管理" as UC1
-  usecase "角色管理" as UC2
-  usecase "权限分配" as UC3
-  usecase "重置用户密码" as UC4
-  usecase "启用 / 禁用用户" as UC5
-  usecase "查看操作日志" as UC6
-  usecase "导出日志" as UC7
-  usecase "系统参数配置" as UC8
+rectangle "员工账号管理子系统" {
+  usecase "查看账号列表" as UC1
+  usecase "新建员工账号" as UC2
+  usecase "分配账号角色\n(admin / checker)" as UC3
+  usecase "编辑账号信息" as UC4
+  usecase "启用 / 禁用账号" as UC5
+  usecase "重置账号密码" as UC6
 }
 
 SysAdmin --> UC1
 SysAdmin --> UC2
-SysAdmin --> UC3
 SysAdmin --> UC4
 SysAdmin --> UC5
 SysAdmin --> UC6
-SysAdmin --> UC7
-SysAdmin --> UC8
 
-UC1 ..> UC2 : <<include>>
 UC2 ..> UC3 : <<include>>
-UC6 ..> UC7 : <<extend>>
+UC4 ..> UC3 : <<extend>>
+
+note bottom
+  角色以 user_account.role 单列承载(user/admin/checker/sysadmin),
+  非三表 RBAC; sysadmin 越权可达全部后台能力。
+end note
 @enduml

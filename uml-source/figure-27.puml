@@ -3,52 +3,48 @@
 skinparam shadowing false
 skinparam DefaultFontName "Microsoft YaHei"
 skinparam DefaultFontSize 12
-title 图27  黑金"指挥中心"看板架构与数据流图
+title 图27  数据看板架构与数据流图
 
 package "管理端前端 (Vue 3)" {
-  component [Dashboard.vue\n黑底 + 暗红 + 金色高亮] as DV
-  component [ECharts 5.x\n自定义 dark-encore 主题] as EC
-  component [WebSocket 客户端\n实时刷新订阅] as WSC
+  component [Dashboard.vue\n暗色底 + 金色高亮 #C8955A] as DV
+  component [ECharts 5.x\n透明底，金色数据系列] as EC
+  component [WebSocket 客户端\n订阅 /topic/admin/dashboard] as WSC
 }
 
-package "图表组件" {
-  component [Sankey 漏斗\n浏览→选座→下单→支付] as SK
-  component [Heatmap\n座位区域热度叠加平面图] as HM
-  component [Line\n近 7 日票房趋势] as LN
-  component [Pie\n订单状态分布] as PI
-  component [Bar Race\n热门演出 Top 10] as BR
+package "图表与卡片(真实)" {
+  component [KPI 数字卡\n营收 / 订单 / 售票 / 检票] as KPI
+  component [Line + Bar 双轴\n近 7 日票房与销量趋势] as LN
+  component [横向 Bar\nTop5 热门演出] as BR
+  component [检票汇总卡\n已检 / 待检] as CK
 }
 
 package "后端 (Spring Boot)" {
-  component [StatController\n/api/stat/dashboard] as SC
-  component [StatAggregator\n聚合服务] as SA
-  component [WebSocketBroadcaster\n/topic/stat/refresh] as WSB
+  component [AdminController\nGET /api/admin/dashboard] as AC
+  component [AdminService\n应用层内存聚合] as AS
+  component [DashboardRefreshPublisher\n/topic/admin/dashboard] as DRP
 }
 
-database "Redis cache\n热数据 60 秒 TTL" as RC
-database "MySQL\n聚合 SQL + 索引" as DB
+database "MySQL\nticket_order / ticket_item\nshow / show_schedule" as DB
 
 DV --> EC
-EC --> SK
-EC --> HM
+EC --> KPI
 EC --> LN
-EC --> PI
 EC --> BR
-DV --> SC : GET /api/stat/dashboard
-SC --> SA : aggregate()
-SA --> RC : 命中?
-RC --> SA : (miss) 回源
-SA --> DB : GROUP BY hall_id, area, day
-DB --> SA : 结果集
-SA --> RC : 写入 cache
-SA --> SC : DashboardVO
-SC --> DV : JSON
+EC --> CK
+DV --> AC : GET /api/admin/dashboard
+AC --> AS : dashboard()
+AS --> DB : selectList(订单/票据/演出/场次)
+DB --> AS : 实体集合
+AS --> AS : stream / groupingBy 聚合
+AS --> AC : DashboardResponse
+AC --> DV : JSON
 
-WSB ->> WSC : /topic/stat/refresh\n(支付/检票事件触发)
-WSC --> DV : 局部刷新关键卡片
+DRP ->> WSC : DashboardRefreshEvent\n(支付/检票事件触发)
+WSC --> DV : 收到信号后重新拉取并局部刷新
 
 note bottom of DV
-  视觉规范: 主色 #0F0F0F / 暗红 #5B0E0E / 金色 #C8A35E
-  灵感: 机场塔台 + 监控指挥中心
+  实测仅折线 + 柱状(无 Sankey / 饼图 / 热力图)；
+  聚合在应用层内存完成，未引入 Redis 看板缓存；
+  刷新为"事件信号 + 主动重拉"，非整页推送。
 end note
 @enduml

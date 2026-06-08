@@ -146,6 +146,22 @@ class ShowServiceTest {
     }
 
     @Test
+    void recommendationsIgnoreUnpublishedSchedules() {
+        ShowService service = createService();
+
+        when(showMapper.selectList(any())).thenReturn(List.of(show("s-published", "PUBLISHED", 10, 1)));
+        ShowSchedule hidden = schedule("sch-hidden", "s-published", "ON_SALE");
+        hidden.setPublishStatus("DRAFT");
+        when(showScheduleMapper.selectList(any())).thenReturn(List.of(hidden));
+
+        List<ShowRecommendationResponse> recommendations = service.listTopRecommendations();
+
+        assertThat(recommendations).hasSize(1);
+        assertThat(recommendations.get(0).availableScheduleCount()).isZero();
+        assertThat(recommendations.get(0).availableTicketCount()).isZero();
+    }
+
+    @Test
     void recommendationsFallbackToSortOrderWhenNoSalesDataExists() {
         ShowService service = createService();
 

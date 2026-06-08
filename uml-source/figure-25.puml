@@ -8,39 +8,45 @@ title 图16  WebSocket 实时多人选座顺序图
 actor "用户A 浏览器" as UA
 actor "用户B 浏览器" as UB
 participant "Nginx" as NGX
-participant "WebSocketServer\n(Spring + STOMP)" as WS
-participant "SeatLockService" as SVC
-database "Redis" as RDS
-database "MySQL" as DB
+participant "SeatController (REST)\n/api/schedules/{id}" as Ctrl
+participant "SeatService" as SVC
+database "Redis 座位锁" as RDS
+participant "STOMP Broker\n/topic/schedules/{id}/seats" as WS
 
-UA -> NGX: WebSocket 连接 /ws
+UA -> NGX: 连接 /ws (WebSocket)
 NGX -> WS: HTTP Upgrade
 WS --> UA: STOMP CONNECTED
-UA -> WS: SUBSCRIBE /topic/schedule/{id}/seat
+UA -> WS: SUBSCRIBE /topic/schedules/{id}/seats
 
-UB -> NGX: WebSocket 连接 /ws
+UB -> NGX: 连接 /ws (WebSocket)
 NGX -> WS: HTTP Upgrade
 WS --> UB: STOMP CONNECTED
-UB -> WS: SUBSCRIBE /topic/schedule/{id}/seat
+UB -> WS: SUBSCRIBE /topic/schedules/{id}/seats
 
-UA -> WS: SEND /app/seat/lock\n{seatIds:[12,13]}
-WS -> SVC: lockSeats(scheduleId, seatIds, userA)
-SVC -> RDS: SETNX schedule:{id}:seat:12 NX EX 900
+== 用户A 锁座（REST，非 STOMP 上行）==
+UA -> Ctrl: POST /api/schedules/{id}/seats/lock\n{seatIds:[A-12,A-13]}
+Ctrl -> SVC: lockSeats(scheduleId, seatIds)
+SVC -> RDS: SETNX encore:seat-lock:{id}:{seat}\n= userA, EX 900
 RDS --> SVC: OK
-SVC -> RDS: SETNX schedule:{id}:seat:13 NX EX 900
-RDS --> SVC: OK
-SVC -> DB: UPDATE schedule_seat SET status=LOCKED
-DB --> SVC: rows=2
-SVC --> WS: lockedSeats=[12,13]
-
-WS -> UA: /user/queue/lock-result\n{success:true}
-WS ->> UA: /topic/schedule/{id}/seat\n{seat:12, status:LOCKED, by:userA}
-WS ->> UB: /topic/schedule/{id}/seat\n{seat:12, status:LOCKED, by:userA}
+SVC -> WS: publishSeatStatus(LOCKED, seatIds)
+Ctrl --> UA: 200 锁定成功
+WS ->> UA: {reason:LOCKED, seats:[...]}
+WS ->> UB: {reason:LOCKED, seats:[...]}
 
 note over UB
-  用户B 屏幕上 12/13 号座位
-  即时变红 (LOCKED)
-  无需刷新, 无需轮询
-  推送 P95 ≤ 200ms
+  用户B 屏幕上 A-12/A-13 即时变红(LOCKED)，
+  无需刷新, 无需轮询。
+end note
+
+== 超时未支付 / 主动释放 ==
+SVC -> RDS: 锁过期或 DEL（@Scheduled 5s 兜底）
+SVC -> WS: publishSeatStatus(LOCK_EXPIRED, seatIds)
+WS ->> UA: {reason:LOCK_EXPIRED, status:AVAILABLE}
+WS ->> UB: {reason:LOCK_EXPIRED, status:AVAILABLE}
+
+note over Ctrl, WS
+  座位锁动作走 REST；服务端仅通过
+  SeatStatusPublisher 单向广播到 /topic。
+  区域票则广播 areas[]（AREA_LOCKED/SOLD/...）。
 end note
 @enduml

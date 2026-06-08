@@ -23,9 +23,22 @@ class StpInterfaceImplTest {
         UserAccount admin = new UserAccount();
         admin.setId("u-admin");
         admin.setRole("admin");
+        admin.setStatus("ACTIVE");
         when(userAccountMapper.selectById("u-admin")).thenReturn(admin);
 
         assertThat(stpInterface.getRoleList("u-admin", "login")).containsExactly("admin");
+    }
+
+    @Test
+    void getRoleListReturnsEmptyWhenUserInactive() {
+        StpInterfaceImpl stpInterface = new StpInterfaceImpl(userAccountMapper);
+        UserAccount admin = new UserAccount();
+        admin.setId("u-admin");
+        admin.setRole("admin");
+        admin.setStatus("INACTIVE");
+        when(userAccountMapper.selectById("u-admin")).thenReturn(admin);
+
+        assertThat(stpInterface.getRoleList("u-admin", "login")).isEmpty();
     }
 
     @Test

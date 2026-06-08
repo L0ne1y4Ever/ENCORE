@@ -4,23 +4,23 @@ skinparam DefaultFontName "Microsoft YaHei"
 skinparam DefaultFontSize 13
 title 图22  票据状态流转图
 
-[*] --> UNUSED : 订单 PAID 后生成
-
+[*] --> RESERVED : 创建订单时占位
+RESERVED --> UNUSED : 订单支付成功
+RESERVED --> VOID : 订单超时 / 取消
 UNUSED --> CHECKED_IN : 检票员核销
-UNUSED --> INVALID : 管理员作废
-UNUSED --> REFUNDED : 退票 (后续扩展)
+UNUSED --> VOID : 退款 / 管理员退票
 
-note right of UNUSED
-  含票号 + 二维码模拟码
-  对应一个 schedule_seat
+note right of RESERVED
+  含唯一票号 ticketCode;
+  SEATED 关联座位号 seatId,
+  ZONED 关联区域库存 areaInventoryId。
 end note
 
 note right of CHECKED_IN
-  写入 checkin_record
-  不可再次检票
+  翻转 ticket_item.status, 无独立检票记录表;
+  不可再次检票。
 end note
 
 CHECKED_IN --> [*]
-INVALID --> [*]
-REFUNDED --> [*]
+VOID --> [*]
 @enduml
