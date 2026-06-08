@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ArrowDown, ArrowLeft, ArrowRight, Calendar, PriceTag, Search } from '@element-plus/icons-vue'
-import { getShowList, getTopRecommendedShows } from '../../api/show'
+import { getShowList, getShowSchedules, getTopRecommendedShows } from '../../api/show'
 import type { RecommendedShow } from '../../api/show'
 import type { Show } from '../../mock/shows'
 import { mockShows } from '../../mock/shows'
@@ -24,12 +24,103 @@ const searchPanelRef = ref<HTMLElement | null>(null)
 const activeHeroIndex = ref(0)
 const heroTimer = ref<ReturnType<typeof window.setInterval> | null>(null)
 const openDropdown = ref<'category' | 'date' | ''>('')
-const HERO_INTERVAL_MS = 6500
+const HERO_INTERVAL_MS = 4200
+
+type PriceSource = {
+  id?: string
+  priceRange?: string | number | null
+  price_range?: string | number | null
+  lowestPrice?: string | number | null
+  lowest_price?: string | number | null
+  minPrice?: string | number | null
+  min_price?: string | number | null
+  minimumPrice?: string | number | null
+  minimum_price?: string | number | null
+  basePrice?: string | number | null
+  base_price?: string | number | null
+  price?: string | number | null
+}
+
+const formatNumericPrice = (value: string | number) => {
+  const amount = Number(String(value).replace(/,/g, ''))
+  if (!Number.isFinite(amount) || amount <= 0) return ''
+  return `￥${new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(amount)}`
+}
+
+const priceCandidateLabel = (value: string | number | null | undefined) => {
+  if (value == null) return ''
+  if (typeof value === 'number') return formatNumericPrice(value)
+  const text = String(value).trim()
+  if (!text) return ''
+  const fromRange = lowestPriceLabel(text)
+  if (!fromRange) return ''
+  return /^[\d,.]+$/.test(fromRange) ? formatNumericPrice(fromRange) : fromRange
+}
+
+const priceLabelFromSource = (source?: PriceSource | null) => {
+  if (!source) return ''
+  const candidates = [
+    source.priceRange,
+    source.price_range,
+    source.lowestPrice,
+    source.lowest_price,
+    source.minPrice,
+    source.min_price,
+    source.minimumPrice,
+    source.minimum_price,
+    source.basePrice,
+    source.base_price,
+    source.price
+  ]
+  for (const candidate of candidates) {
+    const label = priceCandidateLabel(candidate)
+    if (label) return label
+  }
+  return ''
+}
 
 const normalizeShows = <T extends Show>(data: T[]) => {
   return data.map(s => {
     const mockMatch = mockShows.find(m => m.id === s.id)
-    return { ...s, status: s.status || mockMatch?.status || 'ON_SALE' }
+    const normalized = { ...s, status: s.status || mockMatch?.status || 'ON_SALE' }
+    if (!priceLabelFromSource(normalized) && mockMatch?.priceRange) {
+      return { ...normalized, priceRange: mockMatch.priceRange }
+    }
+    return normalized
+  })
+}
+
+const hydrateMissingPrices = async <T extends Show>(source: T[]) => {
+  const missing = source.filter(show => !priceLabelFromSource(show))
+  if (!missing.length) return source
+
+  const priceByShow = new Map<string, string>()
+  await Promise.all(missing.map(async show => {
+    try {
+      const schedules = await getShowSchedules(show.id)
+      const price = (schedules || [])
+        .map(schedule => priceLabelFromSource(schedule as unknown as PriceSource))
+        .find(Boolean)
+      if (price) {
+        priceByShow.set(show.id, price)
+      }
+    } catch {
+      // Keep the show visible even if schedule hydration fails.
+    }
+  }))
+
+  if (!priceByShow.size) return source
+  return source.map(show => priceByShow.has(show.id)
+    ? { ...show, priceRange: priceByShow.get(show.id) }
+    : show)
+}
+
+const withListPriceFallback = <T extends Show>(source: T[], list: Show[]) => {
+  return source.map(show => {
+    if (priceLabelFromSource(show)) return show
+    const match = list.find(item => item.id === show.id)
+    const price = priceLabelFromSource(match)
+    return price ? { ...show, priceRange: price } : show
   })
 }
 
@@ -57,12 +148,13 @@ onMounted(async () => {
     resolvedShows = mockShows
   }
 
+  resolvedShows = await hydrateMissingPrices(resolvedShows)
   shows.value = resolvedShows
 
   try {
     const data = await getTopRecommendedShows()
-    recommendedShows.value = data && data.length > 0
-      ? normalizeShows(data).map((show, index) => ({
+    if (data && data.length > 0) {
+      const normalizedRecommendations = withListPriceFallback(normalizeShows(data), resolvedShows).map((show, index) => ({
         ...show,
         rank: show.rank || index + 1,
         ticketsSold: show.ticketsSold || 0,
@@ -70,7 +162,10 @@ onMounted(async () => {
         availableTicketCount: show.availableTicketCount || 0,
         hotScore: show.hotScore || 0
       }))
-      : toFallbackRecommendations(resolvedShows)
+      recommendedShows.value = await hydrateMissingPrices(normalizedRecommendations)
+    } else {
+      recommendedShows.value = toFallbackRecommendations(resolvedShows)
+    }
   } catch {
     recommendedShows.value = toFallbackRecommendations(resolvedShows)
   }
@@ -163,8 +258,10 @@ const activeCategoryLabel = computed(() => categoryOptions.value.find(option => 
 const activeDateFilterLabel = computed(() => dateFilterOptions.value.find(option => option.value === dateFilter.value)?.label || '')
 
 const showPrice = (show: Show | RecommendedShow) => {
-  const fromRange = lowestPriceLabel((show as Show & { priceRange?: string }).priceRange)
-  return fromRange || t('home.pricePending')
+  const direct = priceLabelFromSource(show as PriceSource)
+  if (direct) return direct
+  const fromList = shows.value.find(item => item.id === show.id)
+  return priceLabelFromSource(fromList) || t('home.pricePending')
 }
 
 const scheduleCountLabel = (show: Show | RecommendedShow) => {
@@ -1147,13 +1244,13 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
 }
 
 .hero-image {
-  animation: hero-image-in 6500ms ease-out both;
+  animation: hero-image-in 900ms ease-out both;
   will-change: opacity, transform;
 }
 
 .hero-fade-enter-active,
 .hero-fade-leave-active {
-  transition: opacity 420ms ease, transform 620ms ease;
+  transition: opacity 220ms ease, transform 280ms ease;
 }
 
 .hero-fade-enter-from {
@@ -1173,7 +1270,7 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
 }
 
 .hero-copy {
-  animation: hero-copy-rise 560ms ease-out both;
+  animation: hero-copy-rise 260ms ease-out both;
 
   .eyebrow {
     border-color: rgba(255, 255, 255, 0.2);
@@ -1306,7 +1403,7 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
     height: 100%;
     transform-origin: left center;
     background: #e50914;
-    animation: hero-progress 6500ms linear both;
+    animation: hero-progress 4200ms linear both;
   }
 }
 
