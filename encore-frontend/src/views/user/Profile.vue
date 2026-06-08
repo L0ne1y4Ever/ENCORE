@@ -1180,7 +1180,7 @@ const requestRefund = async (order: Order) => {
 
 .identity {
   .eyebrow {
-    font-size: 11px;
+    font-size: 12px;
     color: rgba(255, 255, 255, 0.45);
     text-transform: uppercase;
     letter-spacing: 1.2px;
@@ -1198,7 +1198,7 @@ const requestRefund = async (order: Order) => {
 
   p {
     margin-top: 6px;
-    font-size: 14px;
+    font-size: 15px;
     color: rgba(255, 255, 255, 0.5);
   }
 }
@@ -1218,8 +1218,8 @@ const requestRefund = async (order: Order) => {
   color: rgba(255, 255, 255, 0.45);
   cursor: pointer;
   font-family: var(--font-family-sans);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 700;
   padding: 0;
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 
@@ -1293,8 +1293,8 @@ const requestRefund = async (order: Order) => {
   }
 
   .metric-label {
-    color: rgba(255, 255, 255, 0.4);
-    font-size: 11px;
+    color: rgba(255, 255, 255, 0.48);
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 0.8px;
     text-transform: uppercase;
@@ -1315,7 +1315,7 @@ const requestRefund = async (order: Order) => {
     min-height: auto;
     border-radius: 0;
     color: rgba(255, 255, 255, 0.45);
-    font-size: 15px;
+    font-size: 16px;
     font-weight: 700;
     padding: 0 0 12px;
     position: relative;
@@ -1409,17 +1409,17 @@ const requestRefund = async (order: Order) => {
 .order-body h3 {
   margin: 0;
   color: #fff;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.35;
 }
 
 .ticket-card p,
 .order-body p {
   margin-top: 4px;
-  color: rgba(255, 255, 255, 0.45);
-  font-size: 12.5px;
-  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 14px;
+  line-height: 1.45;
 }
 
 .order-body {
@@ -1437,9 +1437,9 @@ const requestRefund = async (order: Order) => {
 .card-kicker,
 .order-head strong {
   border-radius: 4px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
-  padding: 4px 8px;
+  padding: 5px 9px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -1483,17 +1483,17 @@ const requestRefund = async (order: Order) => {
 .amount {
   color: #fff;
   font-family: var(--font-family-sans);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
 }
 
 .primary-link,
 .danger-link {
-  min-height: 36px;
+  min-height: 38px;
   border-radius: 18px;
-  padding: 0 14px;
-  font-size: 13px;
-  font-weight: 600;
+  padding: 0 15px;
+  font-size: 14px;
+  font-weight: 700;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1502,8 +1502,8 @@ const requestRefund = async (order: Order) => {
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 
   svg {
-    width: 15px;
-    height: 15px;
+    width: 16px;
+    height: 16px;
   }
 
   &:active {
@@ -1567,14 +1567,14 @@ const requestRefund = async (order: Order) => {
   span {
     color: rgba(255, 255, 255, 0.45);
     font-family: var(--font-family-sans);
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 500;
   }
 
   strong {
     color: #fff;
     font-family: var(--font-family-sans);
-    font-size: 15px;
+    font-size: 16px;
     font-weight: 600;
   }
 
@@ -1585,7 +1585,7 @@ const requestRefund = async (order: Order) => {
     background: rgba(0, 0, 0, 0.3);
     color: #fff;
     font-family: var(--font-family-sans);
-    font-size: 14px;
+    font-size: 15px;
     outline: none;
     padding: 0 12px;
     transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
@@ -1605,7 +1605,7 @@ const requestRefund = async (order: Order) => {
   background: rgba(255, 255, 255, 0.015);
   box-shadow: none;
   color: rgba(255, 255, 255, 0.45);
-  font-size: 14px;
+  font-size: 15px;
   display: grid;
   place-items: center;
   padding: 24px;
