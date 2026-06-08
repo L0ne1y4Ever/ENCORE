@@ -442,7 +442,7 @@ const ticketModeLabel = (mode?: string) => {
 .detail-body {
   width: min(1200px, calc(100% - 40px));
   margin: 0 auto;
-  padding: var(--spacing-7) 0;
+  padding: var(--spacing-5) 0 var(--spacing-7);
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;
   gap: var(--spacing-6);
@@ -450,46 +450,52 @@ const ticketModeLabel = (mode?: string) => {
 
 .content-column {
   min-width: 0;
+  display: grid;
+  gap: 24px;
 }
 
 .content-section {
   border-top: 1px solid var(--color-border);
-  padding-top: var(--spacing-4);
-  margin-bottom: var(--spacing-7);
+  padding-top: 18px;
+  margin-bottom: 0;
 
   p {
+    max-width: 840px;
+    margin: 0;
     color: var(--color-text-primary);
     font-family: var(--font-family-cjk);
-    font-size: 16px;
-    line-height: 1.85;
+    font-size: 17px;
+    line-height: 1.68;
     white-space: pre-line;
   }
 }
 
 .synopsis p {
   font-size: 18px;
+  line-height: 1.62;
 }
 
 .section-kicker {
   color: var(--color-accent);
   display: block;
   font-family: var(--font-family-sans);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 900;
-  letter-spacing: 0.12em;
-  margin-bottom: var(--spacing-3);
+  letter-spacing: 0.08em;
+  margin-bottom: 10px;
   text-transform: uppercase;
 }
 
 .section-heading {
-  margin-bottom: var(--spacing-4);
+  margin-bottom: 14px;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: var(--spacing-4);
 
   h2 {
-    font-size: 34px;
+    font-size: 30px;
+    line-height: 1.08;
   }
 }
 
@@ -507,7 +513,7 @@ const ticketModeLabel = (mode?: string) => {
 .date-groups,
 .schedule-list {
   display: grid;
-  gap: var(--spacing-3);
+  gap: 12px;
 }
 
 .date-label {
@@ -516,7 +522,7 @@ const ticketModeLabel = (mode?: string) => {
   font-size: 13px;
   font-weight: 900;
   letter-spacing: 0.08em;
-  margin-bottom: var(--spacing-2);
+  margin-bottom: 8px;
   text-transform: uppercase;
 }
 
@@ -525,10 +531,10 @@ const ticketModeLabel = (mode?: string) => {
   border-radius: var(--radius-md);
   background: var(--color-bg-elevated);
   display: grid;
-  grid-template-columns: 116px minmax(0, 1fr) 120px auto;
+  grid-template-columns: 104px minmax(0, 1fr) 112px auto;
   align-items: center;
-  gap: var(--spacing-3);
-  padding: var(--spacing-3);
+  gap: 12px;
+  padding: 14px;
 
   &.presale {
     border-color: rgba(255, 255, 255, 0.14);
@@ -544,7 +550,7 @@ const ticketModeLabel = (mode?: string) => {
   display: grid;
   gap: 3px;
   font-family: var(--font-family-sans);
-  padding-right: var(--spacing-3);
+  padding-right: 12px;
 
   strong {
     color: var(--color-text-primary);
