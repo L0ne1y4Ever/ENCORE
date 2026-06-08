@@ -998,7 +998,7 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
 
 .show-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: var(--spacing-3);
 }
 
@@ -1007,9 +1007,10 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
 
   img {
     width: 100%;
-    aspect-ratio: 4 / 5;
+    aspect-ratio: 16 / 9;
     display: block;
     object-fit: cover;
+    object-position: center;
   }
 }
 
@@ -1131,7 +1132,7 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
   }
 
   .show-grid {
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   }
 }
 
