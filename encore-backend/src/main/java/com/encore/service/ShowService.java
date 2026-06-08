@@ -31,10 +31,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
 public class ShowService {
+    private static final Pattern PRICE_NUMBER_PATTERN = Pattern.compile("\\d+(?:\\.\\d+)?");
+
     private final ShowMapper showMapper;
     private final ShowScheduleMapper showScheduleMapper;
     private final TicketOrderMapper ticketOrderMapper;
@@ -87,8 +91,12 @@ public class ShowService {
                 .orderByAsc(ShowEntity::getSortOrder)
                 .orderByDesc(ShowEntity::getCreatedAt);
 
-        return showMapper.selectList(wrapper).stream()
-                .map(this::toShowResponse)
+        List<ShowEntity> shows = showMapper.selectList(wrapper);
+        Map<String, String> priceRangeByShow = priceRangesByShow(shows.stream()
+                .map(ShowEntity::getId)
+                .toList());
+        return shows.stream()
+                .map(show -> toShowResponse(show, priceRangeByShow.get(show.getId())))
                 .toList();
     }
 
@@ -116,6 +124,7 @@ public class ShowService {
                 .filter(schedule -> "ON_SALE".equals(schedule.getStatus()))
                 .collect(Collectors.groupingBy(ShowSchedule::getShowId, Collectors.counting()));
         Map<String, Long> availableTicketsByShow = calculateAvailableTicketsByShow(schedules);
+        Map<String, String> priceRangeByShow = collectPriceRangesByShow(schedules);
 
         List<String> scheduleIds = schedules.stream()
                 .map(ShowSchedule::getId)
@@ -176,7 +185,8 @@ public class ShowService {
                         ticketsByShow.getOrDefault(rankedShows.get(index).getId(), 0L),
                         availableSchedulesByShow.getOrDefault(rankedShows.get(index).getId(), 0L),
                         availableTicketsByShow.getOrDefault(rankedShows.get(index).getId(), 0L),
-                        revenueByShow.getOrDefault(rankedShows.get(index).getId(), BigDecimal.ZERO)
+                        revenueByShow.getOrDefault(rankedShows.get(index).getId(), BigDecimal.ZERO),
+                        priceRangeByShow.get(rankedShows.get(index).getId())
                 ))
                 .toList();
     }
@@ -186,7 +196,7 @@ public class ShowService {
         if (show == null || !"PUBLISHED".equals(show.getStatus())) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "演出不存在或未发布");
         }
-        return toShowResponse(show);
+        return toShowResponse(show, priceRangesByShow(List.of(id)).get(id));
     }
 
     public List<ScheduleResponse> listSchedules(String showId) {
@@ -200,7 +210,7 @@ public class ShowService {
                 .toList();
     }
 
-    private ShowResponse toShowResponse(ShowEntity show) {
+    private ShowResponse toShowResponse(ShowEntity show, String priceRange) {
         return new ShowResponse(
                 show.getId(),
                 show.getTitle(),
@@ -213,7 +223,8 @@ public class ShowService {
                 fallback(show.getFullSynopsis(), show.getDescription()),
                 show.getDuration(),
                 show.getCategory(),
-                show.getTags()
+                show.getTags(),
+                priceRange
         );
     }
 
@@ -272,7 +283,8 @@ public class ShowService {
             long ticketsSold,
             long availableScheduleCount,
             long availableTicketCount,
-            BigDecimal revenue
+            BigDecimal revenue,
+            String priceRange
     ) {
         BigDecimal hotScore = BigDecimal.valueOf(ticketsSold)
                 .multiply(BigDecimal.valueOf(100))
@@ -291,6 +303,7 @@ public class ShowService {
                 show.getDuration(),
                 show.getCategory(),
                 show.getTags(),
+                priceRange,
                 rank,
                 ticketsSold,
                 availableScheduleCount,
@@ -308,6 +321,56 @@ public class ShowService {
             availableTicketsByShow.merge(schedule.getShowId(), countAvailableTickets(schedule), Long::sum);
         }
         return availableTicketsByShow;
+    }
+
+    private Map<String, String> priceRangesByShow(List<String> showIds) {
+        if (showIds == null || showIds.isEmpty()) {
+            return Map.of();
+        }
+        List<ShowSchedule> schedules = showScheduleMapper.selectList(new LambdaQueryWrapper<ShowSchedule>()
+                        .in(ShowSchedule::getShowId, showIds))
+                .stream()
+                .filter(this::isPublicSchedule)
+                .toList();
+        return collectPriceRangesByShow(schedules);
+    }
+
+    private Map<String, String> collectPriceRangesByShow(List<ShowSchedule> schedules) {
+        Map<String, ShowSchedule> lowestByShow = new HashMap<>();
+        for (ShowSchedule schedule : schedules) {
+            if (!hasDisplayablePrice(schedule)) {
+                continue;
+            }
+            lowestByShow.merge(schedule.getShowId(), schedule, this::lowerPricedSchedule);
+        }
+        return lowestByShow.entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().getPriceRange()));
+    }
+
+    private boolean hasDisplayablePrice(ShowSchedule schedule) {
+        if (!StringUtils.hasText(schedule.getPriceRange())) {
+            return false;
+        }
+        return !"CANCELLED".equals(schedule.getStatus()) && !"ENDED".equals(schedule.getStatus());
+    }
+
+    private ShowSchedule lowerPricedSchedule(ShowSchedule left, ShowSchedule right) {
+        int priceCompare = firstPriceValue(left.getPriceRange()).compareTo(firstPriceValue(right.getPriceRange()));
+        if (priceCompare != 0) {
+            return priceCompare <= 0 ? left : right;
+        }
+        if (left.getStartTime() == null) {
+            return right;
+        }
+        if (right.getStartTime() == null) {
+            return left;
+        }
+        return left.getStartTime().isAfter(right.getStartTime()) ? right : left;
+    }
+
+    private BigDecimal firstPriceValue(String priceRange) {
+        Matcher matcher = PRICE_NUMBER_PATTERN.matcher(priceRange == null ? "" : priceRange.replace(",", ""));
+        return matcher.find() ? new BigDecimal(matcher.group()) : BigDecimal.valueOf(Long.MAX_VALUE);
     }
 
     private long countAvailableTickets(ShowSchedule schedule) {

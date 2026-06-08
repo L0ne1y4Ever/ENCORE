@@ -12,6 +12,7 @@ export interface Show {
   category: 'Movie' | 'Musical' | 'Play' | 'Concert' | 'Ballet'
   tags: string[]
   status?: 'ON_SALE' | 'COMING_SOON'
+  priceRange?: string
 }
 
 export interface Schedule {
@@ -36,7 +37,8 @@ export const mockShows: Show[] = [
     duration: 150,
     category: 'Musical',
     tags: ['Classic', 'Must See'],
-    status: 'ON_SALE'
+    status: 'ON_SALE',
+    priceRange: '$50 - $150'
   },
   {
     id: 's-002',
@@ -47,7 +49,8 @@ export const mockShows: Show[] = [
     duration: 120,
     category: 'Ballet',
     tags: ['Dance', 'Romantic'],
-    status: 'ON_SALE'
+    status: 'ON_SALE',
+    priceRange: '$80 - $200'
   },
   {
     id: 's-003',
@@ -58,7 +61,8 @@ export const mockShows: Show[] = [
     duration: 180,
     category: 'Concert',
     tags: ['Live', 'Pop'],
-    status: 'COMING_SOON'
+    status: 'COMING_SOON',
+    priceRange: '$120 - $500'
   },
   {
     id: 's-004',
@@ -69,7 +73,8 @@ export const mockShows: Show[] = [
     duration: 166,
     category: 'Movie',
     tags: ['Sci-Fi', 'IMAX'],
-    status: 'COMING_SOON'
+    status: 'COMING_SOON',
+    priceRange: '$20 - $30'
   }
 ]
 

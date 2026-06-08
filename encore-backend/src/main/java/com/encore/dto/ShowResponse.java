@@ -14,6 +14,7 @@ public record ShowResponse(
         String fullSynopsis,
         Integer duration,
         String category,
-        List<String> tags
+        List<String> tags,
+        String priceRange
 ) {
 }
