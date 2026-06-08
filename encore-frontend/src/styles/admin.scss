@@ -1,0 +1,287 @@
+.admin-layout {
+  --admin-surface: #0d0d0d;
+  --admin-surface-soft: rgba(255, 255, 255, 0.025);
+  --admin-surface-hover: rgba(255, 255, 255, 0.055);
+  --admin-line: rgba(240, 237, 232, 0.09);
+  --admin-line-strong: rgba(240, 237, 232, 0.16);
+  --admin-accent-soft: rgba(200, 149, 90, 0.1);
+
+  background: #080808;
+
+  .content-area .top-bar {
+    min-height: 72px;
+    padding: 0 28px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: rgba(8, 8, 8, 0.94);
+    backdrop-filter: blur(10px);
+
+    .breadcrumb {
+      display: none;
+    }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+    }
+  }
+
+  .page-container {
+    padding: 24px 28px 32px;
+  }
+
+  .page-header,
+  .dashboard-header {
+    margin-bottom: 16px !important;
+    min-height: 42px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--admin-line);
+    align-items: center !important;
+  }
+
+  .page-header h1,
+  .dashboard-header h1 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .page-header p,
+  .dashboard-header p {
+    margin: 0 !important;
+    max-width: 760px;
+    color: var(--color-text-secondary);
+    font-size: 13px !important;
+    line-height: 1.55;
+  }
+
+  .header-actions,
+  .dashboard-actions {
+    gap: 8px !important;
+  }
+
+  .stats-grid,
+  .metric-strip,
+  .summary-strip,
+  .stats-strip {
+    margin: 0 0 16px !important;
+    display: flex !important;
+    flex-wrap: wrap;
+    gap: 0 !important;
+    overflow: hidden;
+    border: 1px solid var(--admin-line);
+    border-radius: 4px;
+    background: var(--admin-surface-soft);
+  }
+
+  .stat-card,
+  .metric-card,
+  .metric,
+  .stat-cell {
+    min-width: 128px !important;
+    min-height: 0 !important;
+    flex: 1 1 132px;
+    border: 0 !important;
+    border-right: 1px solid var(--admin-line) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    padding: 11px 16px !important;
+    box-shadow: none !important;
+    text-align: left;
+  }
+
+  .metric-card {
+    cursor: pointer;
+
+    &:hover {
+      background: var(--admin-surface-hover) !important;
+    }
+
+    &.active {
+      background: var(--admin-accent-soft) !important;
+      box-shadow: inset 0 -2px 0 var(--color-accent) !important;
+    }
+  }
+
+  .metric-card.passive,
+  .metric-card.passive:hover {
+    background: transparent !important;
+    cursor: default;
+    box-shadow: none !important;
+  }
+
+  .stat-card .stat-label,
+  .metric-card span,
+  .metric span,
+  .stat-cell span {
+    margin: 0 0 3px !important;
+    color: var(--color-text-secondary);
+    font-size: 12px !important;
+    line-height: 1.35;
+  }
+
+  .stat-card .stat-value,
+  .metric-card strong,
+  .metric strong,
+  .stat-cell strong {
+    margin: 0 !important;
+    color: var(--color-text-primary);
+    font-size: 20px !important;
+    font-weight: 650;
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .table-container,
+  .schedule-workspace,
+  .panel,
+  .navigator-panel,
+  .workspace-panel,
+  .chart-card,
+  .summary-card,
+  .preview-band {
+    border-color: var(--admin-line) !important;
+    border-radius: 4px !important;
+    background: rgba(12, 12, 12, 0.78) !important;
+    box-shadow: none !important;
+  }
+
+  .table-container,
+  .schedule-workspace,
+  .panel,
+  .chart-card,
+  .summary-card {
+    padding: 16px !important;
+  }
+
+  .table-toolbar,
+  .schedule-toolbar,
+  .tab-toolbar,
+  .panel-head,
+  .block-head,
+  .detail-head,
+  .summary-header {
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--admin-line);
+  }
+
+  .navigator-item,
+  .schedule-chip,
+  .area-shape,
+  .summary-item,
+  .day-column {
+    border-radius: 4px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .navigator-item {
+    border-color: transparent !important;
+    border-bottom: 1px solid var(--admin-line) !important;
+
+    &.active {
+      background: var(--admin-accent-soft) !important;
+      border-color: rgba(200, 149, 90, 0.26) !important;
+    }
+  }
+
+  .schedule-chip {
+    border-left-width: 1px !important;
+  }
+
+  .el-button {
+    border-radius: 4px;
+  }
+
+  .el-button.is-link {
+    padding: 0 4px;
+    text-decoration: underline;
+    text-decoration-color: rgba(240, 237, 232, 0.22);
+    text-underline-offset: 3px;
+  }
+
+  .el-tag {
+    height: 24px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.045);
+    border-color: var(--admin-line-strong);
+    color: rgba(240, 237, 232, 0.78);
+    font-weight: 500;
+  }
+
+  .el-tag.el-tag--success {
+    background: rgba(76, 175, 125, 0.08);
+    border-color: rgba(76, 175, 125, 0.28);
+    color: #80c9a4;
+  }
+
+  .el-tag.el-tag--warning {
+    background: rgba(224, 160, 48, 0.08);
+    border-color: rgba(224, 160, 48, 0.28);
+    color: #d5aa59;
+  }
+
+  .el-tag.el-tag--danger {
+    background: rgba(224, 84, 84, 0.08);
+    border-color: rgba(224, 84, 84, 0.28);
+    color: #dc7d7d;
+  }
+
+  .el-tag.el-tag--info {
+    background: rgba(255, 255, 255, 0.035);
+    border-color: var(--admin-line);
+    color: var(--color-text-secondary);
+  }
+
+  .el-table {
+    --el-table-border-color: var(--admin-line);
+    --el-table-header-bg-color: rgba(255, 255, 255, 0.025);
+    --el-table-row-hover-bg-color: rgba(255, 255, 255, 0.045);
+    font-size: 13px;
+
+    .el-table__cell {
+      padding: 10px 0;
+    }
+  }
+
+  .el-input__wrapper,
+  .el-select__wrapper,
+  .el-textarea__inner {
+    border-radius: 4px;
+    box-shadow: 0 0 0 1px var(--admin-line) inset;
+    background: rgba(255, 255, 255, 0.035);
+  }
+
+  .el-dialog {
+    border-radius: 6px;
+    background: #111;
+  }
+
+  .el-dialog__header,
+  .el-dialog__footer {
+    border-color: var(--admin-line);
+  }
+}
+
+@media (max-width: 920px) {
+  .admin-layout {
+    .content-area .top-bar {
+      min-height: 64px;
+      padding: 0 16px;
+    }
+
+    .page-container {
+      padding: 16px;
+    }
+
+    .page-header,
+    .dashboard-header {
+      align-items: flex-start !important;
+      flex-direction: column;
+    }
+  }
+}

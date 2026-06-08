@@ -12,11 +12,11 @@
   - 创建场馆、厅、布局、布局座位、区域库存等新结构，并补齐默认排片。
   - 使用幂等写法，支持重复启动检查。
 - `encore-backend/src/main/resources/db/init/01-schema.sql`
-  - Docker MySQL 首次初始化参考脚本。
-  - 仅在 MySQL 数据卷为空时由容器入口自动执行。
+  - 历史 Docker MySQL 首次初始化参考脚本。
+  - 当前 Compose 不再挂载到 `/docker-entrypoint-initdb.d`，避免绕过 Flyway。
 - `encore-backend/src/main/resources/db/init/02-data.sql`
-  - Docker MySQL 首次初始化参考种子数据。
-  - 仅在 MySQL 数据卷为空时由容器入口自动执行。
+  - 历史 Docker MySQL 首次初始化参考种子数据。
+  - 当前 Compose 不再自动执行；全新空库由 Flyway `V1` 初始化。
 - `encore-backend/src/main/resources/db/manual/2026-05-26-core-experience.sql`
   - 历史手动补丁归档。
   - 不作为当前自动迁移入口。
@@ -36,6 +36,10 @@ docker compose -f docker-compose.full.yml up -d --build
 - 如果是全新空库：执行 `V1`，再执行 `V2`。
 - 如果是已有旧库且没有 `flyway_schema_history`：因为启用了 `baseline-on-migrate=true`，Flyway 会把当前库标记为基线版本 1，再执行 `V2`。
 - 如果已经执行过：Flyway 会根据 `flyway_schema_history` 跳过已完成迁移。
+
+Flyway 配置在 `application.yml` 中作为所有 profile 的默认运行配置；即使服务器使用
+`SPRING_PROFILES_ACTIVE=prod`，只要设置好 `ENCORE_DB_*` 环境变量，后端启动时仍会自动迁移。
+不要在生产库上手动执行 `db/init` 或 `db/manual` 目录下的旧脚本。
 
 ## 部署前备份
 

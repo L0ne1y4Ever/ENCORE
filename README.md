@@ -38,6 +38,10 @@ Copy-Item .env.example .env -Force
 docker compose up -d mysql redis
 ```
 
+The backend uses Flyway on startup. A fresh MySQL database is created or upgraded by
+`src/main/resources/db/migration/V*.sql`; do not manually replay the legacy `db/init`
+scripts against a deployed database.
+
 Start the backend:
 
 ```powershell

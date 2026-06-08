@@ -13,16 +13,28 @@ const operatingId = ref('')
 const statusFilter = ref('')
 const sortKey = ref<'createdDesc' | 'createdAsc' | 'amountDesc' | 'showName'>('createdDesc')
 
-const orderStatusOptions = ['PENDING_PAYMENT', 'PAID', 'EXPIRED', 'CANCELLED', 'REFUNDED']
+const orderStatusOptions = ['PENDING_PAYMENT', 'PAID', 'CHECKED_IN', 'EXPIRED', 'CANCELLED', 'REFUNDED']
 
 const filteredOrders = computed(() => {
-  const rows = tableData.value.filter(row => !statusFilter.value || row.status === statusFilter.value)
+  const rows = tableData.value.filter(row => !statusFilter.value || displayStatus(row) === statusFilter.value)
   return [...rows].sort((left, right) => {
     if (sortKey.value === 'createdAsc') return left.createdAt.localeCompare(right.createdAt)
     if (sortKey.value === 'amountDesc') return Number(right.totalAmount) - Number(left.totalAmount)
     if (sortKey.value === 'showName') return left.showName.localeCompare(right.showName) || right.createdAt.localeCompare(left.createdAt)
     return right.createdAt.localeCompare(left.createdAt)
   })
+})
+
+const orderMetrics = computed(() => {
+  const rows = tableData.value
+  const checkedIn = rows.filter(row => displayStatus(row) === 'CHECKED_IN').length
+  return [
+    { status: '', label: t('admin.allOrders'), value: rows.length },
+    { status: 'PENDING_PAYMENT', label: t('profile.orderStatus.pending_payment'), value: rows.filter(row => row.status === 'PENDING_PAYMENT').length },
+    { status: 'PAID', label: t('profile.orderStatus.paid'), value: rows.filter(row => displayStatus(row) === 'PAID').length },
+    { status: 'CHECKED_IN', label: t('admin.checkedInTickets'), value: checkedIn },
+    { status: 'REFUNDED', label: t('profile.orderStatus.refunded'), value: rows.filter(row => row.status === 'REFUNDED').length }
+  ]
 })
 
 const loadOrders = async () => {
@@ -103,7 +115,10 @@ const handleCheckin = async (row: AdminOrder) => {
 <template>
   <div class="orders-page">
     <div class="page-header">
-      <h1>{{ t('admin.orders') }}</h1>
+      <div>
+        <h1>{{ t('admin.orders') }}</h1>
+        <p>{{ t('admin.ordersSubtitle') }}</p>
+      </div>
       <div class="header-actions">
         <el-select v-model="statusFilter" class="compact-filter" clearable :placeholder="t('admin.allStatuses')">
           <el-option v-for="status in orderStatusOptions" :key="status" :label="status" :value="status" />
@@ -118,6 +133,20 @@ const handleCheckin = async (row: AdminOrder) => {
           {{ t('admin.refresh') }}
         </el-button>
       </div>
+    </div>
+
+    <div class="summary-strip">
+      <button
+        v-for="item in orderMetrics"
+        :key="item.status || 'all'"
+        type="button"
+        class="metric-card"
+        :class="{ active: statusFilter === item.status }"
+        @click="statusFilter = item.status"
+      >
+        <span>{{ item.label }}</span>
+        <strong>{{ item.value }}</strong>
+      </button>
     </div>
 
     <div class="table-container">

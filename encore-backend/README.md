@@ -12,6 +12,10 @@ docker compose up -d mysql redis
 
 The default host-side MySQL port is `3307` to avoid conflicts with a local MySQL installation. In a cloud/container deployment, set `ENCORE_DB_HOST=mysql` and `ENCORE_DB_PORT=3306` for container-to-container access.
 
+Database schema changes are managed by Flyway at backend startup. Migration files live in
+`src/main/resources/db/migration` and must use the `V{number}__description.sql` naming
+format. The old `src/main/resources/db/init` scripts are kept as historical references only.
+
 Run the backend:
 
 ```powershell
@@ -50,5 +54,16 @@ docker compose -f docker-compose.full.yml up --build backend
 ```
 
 In container mode, the backend reads MySQL and Redis settings from environment variables and connects to `mysql:3306` and `redis:6379`.
+
+For server deployment, keep Flyway enabled and let the backend apply migrations:
+
+```bash
+SPRING_PROFILES_ACTIVE=prod
+ENCORE_DB_HOST=mysql
+ENCORE_DB_PORT=3306
+ENCORE_DB_NAME=encore
+ENCORE_DB_USER=encore
+ENCORE_DB_PASSWORD=encore123
+```
 
 See the root [README](../README.md) for full-stack startup and verification instructions.

@@ -101,10 +101,6 @@ const logout = async () => {
           <div class="breadcrumb">{{ t('admin.adminConsole') }}</div>
           <h1>{{ pageTitle }}</h1>
         </div>
-        <div class="top-meta">
-          <span>{{ accountRole }}</span>
-          <strong>{{ accountName }}</strong>
-        </div>
       </header>
       <div class="page-container">
         <router-view v-slot="{ Component }">
@@ -126,7 +122,7 @@ const logout = async () => {
 }
 
 .sidebar {
-  width: 256px;
+  width: 232px;
   flex-shrink: 0;
   border-right: 1px solid var(--color-border);
   display: flex;
@@ -135,7 +131,7 @@ const logout = async () => {
     linear-gradient(180deg, rgba(17, 17, 17, 0.98), rgba(10, 10, 10, 0.98));
 
   .brand-block {
-    min-height: 92px;
+    min-height: 72px;
     display: grid;
     align-content: center;
     gap: 4px;
@@ -217,19 +213,19 @@ const logout = async () => {
       display: flex;
       align-items: center;
       gap: var(--spacing-2);
-      padding: var(--spacing-2);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-md);
-      background: rgba(255, 255, 255, 0.03);
+      padding: 4px 2px;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
     }
 
     .account-avatar {
       width: 36px;
       height: 36px;
-      border-radius: var(--radius-md);
+      border-radius: var(--radius-sm);
       display: grid;
       place-items: center;
-      background: rgba(200, 149, 90, 0.16);
+      background: rgba(255, 255, 255, 0.06);
       color: var(--color-accent);
       font-family: var(--font-family-sans);
       font-weight: 800;
@@ -264,9 +260,9 @@ const logout = async () => {
 
     .logout {
       min-height: 36px;
-      border: 1px solid var(--color-border);
+      border: 0;
       border-radius: var(--radius-sm);
-      background: rgba(255, 255, 255, 0.02);
+      background: transparent;
       padding: 0 var(--spacing-2);
       display: inline-flex;
       align-items: center;
@@ -297,13 +293,13 @@ const logout = async () => {
   overflow: hidden;
 
   .top-bar {
-    min-height: 92px;
+    min-height: 72px;
     border-bottom: 1px solid var(--color-border);
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-start;
     align-items: center;
     gap: var(--spacing-4);
-    padding: 0 var(--spacing-5);
+    padding: 0 28px;
     background: rgba(8, 8, 8, 0.82);
 
     .breadcrumb {
@@ -317,20 +313,6 @@ const logout = async () => {
       font-family: var(--font-family-display);
       font-size: 26px;
       line-height: 1.2;
-    }
-
-    .top-meta {
-      display: flex;
-      align-items: center;
-      gap: var(--spacing-2);
-      font-family: var(--font-family-sans);
-      color: var(--color-text-secondary);
-      font-size: 12px;
-
-      strong {
-        color: var(--color-text-primary);
-        font-size: 13px;
-      }
     }
   }
 
