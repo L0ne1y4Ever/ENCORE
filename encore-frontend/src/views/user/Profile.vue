@@ -430,9 +430,7 @@ const requestRefund = async (order: Order) => {
 .profile-page {
   --profile-red: #e50914;
   --profile-red-soft: #ff5a66;
-  --profile-cyan: #39f5ff;
-  --profile-violet: #9b5cff;
-  width: min(1120px, calc(100% - 40px));
+  width: min(860px, calc(100% - 40px));
   margin: 0 auto;
   padding: var(--spacing-7) 0;
   position: relative;
@@ -460,13 +458,9 @@ const requestRefund = async (order: Order) => {
 }
 
 .profile-hero,
-.ticket-card,
-.order-card,
 .info-card,
-.state-card,
-.metric-strip button,
-.spend-card {
-  border-radius: 12px;
+.state-card {
+  border-radius: 8px;
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.018)),
     rgba(15, 15, 18, 0.72);
@@ -488,14 +482,7 @@ const requestRefund = async (order: Order) => {
   overflow: hidden;
 
   &::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background:
-      linear-gradient(92deg, rgba(229, 9, 20, 0.18), transparent 38%),
-      linear-gradient(268deg, rgba(57, 245, 255, 0.08), transparent 34%);
-    opacity: 0.8;
-    pointer-events: none;
+    content: none;
   }
 
   > * {
@@ -515,9 +502,8 @@ const requestRefund = async (order: Order) => {
   width: clamp(62px, 8vw, 86px);
   aspect-ratio: 1;
   border-radius: 14px;
-  background:
-    linear-gradient(135deg, rgba(229, 9, 20, 0.76), rgba(155, 92, 255, 0.38)),
-    #141417;
+  background: #121216;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   color: #fff;
   display: grid;
   place-items: center;
@@ -525,7 +511,7 @@ const requestRefund = async (order: Order) => {
   font-family: var(--font-family-sans);
   font-size: clamp(32px, 4vw, 44px);
   font-weight: 900;
-  box-shadow: 0 18px 38px rgba(229, 9, 20, 0.22);
+  box-shadow: none;
 }
 
 .identity {
@@ -601,15 +587,13 @@ const requestRefund = async (order: Order) => {
 
 .refresh-btn,
 .primary-link {
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.05)),
-    rgba(255, 255, 255, 0.045);
+  background: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.92);
 
   &:hover:not(:disabled) {
-    border-color: rgba(57, 245, 255, 0.22);
-    background: rgba(255, 255, 255, 0.1);
-    box-shadow: 0 14px 34px rgba(57, 245, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.12);
+    box-shadow: none;
   }
 }
 
@@ -625,7 +609,7 @@ const requestRefund = async (order: Order) => {
     border-color: rgba(255, 101, 112, 0.34);
     background: rgba(229, 9, 20, 0.1);
     color: #ffd5d8;
-    box-shadow: 0 14px 34px rgba(229, 9, 20, 0.12);
+    box-shadow: none;
   }
 }
 
@@ -666,10 +650,8 @@ const requestRefund = async (order: Order) => {
 
     &:hover,
     &.active {
-      background:
-        linear-gradient(135deg, rgba(229, 9, 20, 0.12), rgba(57, 245, 255, 0.04)),
-        rgba(20, 20, 24, 0.76);
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 18px 44px rgba(229, 9, 20, 0.1);
+      background: transparent;
+      box-shadow: none;
       transform: translateY(-1px);
     }
   }
@@ -694,9 +676,7 @@ const requestRefund = async (order: Order) => {
 
 .spend-card {
   border: 0;
-  background:
-    linear-gradient(135deg, rgba(57, 245, 255, 0.08), rgba(255, 255, 255, 0.018)),
-    rgba(15, 15, 18, 0.56);
+  background: transparent;
   box-shadow: none;
 }
 
@@ -800,21 +780,15 @@ const requestRefund = async (order: Order) => {
   position: relative;
   overflow: hidden;
   min-height: 160px;
-  background:
-    linear-gradient(120deg, rgba(229, 9, 20, 0.1), rgba(57, 245, 255, 0.035) 42%, rgba(155, 92, 255, 0.05)),
-    linear-gradient(145deg, rgba(255, 255, 255, 0.072), rgba(255, 255, 255, 0.018)),
-    rgba(13, 13, 16, 0.78);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.085),
-    0 24px 54px rgba(0, 0, 0, 0.26),
-    0 0 24px rgba(229, 9, 20, 0.055);
+  background: transparent;
+  box-shadow: none;
 
   &::before {
     content: '';
     position: absolute;
     inset: 0;
-    border-left: 1px solid rgba(255, 101, 112, 0.44);
-    box-shadow: inset 18px 0 34px rgba(229, 9, 20, 0.07);
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: none;
     opacity: 0.9;
     pointer-events: none;
   }
@@ -865,9 +839,7 @@ const requestRefund = async (order: Order) => {
   min-width: 0;
   min-height: 112px;
   border-radius: 10px;
-  background:
-    linear-gradient(180deg, rgba(229, 9, 20, 0.16), rgba(57, 245, 255, 0.045)),
-    rgba(255, 255, 255, 0.045);
+  background: rgba(255, 255, 255, 0.055);
   color: rgba(255, 255, 255, 0.84);
   display: grid;
   place-items: center;
@@ -879,7 +851,7 @@ const requestRefund = async (order: Order) => {
   svg {
     width: 24px;
     height: 24px;
-    filter: drop-shadow(0 0 10px rgba(229, 9, 20, 0.25));
+    filter: none;
   }
 
   span {
@@ -915,8 +887,8 @@ const requestRefund = async (order: Order) => {
 
 .card-kicker.unused,
 .order-head strong.paid {
-  color: #bdfaff;
-  border-color: rgba(57, 245, 255, 0.18);
+  color: rgba(255, 255, 255, 0.76);
+  border-color: rgba(255, 255, 255, 0.14);
 }
 
 .card-kicker.checked-in,
@@ -992,7 +964,7 @@ const requestRefund = async (order: Order) => {
     font-family: var(--font-family-sans);
     font-size: 30px;
     font-weight: 900;
-    text-shadow: 0 10px 28px rgba(229, 9, 20, 0.18);
+    text-shadow: none;
   }
 }
 
@@ -1033,7 +1005,7 @@ const requestRefund = async (order: Order) => {
     padding: 0 12px;
 
     &:focus {
-      box-shadow: 0 0 0 3px rgba(57, 245, 255, 0.08);
+      box-shadow: 0 0 0 2px rgba(229, 9, 20, 0.18);
     }
   }
 }
@@ -1171,12 +1143,13 @@ const requestRefund = async (order: Order) => {
   height: 68px;
   border-radius: 10px;
   font-size: 32px;
-  background: linear-gradient(135deg, #e50914 0%, #7c040a 100%);
+  background: #111114;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   color: #fff;
   display: grid;
   place-items: center;
   font-weight: 700;
-  box-shadow: 0 8px 24px rgba(229, 9, 20, 0.25);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
   transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 
   &:hover {
@@ -1458,10 +1431,10 @@ const requestRefund = async (order: Order) => {
 
 .card-kicker.unused,
 .order-head strong.paid {
-  color: rgba(255, 255, 255, 0.84);
-  border-color: rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.04);
-  box-shadow: inset 2px 0 rgba(229, 9, 20, 0.62);
+  color: rgba(255, 255, 255, 0.72);
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.025);
+  box-shadow: none;
 }
 
 .card-kicker.pending-payment,
@@ -1526,7 +1499,7 @@ const requestRefund = async (order: Order) => {
 
   &:hover:not(:disabled) {
     background: #f6121d;
-    box-shadow: 0 4px 12px rgba(229, 9, 20, 0.25);
+    box-shadow: none;
   }
 }
 
@@ -1698,7 +1671,7 @@ const requestRefund = async (order: Order) => {
   --el-text-color-regular: rgba(255, 255, 255, 0.7) !important;
   --el-border-color-lighter: rgba(255, 255, 255, 0.1) !important;
   border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  border-radius: 12px !important;
+  border-radius: 8px !important;
   background-color: #141414 !important;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6) !important;
   backdrop-filter: blur(20px) !important;
@@ -1714,7 +1687,7 @@ const requestRefund = async (order: Order) => {
   
   .el-message-box__btns {
     .el-button {
-      border-radius: 18px !important;
+      border-radius: 4px !important;
       font-weight: 600 !important;
       transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
       
@@ -1740,7 +1713,7 @@ const requestRefund = async (order: Order) => {
       
       &:hover {
         background: #f6121d !important;
-        box-shadow: 0 4px 12px rgba(229, 9, 20, 0.25) !important;
+        box-shadow: none !important;
       }
     }
   }

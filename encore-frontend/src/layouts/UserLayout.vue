@@ -60,16 +60,29 @@ onMounted(() => {
 <style scoped lang="scss">
 .user-layout {
   --ticket-red: #e50914;
-  --neon-cyan: #39f5ff;
-  --neon-magenta: #ff3d9a;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background:
-    linear-gradient(120deg, rgba(229, 9, 20, 0.1) 0%, rgba(8, 8, 8, 0) 32%),
-    linear-gradient(220deg, rgba(57, 245, 255, 0.055) 0%, rgba(8, 8, 8, 0) 34%),
-    linear-gradient(180deg, rgba(255, 61, 154, 0.045) 0%, rgba(8, 8, 8, 0) 280px),
-    var(--color-bg-base);
+  position: relative;
+  isolation: isolate;
+  background: #030305;
+
+  &::before {
+    content: '';
+    position: fixed;
+    inset: 76px 0 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 7% 18%, rgba(255, 255, 255, 0.38) 0 1px, transparent 1.8px),
+      radial-gradient(circle at 19% 76%, rgba(255, 255, 255, 0.25) 0 1px, transparent 1.8px),
+      radial-gradient(circle at 34% 31%, rgba(255, 255, 255, 0.32) 0 1px, transparent 1.8px),
+      radial-gradient(circle at 49% 68%, rgba(255, 255, 255, 0.2) 0 1px, transparent 1.8px),
+      radial-gradient(circle at 63% 24%, rgba(255, 255, 255, 0.36) 0 1px, transparent 1.8px),
+      radial-gradient(circle at 81% 44%, rgba(255, 255, 255, 0.24) 0 1px, transparent 1.8px),
+      radial-gradient(circle at 92% 73%, rgba(255, 255, 255, 0.3) 0 1px, transparent 1.8px),
+      linear-gradient(180deg, #030305 0%, #050507 54%, #020203 100%);
+  }
 }
 
 .ticket-header {
@@ -79,11 +92,9 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid rgba(240, 237, 232, 0.1);
-  background:
-    linear-gradient(90deg, rgba(229, 9, 20, 0.06), rgba(57, 245, 255, 0.03), rgba(255, 61, 154, 0.035)),
-    rgba(8, 8, 8, 0.78);
-  backdrop-filter: blur(22px) saturate(1.18);
-  -webkit-backdrop-filter: blur(22px) saturate(1.18);
+  background: rgba(5, 5, 5, 0.9);
+  backdrop-filter: blur(18px) saturate(1.05);
+  -webkit-backdrop-filter: blur(18px) saturate(1.05);
   position: sticky;
   top: 0;
   z-index: 100;

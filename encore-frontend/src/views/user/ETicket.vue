@@ -253,24 +253,16 @@ const barcodeBars = (ticketCode: string) => {
   position: relative;
   isolation: isolate;
   background:
-    linear-gradient(120deg, rgba(229, 9, 20, 0.13), transparent 32%),
-    linear-gradient(245deg, rgba(57, 245, 255, 0.075), transparent 30%),
-    linear-gradient(180deg, rgba(155, 92, 255, 0.055), transparent 46%),
-    var(--color-bg-base);
+    radial-gradient(circle at 12% 20%, rgba(255, 255, 255, 0.34) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 29% 74%, rgba(255, 255, 255, 0.22) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 48% 34%, rgba(255, 255, 255, 0.3) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 74% 66%, rgba(255, 255, 255, 0.2) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 88% 18%, rgba(255, 255, 255, 0.32) 0 1px, transparent 1.8px),
+    #030305;
   overflow: hidden;
 
   &::before {
-    content: '';
-    position: fixed;
-    inset: 72px 0 0;
-    z-index: -1;
-    pointer-events: none;
-    background:
-      linear-gradient(92deg, rgba(229, 9, 20, 0.12), transparent 38%),
-      linear-gradient(268deg, rgba(57, 245, 255, 0.07), transparent 42%),
-      linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 22%);
-    filter: blur(28px);
-    opacity: 0.78;
+    content: none;
   }
 }
 
@@ -320,7 +312,7 @@ const barcodeBars = (ticketCode: string) => {
   }
 
   &:hover {
-    border-color: rgba(57, 245, 255, 0.28);
+    border-color: rgba(255, 255, 255, 0.24);
     color: #ffffff;
     background: rgba(255, 255, 255, 0.1);
     transform: translateY(-1px);
@@ -338,7 +330,7 @@ const barcodeBars = (ticketCode: string) => {
 
 .ticket-wrapper {
   width: min(100%, 570px);
-  filter: drop-shadow(0 28px 52px rgba(0,0,0,0.58)) drop-shadow(0 0 18px rgba(229, 9, 20, 0.06));
+  filter: drop-shadow(0 28px 52px rgba(0,0,0,0.58));
   perspective: 1000px;
   scroll-margin-top: 96px;
 }

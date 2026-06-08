@@ -1169,7 +1169,6 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
 .hero-scrim {
   background:
     linear-gradient(90deg, rgba(0, 0, 0, 0.96) 0%, rgba(0, 0, 0, 0.68) 42%, rgba(0, 0, 0, 0.16) 100%),
-    radial-gradient(circle at 72% 38%, rgba(229, 9, 20, 0.08), transparent 32%),
     linear-gradient(180deg, rgba(0, 0, 0, 0.08) 0%, #080808 100%);
 }
 

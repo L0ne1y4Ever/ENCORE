@@ -739,7 +739,6 @@ const handleSubmit = async () => {
 .gradient-overlay {
   z-index: 1;
   background:
-    radial-gradient(circle at 74% 44%, rgba(229, 9, 20, 0.05), transparent 30%),
     linear-gradient(90deg, rgba(0, 0, 0, 0.68) 0%, rgba(0, 0, 0, 0.42) 42%, rgba(0, 0, 0, 0.16) 100%),
     linear-gradient(180deg, rgba(0, 0, 0, 0.28) 0%, rgba(0, 0, 0, 0.04) 34%, rgba(5, 5, 5, 0.72) 100%);
 }
@@ -758,7 +757,7 @@ const handleSubmit = async () => {
   color: var(--ticket-red);
   font-size: 32px;
   letter-spacing: 0.08em;
-  text-shadow: 0 10px 28px rgba(229, 9, 20, 0.22);
+  text-shadow: none;
 
   span {
     color: inherit;
