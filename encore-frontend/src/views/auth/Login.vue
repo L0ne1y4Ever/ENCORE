@@ -512,7 +512,7 @@ const handleSubmit = async () => {
 
   &:focus-within {
     border-color: rgba(229, 9, 20, 0.72);
-    box-shadow: 0 0 0 3px rgba(229, 9, 20, 0.12);
+    box-shadow: none;
   }
 
   input {
@@ -886,7 +886,7 @@ const handleSubmit = async () => {
 
   &:focus-within {
     border-color: rgba(229, 9, 20, 0.78);
-    box-shadow: 0 0 0 3px rgba(229, 9, 20, 0.14);
+    box-shadow: none;
   }
 }
 

@@ -1005,7 +1005,8 @@ const requestRefund = async (order: Order) => {
     padding: 0 12px;
 
     &:focus {
-      box-shadow: 0 0 0 2px rgba(229, 9, 20, 0.18);
+      border: 1px solid rgba(229, 9, 20, 0.36);
+      box-shadow: none;
     }
   }
 }
@@ -1574,7 +1575,7 @@ const requestRefund = async (order: Order) => {
     &:focus {
       border-color: #e50914;
       background: rgba(0, 0, 0, 0.5);
-      box-shadow: 0 0 0 2px rgba(229, 9, 20, 0.2);
+      box-shadow: none;
     }
   }
 }

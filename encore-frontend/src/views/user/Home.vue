@@ -716,7 +716,7 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
 
   &.open {
     border-color: rgba(229, 9, 20, 0.48);
-    box-shadow: 0 0 0 1px rgba(229, 9, 20, 0.2), 0 18px 40px rgba(0, 0, 0, 0.34);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.34);
   }
 }
 
