@@ -259,7 +259,7 @@ const toggleSeatStatus = async (seat: AdminLayoutSeat) => {
   }
 }
 
-const toggleSeatFromMap = (seat: Record<string, any>) => {
+const toggleSeatFromMap = (seat: unknown) => {
   return toggleSeatStatus(seat as AdminLayoutSeat)
 }
 

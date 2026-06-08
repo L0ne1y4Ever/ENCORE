@@ -22,6 +22,7 @@ import AreaTicketPanel from '../../components/AreaTicketPanel.vue'
 import TicketModeBadge from '../../components/TicketModeBadge.vue'
 import { useAuthStore } from '../../stores/auth'
 import { getScheduleDetail } from '../../api/show'
+import type { Schedule } from '../../mock/shows'
 import { createOrder } from '../../api/order'
 
 const route = useRoute()
@@ -30,7 +31,7 @@ const authStore = useAuthStore()
 const { t } = useI18n()
 const scheduleId = route.params.id as string
 
-const schedule = ref<any>(null)
+const schedule = ref<Schedule | null>(null)
 const areas = ref<ScheduleAreaResponse[]>([])
 const selectedArea = ref<ScheduleAreaResponse | null>(null)
 const activeStandId = ref<string | null>(null)
@@ -97,8 +98,8 @@ const refreshSeatMap = async (showLoading = false) => {
 const loadAreas = async () => {
   try {
     areas.value = await getScheduleAreas(scheduleId)
-  } catch (e) {
-    console.error('Failed to load areas', e)
+  } catch {
+    areas.value = []
   }
 }
 
@@ -209,8 +210,8 @@ const handleBookZonedArea = async (qty: number) => {
       qty
     )
     router.push(`/payment?id=${orderId}`)
-  } catch (error: any) {
-    alert(error?.message || t('order.createFailed'))
+  } catch (error) {
+    alert(error instanceof Error ? error.message : t('order.createFailed'))
   } finally {
     bookingZoned.value = false
   }
@@ -219,12 +220,13 @@ const handleBookZonedArea = async (qty: number) => {
 const showGroupFeatures = computed(() => {
   return schedule.value?.ticketMode === 'SEATED' || (schedule.value?.ticketMode === 'MIXED' && activeStandId.value !== null)
 })
+const ticketMode = computed(() => schedule.value?.ticketMode || 'SEATED')
 
 onMounted(async () => {
   try {
     schedule.value = await getScheduleDetail(scheduleId)
-  } catch (e) {
-    console.error('Failed to load schedule detail', e)
+  } catch {
+    schedule.value = null
   }
 
   if (schedule.value?.ticketMode === 'ZONED' || schedule.value?.ticketMode === 'MIXED') {
@@ -670,7 +672,7 @@ const stageDisplayLabel = computed(() => {
           </div>
           <h3>{{ t('seat.selectAreaTitle') }}</h3>
           <p>{{ t('seat.selectAreaHint') }}</p>
-          <TicketModeBadge v-if="schedule" :mode="schedule.ticketMode" class="badge-center" />
+          <TicketModeBadge v-if="schedule" :mode="ticketMode" class="badge-center" />
         </div>
       </template>
 
@@ -681,7 +683,7 @@ const stageDisplayLabel = computed(() => {
             <p class="summary-kicker">{{ t('seat.orderSummary') }}</p>
             <h2>{{ t('seat.selection') }}</h2>
           </div>
-          <TicketModeBadge v-if="schedule" :mode="schedule.ticketMode" />
+          <TicketModeBadge v-if="schedule" :mode="ticketMode" />
         </div>
 
         <div class="realtime-panel" aria-live="polite">
@@ -859,7 +861,7 @@ const stageDisplayLabel = computed(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background-color: var(--color-bg-base);
+  background-color: rgba(3, 3, 5, 0.94);
   position: relative;
 }
 
@@ -1302,9 +1304,7 @@ const stageDisplayLabel = computed(() => {
   position: sticky;
   top: 76px;
   overflow-y: auto;
-  background:
-    linear-gradient(180deg, rgba(200, 149, 90, 0.07) 0%, rgba(17, 17, 17, 0) 180px),
-    var(--color-bg-elevated);
+  background: rgba(12, 12, 15, 0.94);
   border-left: 1px solid var(--color-border);
   padding: var(--spacing-4);
   display: flex;

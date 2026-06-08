@@ -7,7 +7,24 @@ import { useI18n } from 'vue-i18n'
 
 const router = useRouter()
 const { t } = useI18n()
-const orderData = ref<any>(null)
+
+interface PendingOrder {
+  scheduleId: string
+  seatIds: string[]
+  totalAmount: number | string
+}
+
+const isPendingOrder = (value: unknown): value is PendingOrder => {
+  if (!value || typeof value !== 'object') return false
+  const order = value as Partial<PendingOrder>
+  return typeof order.scheduleId === 'string'
+    && Array.isArray(order.seatIds)
+    && order.seatIds.length > 0
+    && order.seatIds.every(seatId => typeof seatId === 'string')
+    && (typeof order.totalAmount === 'number' || typeof order.totalAmount === 'string')
+}
+
+const orderData = ref<PendingOrder | null>(null)
 const timeLeft = ref(15 * 60)
 const timer = ref<number | null>(null)
 const submitting = ref(false)
@@ -19,13 +36,8 @@ onMounted(() => {
     return
   }
   try {
-    const parsed = JSON.parse(data)
-    if (
-      !parsed ||
-      typeof parsed.scheduleId !== 'string' ||
-      !Array.isArray(parsed.seatIds) ||
-      parsed.seatIds.length === 0
-    ) {
+    const parsed: unknown = JSON.parse(data)
+    if (!isPendingOrder(parsed)) {
       throw new Error('Invalid temp order')
     }
     orderData.value = parsed
@@ -124,9 +136,7 @@ const doConfirm = async () => {
   display: grid;
   place-items: center;
   padding: var(--spacing-6) var(--spacing-4);
-  background:
-    linear-gradient(180deg, rgba(200, 149, 90, 0.06) 0%, rgba(8, 8, 8, 0) 300px),
-    var(--color-bg-base);
+  background: transparent;
 }
 
 .checkout-shell {

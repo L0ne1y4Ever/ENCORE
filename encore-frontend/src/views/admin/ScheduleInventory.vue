@@ -95,7 +95,7 @@ const toggleSeat = async (seat: AdminScheduleInventorySeat) => {
   }
 }
 
-const toggleSeatFromMap = (seat: Record<string, any>) => {
+const toggleSeatFromMap = (seat: unknown) => {
   return toggleSeat(seat as AdminScheduleInventorySeat)
 }
 

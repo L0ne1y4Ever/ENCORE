@@ -11,6 +11,46 @@ const route = useRoute()
 const { t } = useI18n()
 const authStore = useAuthStore()
 
+interface StarDot {
+  style: {
+    left: string
+    top: string
+    width: string
+    height: string
+    opacity: string
+  }
+}
+
+const createStars = (count: number, seedValue: number): StarDot[] => {
+  let seed = seedValue
+  const next = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0
+    return seed / 4294967295
+  }
+
+  return Array.from({ length: count }, () => {
+    const sizeSeed = next()
+    const size = sizeSeed > 0.92 ? 2 : sizeSeed > 0.6 ? 1.5 : 1
+    const opacitySeed = next()
+    const opacity = size === 2 ? 0.52 + opacitySeed * 0.28 : 0.22 + opacitySeed * 0.46
+
+    return {
+      style: {
+        left: `${Math.round(next() * 10000) / 100}%`,
+        top: `${Math.round(next() * 10000) / 100}%`,
+        width: `${size}px`,
+        height: `${size}px`,
+        opacity: opacity.toFixed(2)
+      }
+    }
+  })
+}
+
+const starLayers = [
+  { name: 'back', stars: createStars(78, 3917) },
+  { name: 'front', stars: createStars(48, 7927) }
+]
+
 const displayName = computed(() => {
   const user = authStore.currentUser
   return user?.nickname || user?.displayName || user?.username || 'ENCORE'
@@ -29,6 +69,21 @@ onMounted(() => {
 
 <template>
   <div class="user-layout">
+    <div class="star-field" aria-hidden="true">
+      <div
+        v-for="layer in starLayers"
+        :key="layer.name"
+        class="star-field__layer"
+        :class="`star-field__layer--${layer.name}`"
+      >
+        <span
+          v-for="(star, index) in layer.stars"
+          :key="`${layer.name}-${index}`"
+          :style="star.style"
+        />
+      </div>
+    </div>
+
     <header class="ticket-header">
       <button class="brand-lockup" type="button" @click="router.push('/')">
         <span class="brand-mark">ENCORE<span>.</span></span>
@@ -65,23 +120,58 @@ onMounted(() => {
   flex-direction: column;
   position: relative;
   isolation: isolate;
-  background: #030305;
+  background: linear-gradient(180deg, #030305 0%, #050507 54%, #020203 100%);
+}
 
-  &::before {
-    content: '';
-    position: fixed;
-    inset: 76px 0 0;
-    z-index: -1;
-    pointer-events: none;
-    background:
-      radial-gradient(circle at 7% 18%, rgba(255, 255, 255, 0.38) 0 1px, transparent 1.8px),
-      radial-gradient(circle at 19% 76%, rgba(255, 255, 255, 0.25) 0 1px, transparent 1.8px),
-      radial-gradient(circle at 34% 31%, rgba(255, 255, 255, 0.32) 0 1px, transparent 1.8px),
-      radial-gradient(circle at 49% 68%, rgba(255, 255, 255, 0.2) 0 1px, transparent 1.8px),
-      radial-gradient(circle at 63% 24%, rgba(255, 255, 255, 0.36) 0 1px, transparent 1.8px),
-      radial-gradient(circle at 81% 44%, rgba(255, 255, 255, 0.24) 0 1px, transparent 1.8px),
-      radial-gradient(circle at 92% 73%, rgba(255, 255, 255, 0.3) 0 1px, transparent 1.8px),
-      linear-gradient(180deg, #030305 0%, #050507 54%, #020203 100%);
+.star-field {
+  position: fixed;
+  inset: 76px 0 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background: linear-gradient(180deg, #030305 0%, #050507 54%, #020203 100%);
+}
+
+.star-field__layer {
+  position: absolute;
+  inset: -280px;
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+
+  span {
+    position: absolute;
+    display: block;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: none;
+  }
+}
+
+.star-field__layer--back {
+  animation: star-drift-back 52s linear infinite;
+}
+
+.star-field__layer--front {
+  animation: star-drift-front 34s linear infinite;
+}
+
+@keyframes star-drift-back {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+
+  to {
+    transform: translate3d(-120px, 150px, 0);
+  }
+}
+
+@keyframes star-drift-front {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+
+  to {
+    transform: translate3d(-190px, 240px, 0);
   }
 }
 
@@ -233,5 +323,14 @@ onMounted(() => {
   flex: 1;
   display: flex;
   flex-direction: column;
+  position: relative;
+  z-index: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .star-field__layer {
+    animation: none;
+    transform: none;
+  }
 }
 </style>

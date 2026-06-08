@@ -2,7 +2,18 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-type SeatMapItem = Record<string, any>
+type SeatMapItem = {
+  id: string
+  status?: string
+  row?: number | string
+  rowNo?: number | string
+  col?: number | string
+  colNo?: number | string
+  seatCode?: string
+  section?: string
+  price?: unknown
+  [key: string]: unknown
+}
 
 const props = withDefaults(defineProps<{
   seats: SeatMapItem[]

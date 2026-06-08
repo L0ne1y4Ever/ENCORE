@@ -83,9 +83,7 @@ const handlePay = async () => {
   display: grid;
   place-items: center;
   padding: var(--spacing-6) var(--spacing-4);
-  background:
-    linear-gradient(180deg, rgba(76, 175, 125, 0.08) 0%, rgba(8, 8, 8, 0) 320px),
-    var(--color-bg-base);
+  background: transparent;
 }
 
 .loading-page {

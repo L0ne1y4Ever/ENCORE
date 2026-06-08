@@ -584,7 +584,9 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
 
 <style scoped lang="scss">
 .home-page {
+  --ticket-red: #e50914;
   width: 100%;
+  background: transparent;
   overflow-x: hidden;
 }
 
@@ -593,6 +595,8 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
   position: relative;
   display: flex;
   align-items: flex-end;
+  isolation: isolate;
+  background: #050505;
   overflow: hidden;
   border-bottom: 1px solid var(--color-border);
 }
@@ -604,14 +608,16 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
   height: 100%;
   object-fit: cover;
   filter: saturate(0.9) contrast(1.04);
+  animation: hero-image-in 900ms ease-out both;
+  will-change: opacity, transform;
 }
 
 .hero-scrim {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(90deg, rgba(8, 8, 8, 0.96) 0%, rgba(8, 8, 8, 0.68) 44%, rgba(8, 8, 8, 0.2) 100%),
-    linear-gradient(180deg, rgba(8, 8, 8, 0.16) 0%, var(--color-bg-base) 100%);
+    linear-gradient(90deg, rgba(0, 0, 0, 0.96) 0%, rgba(0, 0, 0, 0.68) 42%, rgba(0, 0, 0, 0.16) 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.08) 0%, rgba(3, 3, 5, 0.88) 100%);
 }
 
 .hero-inner {
@@ -628,12 +634,13 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
 
 .hero-copy {
   max-width: 740px;
+  animation: hero-copy-rise 260ms ease-out both;
 
   .eyebrow {
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 3px;
-    background: transparent;
-    color: rgba(255, 255, 255, 0.7);
+    background: rgba(0, 0, 0, 0.46);
+    color: rgba(255, 255, 255, 0.92);
     display: inline-flex;
     font-family: var(--font-family-sans);
     font-size: 12px;
@@ -641,6 +648,15 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
     letter-spacing: 0.12em;
     padding: 8px 12px;
     text-transform: uppercase;
+
+    &::before {
+      content: '';
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #e50914;
+      margin-right: 8px;
+    }
   }
 
   h1 {
@@ -721,9 +737,9 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
 }
 
 .hero-ticket {
-  border: 1px solid rgba(200, 149, 90, 0.34);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 14px;
-  background: rgba(8, 8, 8, 0.72);
+  background: rgba(0, 0, 0, 0.72);
   padding: var(--spacing-4);
   display: grid;
   gap: 6px;
@@ -1233,21 +1249,6 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
   }
 }
 
-.home-page {
-  --ticket-red: #e50914;
-  background: #080808;
-}
-
-.hero-section {
-  isolation: isolate;
-  background: #050505;
-}
-
-.hero-image {
-  animation: hero-image-in 900ms ease-out both;
-  will-change: opacity, transform;
-}
-
 .hero-fade-enter-active,
 .hero-fade-leave-active {
   transition: opacity 220ms ease, transform 280ms ease;
@@ -1261,55 +1262,6 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
 .hero-fade-leave-to {
   opacity: 0;
   transform: scale(1.01);
-}
-
-.hero-scrim {
-  background:
-    linear-gradient(90deg, rgba(0, 0, 0, 0.96) 0%, rgba(0, 0, 0, 0.68) 42%, rgba(0, 0, 0, 0.16) 100%),
-    linear-gradient(180deg, rgba(0, 0, 0, 0.08) 0%, #080808 100%);
-}
-
-.hero-copy {
-  animation: hero-copy-rise 260ms ease-out both;
-
-  .eyebrow {
-    border-color: rgba(255, 255, 255, 0.2);
-    background: rgba(0, 0, 0, 0.46);
-    color: rgba(255, 255, 255, 0.92);
-
-    &::before {
-      content: '';
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #e50914;
-      margin-right: 8px;
-    }
-  }
-}
-
-.primary-cta {
-  background: #e50914;
-  color: #fff;
-
-  &:hover {
-    background: #f6121d;
-  }
-}
-
-.secondary-cta {
-  border: none;
-  background: rgba(255, 255, 255, 0.1);
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.16);
-    color: #fff;
-  }
-}
-
-.hero-ticket {
-  border-color: rgba(255, 255, 255, 0.18);
-  background: rgba(0, 0, 0, 0.72);
 }
 
 .hero-carousel-ui {

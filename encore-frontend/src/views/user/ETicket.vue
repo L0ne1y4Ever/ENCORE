@@ -252,13 +252,7 @@ const barcodeBars = (ticketCode: string) => {
   padding: var(--spacing-6);
   position: relative;
   isolation: isolate;
-  background:
-    radial-gradient(circle at 12% 20%, rgba(255, 255, 255, 0.34) 0 1px, transparent 1.8px),
-    radial-gradient(circle at 29% 74%, rgba(255, 255, 255, 0.22) 0 1px, transparent 1.8px),
-    radial-gradient(circle at 48% 34%, rgba(255, 255, 255, 0.3) 0 1px, transparent 1.8px),
-    radial-gradient(circle at 74% 66%, rgba(255, 255, 255, 0.2) 0 1px, transparent 1.8px),
-    radial-gradient(circle at 88% 18%, rgba(255, 255, 255, 0.32) 0 1px, transparent 1.8px),
-    #030305;
+  background: transparent;
   overflow: hidden;
 
   &::before {
@@ -362,7 +356,7 @@ const barcodeBars = (ticketCode: string) => {
     background:
       radial-gradient(circle at 18% 8%, rgba(255, 255, 255, 0.03), transparent 18%),
       linear-gradient(180deg, rgba(255, 255, 255, 0.01), transparent 20%),
-      linear-gradient(90deg, rgba(255, 77, 88, 0.02), transparent 32%);
+      linear-gradient(90deg, rgba(255, 255, 255, 0.012), transparent 32%);
     pointer-events: none;
     z-index: 1;
   }
