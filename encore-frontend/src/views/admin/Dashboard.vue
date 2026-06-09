@@ -1,31 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { use } from 'echarts/core'
-import { CanvasRenderer } from 'echarts/renderers'
-import { LineChart, BarChart } from 'echarts/charts'
-import {
-  TitleComponent,
-  TooltipComponent,
-  GridComponent,
-  LegendComponent,
-} from 'echarts/components'
-import VChart from 'vue-echarts'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { getAdminDashboard } from '../../api/admin'
 import type { AdminDashboard } from '../../api/admin'
 import { subscribeToDashboardUpdates } from '../../api/adminRealtime'
 import type { RealtimeConnectionState } from '../../api/realtime'
-
-use([
-  CanvasRenderer,
-  LineChart,
-  BarChart,
-  TitleComponent,
-  TooltipComponent,
-  GridComponent,
-  LegendComponent
-])
 
 const { t } = useI18n()
 
@@ -37,6 +17,8 @@ const realtimeNotice = ref<string | null>(null)
 let disconnectDashboardRealtime: (() => void) | undefined
 let realtimeNoticeTimer: ReturnType<typeof setTimeout> | undefined
 let realtimeRefreshTimer: ReturnType<typeof setTimeout> | undefined
+
+const toNumber = (value: number | string | undefined | null) => Number(value || 0)
 
 const showRealtimeNotice = (messageKey: string) => {
   realtimeNotice.value = messageKey
@@ -98,11 +80,11 @@ onBeforeUnmount(() => {
 })
 
 const formatAmount = (amount: number | string | undefined) => {
-  return `$${Number(amount || 0).toFixed(2)}`
+  return `$${toNumber(amount).toFixed(2)}`
 }
 
 const formatPercent = (value: number | string | undefined) => {
-  return `${Number(value || 0).toFixed(1)}%`
+  return `${toNumber(value).toFixed(1)}%`
 }
 
 const formatDateLabel = (date: string) => {
@@ -120,104 +102,22 @@ const trendRows = computed(() => dashboard.value?.salesTrend ?? [])
 const topShows = computed(() => dashboard.value?.topShows ?? [])
 const checkInSummary = computed(() => dashboard.value?.checkInSummary ?? { checkedIn: 0, unused: 0, voided: 0 })
 
-const lineOption = computed(() => ({
-  backgroundColor: 'transparent',
-  tooltip: {
-    trigger: 'axis',
-    formatter: (params: Array<{ axisValue: string; value: number; seriesName: string }>) => {
-      const revenue = params.find(item => item.seriesName === t('admin.revenue'))
-      const tickets = params.find(item => item.seriesName === t('admin.tickets'))
-      return [
-        `<strong>${revenue?.axisValue || ''}</strong>`,
-        `${t('admin.revenue')}: ${formatAmount(revenue?.value || 0)}`,
-        `${t('admin.tickets')}: ${tickets?.value || 0}`
-      ].join('<br/>')
-    }
-  },
-  legend: {
-    top: 0,
-    right: 0,
-    textStyle: { color: '#8A8480' }
-  },
-  grid: { top: 48, right: 20, bottom: 24, left: 52 },
-  xAxis: {
-    type: 'category',
-    data: trendRows.value.map(item => formatDateLabel(item.date)),
-    axisLine: { lineStyle: { color: '#8A8480' } },
-    axisLabel: { color: '#8A8480' }
-  },
-  yAxis: [
-    {
-      type: 'value',
-      splitLine: { lineStyle: { color: 'rgba(240, 237, 232, 0.08)' } },
-      axisLabel: { color: '#8A8480' }
-    },
-    {
-      type: 'value',
-      splitLine: { show: false },
-      axisLabel: { color: '#8A8480' }
-    }
-  ],
-  series: [
-    {
-      name: t('admin.revenue'),
-      data: trendRows.value.map(item => Number(item.revenue)),
-      type: 'line',
-      smooth: true,
-      lineStyle: { color: '#C8955A', width: 2 },
-      itemStyle: { color: '#C8955A' }
-    },
-    {
-      name: t('admin.tickets'),
-      data: trendRows.value.map(item => item.ticketCount),
-      type: 'bar',
-      yAxisIndex: 1,
-      barWidth: 12,
-      itemStyle: { color: 'rgba(93, 160, 140, 0.75)', borderRadius: [3, 3, 0, 0] }
-    }
-  ]
-}))
+const trendMaxRevenue = computed(() => Math.max(1, ...trendRows.value.map(item => toNumber(item.revenue))))
+const trendMaxTickets = computed(() => Math.max(1, ...trendRows.value.map(item => toNumber(item.ticketCount))))
+const topShowsMaxTickets = computed(() => Math.max(1, ...topShows.value.map(item => toNumber(item.ticketCount))))
 
-const topShowsOption = computed(() => ({
-  backgroundColor: 'transparent',
-  tooltip: {
-    trigger: 'axis',
-    axisPointer: { type: 'shadow' },
-    formatter: (params: Array<{ dataIndex: number; value: number }>) => {
-      const item = topShows.value[params[0]?.dataIndex || 0]
-      if (!item) return ''
-      return [
-        `<strong>${item.showTitle}</strong>`,
-        `${t('admin.tickets')}: ${item.ticketCount}`,
-        `${t('admin.revenue')}: ${formatAmount(item.revenue)}`
-      ].join('<br/>')
-    }
-  },
-  grid: { top: 16, right: 20, bottom: 24, left: 48 },
-  xAxis: {
-    type: 'value',
-    splitLine: { lineStyle: { color: 'rgba(240, 237, 232, 0.08)' } },
-    axisLabel: { color: '#8A8480' }
-  },
-  yAxis: {
-    type: 'category',
-    data: topShows.value.map(item => item.showTitle),
-    axisLine: { lineStyle: { color: '#8A8480' } },
-    axisLabel: {
-      color: '#8A8480',
-      width: 120,
-      overflow: 'truncate'
-    }
-  },
-  series: [
-    {
-      data: topShows.value.map(item => item.ticketCount),
-      type: 'bar',
-      barWidth: 14,
-      itemStyle: { color: '#C8955A', borderRadius: [0, 4, 4, 0] }
-    }
-  ]
-}))
+const trendHasSignal = computed(() => {
+  return trendRows.value.some(item => toNumber(item.revenue) > 0 || toNumber(item.ticketCount) > 0)
+})
+
+const ratioPercent = (value: number | string | undefined, max: number, minimum = 4) => {
+  const ratio = Math.round((toNumber(value) / Math.max(1, max)) * 100)
+  return `${Math.max(minimum, Math.min(100, ratio))}%`
+}
+
+const revenueBarHeight = (value: number | string | undefined) => ratioPercent(value, trendMaxRevenue.value, 3)
+const ticketBarHeight = (value: number | string | undefined) => ratioPercent(value, trendMaxTickets.value, 3)
+const topShowBarWidth = (value: number | string | undefined) => ratioPercent(value, topShowsMaxTickets.value, 6)
 </script>
 
 <template>
@@ -251,7 +151,32 @@ const topShowsOption = computed(() => ({
       <div class="chart-card wide">
         <h3>{{ t('admin.salesTrend') }}</h3>
         <div class="chart-container">
-          <v-chart v-if="trendRows.length" class="chart" :option="lineOption" autoresize />
+          <div v-if="trendRows.length" class="trend-chart" :class="{ muted: !trendHasSignal }">
+            <div class="trend-plot">
+              <div v-for="item in trendRows" :key="item.date" class="trend-column">
+                <div class="trend-bars">
+                  <span
+                    class="trend-bar revenue"
+                    :style="{ height: revenueBarHeight(item.revenue) }"
+                    :title="`${t('admin.revenue')}: ${formatAmount(item.revenue)}`"
+                  ></span>
+                  <span
+                    class="trend-bar tickets"
+                    :style="{ height: ticketBarHeight(item.ticketCount) }"
+                    :title="`${t('admin.tickets')}: ${item.ticketCount}`"
+                  ></span>
+                </div>
+                <div class="trend-meta">
+                  <strong>{{ item.ticketCount }}</strong>
+                  <span>{{ formatDateLabel(item.date) }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="chart-legend">
+              <span><i class="legend-revenue"></i>{{ t('admin.revenue') }}</span>
+              <span><i class="legend-tickets"></i>{{ t('admin.tickets') }}</span>
+            </div>
+          </div>
           <div v-else class="empty-chart">{{ t('admin.noDashboardData') }}</div>
         </div>
       </div>
@@ -259,7 +184,21 @@ const topShowsOption = computed(() => ({
       <div class="chart-card">
         <h3>{{ t('admin.topShows') }}</h3>
         <div class="chart-container">
-          <v-chart v-if="topShows.length" class="chart" :option="topShowsOption" autoresize />
+          <div v-if="topShows.length" class="top-show-list">
+            <div v-for="(item, index) in topShows" :key="item.showId" class="top-show-row">
+              <span class="top-show-rank">{{ index + 1 }}</span>
+              <div class="top-show-main">
+                <div class="top-show-head">
+                  <strong>{{ item.showTitle }}</strong>
+                  <span>{{ item.ticketCount }} {{ t('admin.tickets') }}</span>
+                </div>
+                <div class="top-show-track">
+                  <span :style="{ width: topShowBarWidth(item.ticketCount) }"></span>
+                </div>
+                <small>{{ formatAmount(item.revenue) }}</small>
+              </div>
+            </div>
+          </div>
           <div v-else class="empty-chart">{{ t('admin.noDashboardData') }}</div>
         </div>
       </div>
@@ -404,6 +343,7 @@ const topShowsOption = computed(() => ({
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.85fr);
   gap: var(--spacing-4);
+  align-items: start;
 
   @media (max-width: 1100px) {
     grid-template-columns: 1fr;
@@ -422,13 +362,196 @@ const topShowsOption = computed(() => ({
   }
 
   .chart-container {
-    height: 320px;
+    min-height: 236px;
     width: 100%;
+  }
+}
 
-    .chart {
-      width: 100%;
-      height: 100%;
-    }
+.chart-card.wide .chart-container {
+  min-height: 264px;
+}
+
+.trend-chart {
+  height: 264px;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: var(--spacing-3);
+}
+
+.trend-chart.muted {
+  opacity: 0.78;
+}
+
+.trend-plot {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(42px, 1fr));
+  align-items: end;
+  gap: 12px;
+  padding: 14px 2px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.trend-column {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: minmax(140px, 1fr) auto;
+  gap: 10px;
+}
+
+.trend-bars {
+  min-height: 140px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 6px;
+}
+
+.trend-bar {
+  width: 14px;
+  min-height: 4px;
+  border-radius: 3px 3px 0 0;
+  display: block;
+  transition: height 180ms ease;
+}
+
+.trend-bar.revenue {
+  background: #c8955a;
+}
+
+.trend-bar.tickets {
+  background: rgba(93, 160, 140, 0.8);
+}
+
+.trend-meta {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  text-align: center;
+
+  strong {
+    color: var(--color-text-primary);
+    font-size: 14px;
+    line-height: 1;
+  }
+
+  span {
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.chart-legend {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--spacing-3);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+
+  span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  i {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    display: inline-block;
+  }
+}
+
+.legend-revenue {
+  background: #c8955a;
+}
+
+.legend-tickets {
+  background: rgba(93, 160, 140, 0.8);
+}
+
+.top-show-list {
+  display: grid;
+  gap: var(--spacing-3);
+}
+
+.top-show-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: var(--spacing-3);
+  align-items: start;
+  padding-bottom: var(--spacing-3);
+  border-bottom: 1px solid var(--color-border);
+
+  &:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+}
+
+.top-show-rank {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  display: inline-grid;
+  place-items: center;
+  color: var(--color-accent);
+  background: rgba(200, 149, 90, 0.08);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.top-show-main {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+
+  small {
+    color: var(--color-text-secondary);
+    font-size: 12px;
+  }
+}
+
+.top-show-head {
+  min-width: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+
+  strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-text-primary);
+    font-size: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  span {
+    flex: 0 0 auto;
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+}
+
+.top-show-track {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
+
+  span {
+    height: 100%;
+    min-width: 6px;
+    display: block;
+    border-radius: inherit;
+    background: #c8955a;
   }
 }
 
