@@ -67,6 +67,7 @@ const layoutDialogMode = ref<DialogMode>('create')
 
 const operatingId = ref('')
 const operatingSeat = ref('')
+const seatDrawerVisible = ref(false)
 const syncDialogVisible = ref(false)
 const syncLoading = ref(false)
 const syncing = ref(false)
@@ -198,6 +199,7 @@ const resetLayoutForm = () => {
 
 const selectLayout = async (layout: AdminLayout) => {
   selectedLayout.value = layout
+  seatDrawerVisible.value = false
   detailLoading.value = true
   try {
     const [areaRows, seatRows] = await Promise.all([
@@ -213,6 +215,11 @@ const selectLayout = async (layout: AdminLayout) => {
   } finally {
     detailLoading.value = false
   }
+}
+
+const openSeatDrawer = () => {
+  if (seats.value.length === 0) return
+  seatDrawerVisible.value = true
 }
 
 const ensureLayoutSelection = async () => {
@@ -772,34 +779,30 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
                         <span>{{ t('admin.areas') }} {{ selectedLayout.areaCount }}</span>
                         <span>{{ t('admin.seats') }} {{ selectedLayout.seatCount }}</span>
                       </div>
-                      <el-button
-                        v-if="seats.length > 0"
-                        type="primary"
-                        plain
-                        size="small"
-                        :disabled="selectedLayout.status === 'ARCHIVED'"
-                        @click="openSyncDialog"
-                      >
-                        {{ t('admin.syncLayoutSeats') }}
-                      </el-button>
+                      <div class="detail-button-row">
+                        <el-button
+                          v-if="seats.length > 0"
+                          size="small"
+                          @click="openSeatDrawer"
+                        >
+                          {{ t('admin.seatDetails') }}
+                        </el-button>
+                        <el-button
+                          v-if="seats.length > 0"
+                          type="primary"
+                          plain
+                          size="small"
+                          :disabled="selectedLayout.status === 'ARCHIVED'"
+                          @click="openSyncDialog"
+                        >
+                          {{ t('admin.syncLayoutSeats') }}
+                        </el-button>
+                      </div>
                     </div>
                   </div>
 
                   <div class="layout-detail-grid">
                     <div class="preview-band">
-                      <div v-if="areas.length > 0" class="area-preview">
-                        <button
-                          v-for="area in areas"
-                          :key="area.id"
-                          type="button"
-                          class="area-shape"
-                          :class="{ seated: area.isSeated }"
-                          :style="{ borderColor: area.color || '#c8955a', color: area.color || '#c8955a' }"
-                        >
-                          <strong>{{ area.name }}</strong>
-                          <span>{{ area.capacity }} · {{ area.basePrice }}</span>
-                        </button>
-                      </div>
                       <AdminSeatMapEditor
                         v-if="seats.length > 0"
                         :seats="seats"
@@ -819,43 +822,20 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
                           <h3>{{ t('admin.areas') }}</h3>
                         </div>
                         <el-table :data="areas" :empty-text="t('admin.empty')" size="small">
-                          <el-table-column prop="name" :label="t('admin.areaName')" min-width="120" />
-                          <el-table-column prop="code" label="Code" width="92" />
+                          <el-table-column prop="name" :label="t('admin.areaName')" min-width="116" />
+                          <el-table-column prop="code" label="Code" width="74" />
                           <el-table-column prop="capacity" :label="t('admin.capacity')" width="82" />
-                          <el-table-column prop="basePrice" :label="t('admin.price')" width="82" />
                         </el-table>
                       </section>
-                      <section class="detail-table-block">
-                        <div class="block-head compact-head">
+                      <section class="detail-table-block seat-summary-block">
+                        <div>
                           <h3>{{ t('admin.seats') }}</h3>
+                          <p>{{ t('admin.seatDetailsHint') }}</p>
                         </div>
-                        <el-table v-if="seats.length > 0" :data="seats" :empty-text="t('admin.empty')" size="small" max-height="360">
-                          <el-table-column prop="seatCode" :label="t('admin.seatCode')" min-width="110" />
-                          <el-table-column prop="rowNo" :label="t('admin.rowNo')" width="56" />
-                          <el-table-column prop="colNo" :label="t('admin.colNo')" width="56" />
-                          <el-table-column prop="section" :label="t('ticket.section')" width="76" />
-                          <el-table-column prop="status" :label="t('common.status')" width="112">
-                            <template #default="{ row }">
-                              <el-tag size="small" :type="row.status === 'DISABLED' ? 'danger' : 'success'" effect="plain">
-                                {{ row.status }}
-                              </el-tag>
-                            </template>
-                          </el-table-column>
-                          <el-table-column :label="t('admin.action')" width="86">
-                            <template #default="{ row }">
-                              <el-button
-                                link
-                                type="primary"
-                                :disabled="!canToggleSeat(row) || operatingSeat === row.id"
-                                :loading="operatingSeat === row.id"
-                                @click="toggleSeatStatus(row)"
-                              >
-                                {{ row.status === 'AVAILABLE' ? t('admin.disableSeat') : t('admin.restoreSeat') }}
-                              </el-button>
-                            </template>
-                          </el-table-column>
-                        </el-table>
-                        <el-empty v-else :description="t('admin.empty')" />
+                        <strong>{{ seats.length }}</strong>
+                        <el-button size="small" :disabled="seats.length === 0" @click="openSeatDrawer">
+                          {{ t('admin.openSeatDetails') }}
+                        </el-button>
                       </section>
                     </div>
                   </div>
@@ -867,6 +847,57 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
         </el-tabs>
       </section>
     </div>
+
+    <el-drawer
+      v-model="seatDrawerVisible"
+      :title="selectedLayout ? `${t('admin.seatDetails')} · ${selectedLayout.name}` : t('admin.seatDetails')"
+      size="680px"
+      class="seat-drawer"
+    >
+      <div class="seat-drawer-body">
+        <div class="seat-drawer-summary">
+          <div>
+            <span>{{ t('admin.layoutName') }}</span>
+            <strong>{{ selectedLayout?.name || '-' }}</strong>
+          </div>
+          <div>
+            <span>{{ t('admin.seats') }}</span>
+            <strong>{{ seats.length }}</strong>
+          </div>
+          <div>
+            <span>{{ t('admin.layoutStatus') }}</span>
+            <strong>{{ selectedLayout?.status || '-' }}</strong>
+          </div>
+        </div>
+        <el-table v-if="seats.length > 0" :data="seats" :empty-text="t('admin.empty')" size="small" height="calc(100vh - 220px)">
+          <el-table-column prop="seatCode" :label="t('admin.seatCode')" min-width="124" />
+          <el-table-column prop="rowNo" :label="t('admin.rowNo')" width="60" />
+          <el-table-column prop="colNo" :label="t('admin.colNo')" width="60" />
+          <el-table-column prop="section" :label="t('ticket.section')" width="82" />
+          <el-table-column prop="status" :label="t('common.status')" width="116">
+            <template #default="{ row }">
+              <el-tag size="small" :type="row.status === 'DISABLED' ? 'danger' : 'success'" effect="plain">
+                {{ row.status }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column :label="t('admin.action')" width="100" fixed="right">
+            <template #default="{ row }">
+              <el-button
+                link
+                type="primary"
+                :disabled="!canToggleSeat(row) || operatingSeat === row.id"
+                :loading="operatingSeat === row.id"
+                @click="toggleSeatStatus(row)"
+              >
+                {{ row.status === 'AVAILABLE' ? t('admin.disableSeat') : t('admin.restoreSeat') }}
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <el-empty v-else :description="t('admin.empty')" />
+      </div>
+    </el-drawer>
 
     <el-dialog v-model="venueDialogVisible" :title="venueDialogMode === 'create' ? t('admin.addVenue') : t('admin.editVenue')" width="520px">
       <el-form label-position="top">
@@ -1020,6 +1051,11 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--spacing-4);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: rgba(8, 8, 8, 0.96);
+  backdrop-filter: blur(10px);
 
   h1 {
     font-family: var(--font-family-display);
@@ -1274,7 +1310,7 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
 
 .layout-detail-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.18fr) minmax(340px, 0.82fr);
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
   gap: var(--spacing-4);
   align-items: start;
 }
@@ -1282,6 +1318,13 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
 .detail-actions {
   display: grid;
   justify-items: end;
+  gap: var(--spacing-2);
+}
+
+.detail-button-row {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: var(--spacing-2);
 }
 
@@ -1298,35 +1341,7 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
   border-radius: var(--radius-md);
   padding: var(--spacing-3);
   min-width: 0;
-}
-
-.area-preview {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: var(--spacing-2);
-  margin-bottom: var(--spacing-3);
-}
-
-.area-shape {
-  min-height: 72px;
-  border: 1px solid;
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.03);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  font-family: var(--font-family-sans);
-
-  span {
-    color: var(--color-text-secondary);
-    font-size: 12px;
-  }
-
-  &.seated {
-    border-style: dashed;
-  }
+  overflow: hidden;
 }
 
 .detail-tables {
@@ -1341,6 +1356,28 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.015);
   padding: var(--spacing-3);
+}
+
+.seat-summary-block {
+  display: grid;
+  gap: var(--spacing-3);
+
+  h3 {
+    font-size: 15px;
+  }
+
+  p {
+    margin-top: 4px;
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  > strong {
+    color: var(--color-text-primary);
+    font-size: 24px;
+    line-height: 1;
+  }
 }
 
 .compact-head {
@@ -1393,6 +1430,59 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
   width: 100%;
 }
 
+.seat-drawer-body {
+  display: grid;
+  gap: var(--spacing-4);
+}
+
+.seat-drawer-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+
+  div {
+    min-width: 0;
+    padding: var(--spacing-3);
+    border-right: 1px solid var(--color-border);
+    display: grid;
+    gap: 4px;
+
+    &:last-child {
+      border-right: 0;
+    }
+  }
+
+  span {
+    color: var(--color-text-secondary);
+    font-size: 12px;
+  }
+
+  strong {
+    overflow: hidden;
+    color: var(--color-text-primary);
+    font-size: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+:deep(.seat-drawer) {
+  background: #0a0a0a;
+
+  .el-drawer__header {
+    margin-bottom: 0;
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text-primary);
+  }
+
+  .el-drawer__body {
+    padding: 16px 20px 20px;
+  }
+}
+
 :deep(.el-table) {
   background-color: transparent;
   --el-table-border-color: var(--color-border);
@@ -1435,7 +1525,6 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
     width: 100%;
   }
 
-  .area-preview,
   .dialog-grid-form {
     grid-template-columns: 1fr;
   }
