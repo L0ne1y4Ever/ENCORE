@@ -1,4 +1,4 @@
-export type OrderStatus = 'PENDING_PAYMENT' | 'PAID' | 'EXPIRED' | 'CANCELLED' | 'REFUNDED'
+export type OrderStatus = 'PENDING_PAYMENT' | 'PAID' | 'PENDING_REFUND' | 'EXPIRED' | 'CANCELLED' | 'REFUNDED'
 
 export interface TicketItem {
   id: string
@@ -15,6 +15,17 @@ export interface TicketItem {
   colNo?: number | null
 }
 
+export interface RefundRequestSummary {
+  id: string
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | string
+  source: 'USER_AUTO' | 'USER_REVIEW' | 'ADMIN_DIRECT' | string
+  reason?: string | null
+  reviewNote?: string | null
+  reviewerUsername?: string | null
+  requestedAt?: string | null
+  reviewedAt?: string | null
+}
+
 export interface Order {
   id: string
   userId: string
@@ -26,6 +37,7 @@ export interface Order {
   status: OrderStatus
   createdAt: string
   expiresAt: string
+  refundRequest?: RefundRequestSummary | null
   tickets?: TicketItem[]
 }
 

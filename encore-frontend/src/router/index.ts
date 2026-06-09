@@ -24,6 +24,11 @@ const routes: Array<RouteRecordRaw> = [
     component: () => import('../views/auth/Login.vue')
   },
   {
+    path: '/403',
+    name: 'Forbidden',
+    component: () => import('../views/system/Forbidden.vue')
+  },
+  {
     path: '/',
     component: () => import('../layouts/UserLayout.vue'),
     meta: { requiresAuth: true, role: 'user' },
@@ -49,6 +54,8 @@ const routes: Array<RouteRecordRaw> = [
       { path: 'schedules', name: 'AdminSchedules', component: () => import('../views/admin/Schedules.vue') },
       { path: 'schedules/:id/inventory', name: 'AdminScheduleInventory', component: () => import('../views/admin/ScheduleInventory.vue') },
       { path: 'orders', name: 'AdminOrders', component: () => import('../views/admin/Orders.vue') },
+      { path: 'finance', name: 'AdminFinance', component: () => import('../views/admin/Finance.vue') },
+      { path: 'audit-logs', name: 'AdminAuditLogs', component: () => import('../views/admin/AuditLogs.vue'), meta: { role: 'sysadmin' } },
       { path: 'users', name: 'AdminStaffUsers', component: () => import('../views/admin/StaffUsers.vue'), meta: { role: 'sysadmin' } },
     ]
   },
@@ -59,6 +66,11 @@ const routes: Array<RouteRecordRaw> = [
     children: [
       { path: '', name: 'Scanner', component: () => import('../views/checkin/Scanner.vue') }
     ]
+  },
+  {
+    path: '/:pathMatch(.*)*',
+    name: 'NotFound',
+    component: () => import('../views/system/NotFound.vue')
   }
 ]
 
@@ -80,8 +92,7 @@ router.beforeEach(async (to, _from, next) => {
   } else if (requiresAuth && authStore.currentUser) {
     const userRole = authStore.currentUser.role
     if (!canAccessRole(requiredRole, userRole)) {
-      // 越权访问，回到自己所属域的首页
-      next(homeForRole(userRole))
+      next({ path: '/403', query: { from: to.fullPath } })
     } else {
       next()
     }

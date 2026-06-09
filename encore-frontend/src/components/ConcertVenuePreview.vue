@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ScheduleAreaResponse } from '../api/seat'
+import { formatMoney } from '../utils/money'
 
 const props = defineProps<{
   areas: ScheduleAreaResponse[]
@@ -12,7 +13,7 @@ const emit = defineEmits<{
   (e: 'select-area', area: ScheduleAreaResponse): void
 }>()
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 // Map area codes to beautifully curved SVG paths/attributes
 const areaShapes = {
@@ -63,6 +64,11 @@ const handleAreaClick = (area: ScheduleAreaResponse) => {
     emit('select-area', area)
   }
 }
+
+const money = (value: number | string) => formatMoney(value, locale.value, {
+  maximumFractionDigits: 0,
+  minimumFractionDigits: 0
+})
 
 const getAreaGradient = (code: string) => {
   switch (code) {
@@ -403,7 +409,7 @@ const getAreaOpacity = (area: ScheduleAreaResponse) => {
                 text-anchor="middle"
                 :fill="getAreaBorderColor(area)"
               >
-                ￥{{ area.price }}
+                {{ money(area.price) }}
               </text>
 
               <!-- Floating Area Inventory Stock Badge -->

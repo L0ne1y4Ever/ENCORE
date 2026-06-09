@@ -7,6 +7,7 @@ import { Calendar, Close, Money, Tickets, User, View, Wallet } from '@element-pl
 import { cancelOrder, getMyOrders, refundOrder } from '../../api/order'
 import type { Order, TicketItem } from '../../mock/orders'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { formatMoney } from '../../utils/money'
 
 const authStore = useAuthStore()
 const route = useRoute()
@@ -119,7 +120,7 @@ const tickets = computed<TicketView[]>(() => {
 const pendingReservations = computed(() => orders.value.filter(order => order.status === 'PENDING_PAYMENT'))
 const totalSpend = computed(() => {
   return orders.value
-    .filter(order => order.status === 'PAID')
+    .filter(order => order.status === 'PAID' || order.status === 'PENDING_REFUND')
     .reduce((sum, order) => sum + Number(order.totalAmount || 0), 0)
 })
 
@@ -142,7 +143,7 @@ const formatDateTime = (value?: string | null) => {
   })
 }
 
-const formatAmount = (value: number | string) => Number(value || 0).toFixed(2)
+const formatAmount = (value: number | string) => formatMoney(value, locale.value)
 
 const orderStatusLabel = (status: Order['status']) => t(`profile.orderStatus.${status.toLowerCase()}`)
 
@@ -156,8 +157,7 @@ const statusTone = (status: Order['status'] | TicketItem['status']) => status.to
 const canRefundOrder = (order: Order) => {
   if (order.status !== 'PAID') return false
   if ((order.tickets || []).some(ticket => ticket.status === 'CHECKED_IN')) return false
-  if (!order.startTime) return false
-  return Date.now() < new Date(order.startTime).getTime() - 2 * 60 * 60 * 1000
+  return true
 }
 
 const replaceOrder = (updated: Order) => {
@@ -195,19 +195,27 @@ const cancelReservation = async (order: Order) => {
 
 const requestRefund = async (order: Order) => {
   try {
-    await ElMessageBox.confirm(
+    const { value } = await ElMessageBox.prompt(
       t('profile.refundConfirm', { id: order.id }),
-      locale.value === 'zh' ? '申请退票' : 'Request Refund',
+      t('profile.requestRefund'),
       {
         confirmButtonText: t('common.confirm'),
         cancelButtonText: t('common.cancel'),
+        inputType: 'textarea',
+        inputPlaceholder: t('profile.refundReasonPlaceholder'),
+        inputValidator: (value: string) => !value || value.length <= 500 || t('profile.refundReasonTooLong'),
         type: 'warning',
         customClass: 'encore-dark-box'
       }
     )
     operatingOrderId.value = order.id
-    replaceOrder(await refundOrder(order.id))
-    ElMessage.success(locale.value === 'zh' ? '退票申请已提交' : 'Refund requested successfully')
+    const updated = await refundOrder(order.id, value)
+    replaceOrder(updated)
+    ElMessage.success(
+      updated.status === 'REFUNDED'
+        ? t('profile.refundCompleted')
+        : t('profile.refundSubmitted')
+    )
   } catch (error) {
     if (error !== 'cancel') {
       ElMessage.error(error instanceof Error ? error.message : t('profile.refundFailed'))
@@ -253,7 +261,7 @@ const requestRefund = async (order: Order) => {
         <span class="metric-label">{{ t('profile.totalOrders') }}</span>
       </button>
       <div class="spend-card">
-        <strong>${{ formatAmount(totalSpend) }}</strong>
+        <strong>{{ formatAmount(totalSpend) }}</strong>
         <span class="metric-label">{{ t('profile.memberValue') }}</span>
       </div>
     </section>
@@ -314,11 +322,24 @@ const requestRefund = async (order: Order) => {
                 <div>
                   <h3>{{ ord.showTitle || ord.scheduleId }}</h3>
                   <p>{{ ord.id }} · {{ formatDateTime(ord.startTime || ord.createdAt) }} · {{ ord.theaterName || '-' }} · {{ (ord.tickets || []).length }} {{ t('order.tickets') }}</p>
+                  <p v-if="ord.refundRequest" class="refund-meta">
+                    {{ t('profile.refundRequestStatus') }}:
+                    {{ t(`profile.refundReviewStatus.${ord.refundRequest.status.toLowerCase()}`) }}
+                    <template v-if="ord.refundRequest.requestedAt">
+                      · {{ t('profile.refundRequestedAt') }} {{ formatDateTime(ord.refundRequest.requestedAt) }}
+                    </template>
+                    <template v-if="ord.refundRequest.reason">
+                      · {{ t('profile.refundReason') }}: {{ ord.refundRequest.reason }}
+                    </template>
+                    <template v-if="ord.refundRequest.reviewNote">
+                      · {{ t('profile.refundReviewNote') }}: {{ ord.refundRequest.reviewNote }}
+                    </template>
+                  </p>
                 </div>
               </div>
               <div class="row-side">
                 <strong class="card-kicker" :class="statusTone(ord.status)">{{ orderStatusLabel(ord.status) }}</strong>
-                <strong class="amount">${{ formatAmount(ord.totalAmount) }}</strong>
+                <strong class="amount">{{ formatAmount(ord.totalAmount) }}</strong>
                 <button
                   v-if="ord.status === 'PENDING_PAYMENT'"
                   class="icon-action primary-link"
@@ -382,7 +403,7 @@ const requestRefund = async (order: Order) => {
               </div>
               <div class="row-side">
                 <strong class="card-kicker" :class="statusTone(res.status)">{{ orderStatusLabel(res.status) }}</strong>
-                <strong class="amount">${{ formatAmount(res.totalAmount) }}</strong>
+                <strong class="amount">{{ formatAmount(res.totalAmount) }}</strong>
                 <button class="icon-action primary-link" type="button" :disabled="operatingOrderId === res.id" :aria-label="t('profile.continuePayment')" @click="continuePayment(res.id)">
                   <Money />
                   <span>{{ t('profile.continuePayment') }}</span>
@@ -757,6 +778,12 @@ const requestRefund = async (order: Order) => {
   color: rgba(255, 255, 255, 0.56);
 }
 
+.card-kicker.pending-refund {
+  color: #f4c76a;
+  border-color: rgba(244, 199, 106, 0.28);
+  background: rgba(244, 199, 106, 0.055);
+}
+
 .order-body,
 .info-row {
   display: flex;
@@ -780,6 +807,13 @@ const requestRefund = async (order: Order) => {
     font-family: var(--font-family-sans);
     font-size: 14px;
     margin-top: 5px;
+  }
+
+  .refund-meta {
+    max-width: 720px;
+    color: rgba(255, 255, 255, 0.62);
+    font-size: 13px;
+    line-height: 1.55;
   }
 
   .amount {
@@ -1209,6 +1243,12 @@ const requestRefund = async (order: Order) => {
   color: #ffb53d;
   border-color: rgba(255, 181, 61, 0.25);
   background: rgba(255, 181, 61, 0.04);
+}
+
+.card-kicker.pending-refund {
+  color: #f4c76a;
+  border-color: rgba(244, 199, 106, 0.28);
+  background: rgba(244, 199, 106, 0.055);
 }
 
 .card-kicker.cancelled,

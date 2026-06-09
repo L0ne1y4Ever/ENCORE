@@ -21,7 +21,7 @@ const castText = computed(() => show.value?.castMembers || t('detail.pendingCont
 const creativeText = computed(() => show.value?.creativeTeam || t('detail.pendingContent'))
 const fullSynopsisText = computed(() => show.value?.fullSynopsis || show.value?.description || '')
 const lowestPrice = computed(() => {
-  const price = schedules.value.map(item => lowestPriceLabel(item.priceRange)).find(Boolean)
+  const price = schedules.value.map(item => lowestPriceLabel(item.priceRange, locale.value)).find(Boolean)
   return price || t('home.pricePending')
 })
 const onSaleSchedules = computed(() => schedules.value.filter(item => item.status === 'ON_SALE'))
@@ -175,7 +175,7 @@ const ticketModeLabel = (mode?: string) => {
                   </div>
                   <div class="schedule-price">
                     <span>{{ t('home.ticketFrom') }}</span>
-                    <strong>{{ lowestPriceLabel(sch.priceRange) || sch.priceRange }}</strong>
+                    <strong>{{ lowestPriceLabel(sch.priceRange, locale) || sch.priceRange }}</strong>
                   </div>
                   <button
                     v-if="sch.status === 'ON_SALE'"

@@ -1,7 +1,8 @@
-import { apiClient, requestData } from './index'
+import axios from 'axios'
+import { AUTH_EXPIRED_EVENT, apiClient, clearAuthToken, requestData } from './index'
 
 export type ScheduleStatus = 'DRAFT' | 'PUBLISHED' | 'COMING_SOON' | 'PREPARING' | 'ON_SALE' | 'SOLD_OUT' | 'CANCELLED' | 'ENDED'
-export type AdminOrderStatus = 'PENDING_PAYMENT' | 'PAID' | 'EXPIRED' | 'CANCELLED' | 'REFUNDED'
+export type AdminOrderStatus = 'PENDING_PAYMENT' | 'PAID' | 'PENDING_REFUND' | 'EXPIRED' | 'CANCELLED' | 'REFUNDED'
 export type AdminShowStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
 export type TicketMode = 'SEATED' | 'ZONED' | 'MIXED'
 export type PublishStatus = 'DRAFT' | 'PUBLISHED'
@@ -31,6 +32,94 @@ export interface AdminDashboardCheckInSummary {
   voided: number
 }
 
+export interface AdminBoxOfficeSummary {
+  salesRevenue: number | string
+  refundAmount: number | string
+  netRevenue: number | string
+  pendingAmount: number | string
+  paidTickets: number
+  refundedTickets: number
+  validTickets: number
+  checkedInTickets: number
+  attendanceRate: number | string
+}
+
+export interface AdminBoxOfficeTrendItem {
+  date: string
+  salesRevenue: number | string
+  refundAmount: number | string
+  netRevenue: number | string
+  pendingAmount: number | string
+  paidTickets: number
+  refundedTickets: number
+  validTickets: number
+}
+
+export interface AdminBoxOfficeShowRow {
+  showId: string
+  showTitle: string
+  category: string
+  salesRevenue: number | string
+  refundAmount: number | string
+  netRevenue: number | string
+  pendingAmount: number | string
+  paidTickets: number
+  refundedTickets: number
+  validTickets: number
+  checkedInTickets: number
+  attendanceRate: number | string
+  scheduleCount: number
+}
+
+export interface AdminBoxOfficeCategoryRow {
+  category: string
+  salesRevenue: number | string
+  refundAmount: number | string
+  netRevenue: number | string
+  pendingAmount: number | string
+  paidTickets: number
+  refundedTickets: number
+  validTickets: number
+  checkedInTickets: number
+  attendanceRate: number | string
+  showCount: number
+  scheduleCount: number
+}
+
+export interface AdminBoxOfficeScheduleRow {
+  scheduleId: string
+  showId: string
+  showTitle: string
+  theaterName: string
+  startTime: string | null
+  salesRevenue: number | string
+  refundAmount: number | string
+  netRevenue: number | string
+  pendingAmount: number | string
+  paidTickets: number
+  refundedTickets: number
+  validTickets: number
+  checkedInTickets: number
+  attendanceRate: number | string
+}
+
+export interface AdminBoxOffice {
+  globalSummary?: AdminBoxOfficeSummary | null
+  summary: AdminBoxOfficeSummary
+  trends: AdminBoxOfficeTrendItem[]
+  categories: AdminBoxOfficeCategoryRow[]
+  shows: AdminBoxOfficeShowRow[]
+  schedules: AdminBoxOfficeScheduleRow[]
+}
+
+export interface AdminBoxOfficeQuery {
+  range?: 'LAST_7_DAYS' | 'LAST_30_DAYS' | 'ALL' | 'CUSTOM'
+  startDate?: string
+  endDate?: string
+  showId?: string
+  category?: string
+}
+
 export interface AdminDashboard {
   totalRevenue: number | string
   ticketsSold: number
@@ -39,6 +128,58 @@ export interface AdminDashboard {
   salesTrend: AdminDashboardTrendItem[]
   topShows: AdminDashboardTopShow[]
   checkInSummary: AdminDashboardCheckInSummary
+  financeSummary?: AdminBoxOfficeSummary | null
+}
+
+export interface AdminOperationLog {
+  id: string
+  actorId?: string | null
+  actorUsername?: string | null
+  actorRole?: string | null
+  module: string
+  action: string
+  targetId?: string | null
+  targetLabel?: string | null
+  result: 'SUCCESS' | 'FAILED' | string
+  detail?: string | null
+  createdAt: string
+}
+
+export interface AdminAuditLogQuery {
+  module?: string
+  result?: string
+  keyword?: string
+  limit?: number
+}
+
+export interface AdminCsvDownload {
+  blob: Blob
+  filename: string
+}
+
+export interface AdminShowCategoryOption {
+  category: string
+  showCount: number
+}
+
+export interface AdminShowFilterOption {
+  id: string
+  title: string
+  subtitle?: string | null
+  category: string
+  status: AdminShowStatus | string
+  scheduleCount: number
+}
+
+export interface RefundRequestSummary {
+  id: string
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | string
+  source: 'USER_AUTO' | 'USER_REVIEW' | 'ADMIN_DIRECT' | string
+  reason?: string | null
+  reviewNote?: string | null
+  reviewerUsername?: string | null
+  requestedAt?: string | null
+  reviewedAt?: string | null
 }
 
 export interface AdminShow {
@@ -318,14 +459,106 @@ export interface AdminOrder {
   checkedInCount: number
   createdAt: string
   paidAt: string | null
+  refundRequest?: RefundRequestSummary | null
+}
+
+export interface ReviewRefundPayload {
+  note?: string | null
 }
 
 export function getAdminDashboard(): Promise<AdminDashboard> {
   return requestData<AdminDashboard>(apiClient.get('/api/admin/dashboard'))
 }
 
+export function getAdminBoxOffice(params: AdminBoxOfficeQuery = {}): Promise<AdminBoxOffice> {
+  return requestData<AdminBoxOffice>(apiClient.get('/api/admin/box-office', { params }))
+}
+
+function filenameFromContentDisposition(header: unknown, fallback: string) {
+  if (typeof header !== 'string') return fallback
+  const utf8Match = header.match(/filename\*=UTF-8''([^;]+)/i)
+  if (utf8Match?.[1]) return decodeURIComponent(utf8Match[1].trim())
+  const plainMatch = header.match(/filename="?([^";]+)"?/i)
+  return plainMatch?.[1]?.trim() || fallback
+}
+
+async function downloadAdminCsv(path: string, fallbackFilename: string): Promise<AdminCsvDownload> {
+  try {
+    const response = await apiClient.get<Blob>(path, { responseType: 'blob' })
+    const contentType = String(response.headers['content-type'] || '')
+    if (contentType.includes('application/json')) {
+      throw new Error(await messageFromBlob(response.data, 'CSV export failed'))
+    }
+    return {
+      blob: response.data,
+      filename: filenameFromContentDisposition(response.headers['content-disposition'], fallbackFilename)
+    }
+  } catch (error) {
+    if (axios.isAxiosError<Blob>(error)) {
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        clearAuthToken()
+        window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT))
+      }
+      if (error.response?.data instanceof Blob) {
+        throw new Error(await messageFromBlob(error.response.data, error.message))
+      }
+    }
+    throw error
+  }
+}
+
+async function messageFromBlob(blob: Blob, fallback: string) {
+  const text = await blob.text()
+  try {
+    const body = JSON.parse(text) as { msg?: string }
+    return body.msg || fallback
+  } catch {
+    return text || fallback
+  }
+}
+
+export function downloadAdminDashboardCsv(): Promise<AdminCsvDownload> {
+  return downloadAdminCsv('/api/admin/dashboard/export', `encore-dashboard-${new Date().toISOString().slice(0, 10)}.csv`)
+}
+
+export function downloadAdminOrdersCsv(): Promise<AdminCsvDownload> {
+  return downloadAdminCsv('/api/admin/orders/export', `encore-orders-${new Date().toISOString().slice(0, 10)}.csv`)
+}
+
+export function downloadAdminBoxOfficeCsv(params: AdminBoxOfficeQuery = {}): Promise<AdminCsvDownload> {
+  return downloadAdminCsv(
+    `/api/admin/box-office/export${queryString(params)}`,
+    `encore-box-office-${new Date().toISOString().slice(0, 10)}.csv`
+  )
+}
+
+function queryString(params: AdminBoxOfficeQuery) {
+  const search = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') search.set(key, String(value))
+  })
+  const text = search.toString()
+  return text ? `?${text}` : ''
+}
+
+export function getAdminAuditLogs(params: AdminAuditLogQuery = {}): Promise<AdminOperationLog[]> {
+  return requestData<AdminOperationLog[]>(apiClient.get('/api/admin/audit-logs', { params }))
+}
+
 export function getAdminShows(): Promise<AdminShow[]> {
   return requestData<AdminShow[]>(apiClient.get('/api/admin/shows'))
+}
+
+export function getAdminShowCategories(): Promise<AdminShowCategoryOption[]> {
+  return requestData<AdminShowCategoryOption[]>(apiClient.get('/api/admin/show-categories'))
+}
+
+export function getAdminShowOptions(params: {
+  category?: string
+  keyword?: string
+  limit?: number
+} = {}): Promise<AdminShowFilterOption[]> {
+  return requestData<AdminShowFilterOption[]>(apiClient.get('/api/admin/show-options', { params }))
 }
 
 export function getAdminVenues(): Promise<AdminVenue[]> {
@@ -466,6 +699,14 @@ export function getAdminOrders(): Promise<AdminOrder[]> {
 
 export function refundAdminOrder(orderId: string): Promise<AdminOrder> {
   return requestData<AdminOrder>(apiClient.post(`/api/admin/orders/${orderId}/refund`))
+}
+
+export function approveAdminRefund(orderId: string, payload: ReviewRefundPayload = {}): Promise<AdminOrder> {
+  return requestData<AdminOrder>(apiClient.post(`/api/admin/orders/${orderId}/refund/approve`, payload))
+}
+
+export function rejectAdminRefund(orderId: string, payload: ReviewRefundPayload = {}): Promise<AdminOrder> {
+  return requestData<AdminOrder>(apiClient.post(`/api/admin/orders/${orderId}/refund/reject`, payload))
 }
 
 export function forceCheckInAdminOrder(orderId: string): Promise<AdminOrder> {

@@ -4,9 +4,10 @@ import { useRouter } from 'vue-router'
 import { ArrowRight, Clock, Tickets, Wallet } from '@element-plus/icons-vue'
 import { createOrder } from '../../api/order'
 import { useI18n } from 'vue-i18n'
+import { formatMoney } from '../../utils/money'
 
 const router = useRouter()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 interface PendingOrder {
   scheduleId: string
@@ -69,6 +70,7 @@ const formatTime = (secs: number) => {
 }
 
 const ticketCount = computed(() => orderData.value?.seatIds?.length || 0)
+const displayTotalAmount = computed(() => formatMoney(orderData.value?.totalAmount, locale.value))
 
 const doConfirm = async () => {
   if (submitting.value || !orderData.value) return
@@ -117,7 +119,7 @@ const doConfirm = async () => {
           </div>
           <div class="row total-row">
             <span>{{ t('order.totalAmount') }}</span>
-            <strong class="amount">${{ orderData.totalAmount }}</strong>
+            <strong class="amount">{{ displayTotalAmount }}</strong>
           </div>
         </div>
 

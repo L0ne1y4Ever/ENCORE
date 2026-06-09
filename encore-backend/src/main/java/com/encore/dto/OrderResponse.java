@@ -15,6 +15,7 @@ public record OrderResponse(
         String status,
         LocalDateTime createdAt,
         LocalDateTime expiresAt,
+        RefundRequestSummary refundRequest,
         List<TicketItemResponse> tickets
 ) {
 }

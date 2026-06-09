@@ -1,19 +1,21 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Check, CreditCard, Tickets, Wallet } from '@element-plus/icons-vue'
 import { getOrderDetail, simulatePayment } from '../../api/order'
 import type { Order } from '../../mock/orders'
 import { useI18n } from 'vue-i18n'
+import { formatMoney } from '../../utils/money'
 
 const route = useRoute()
 const router = useRouter()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const orderId = route.query.id as string
 
 const order = ref<Order | null>(null)
 const loading = ref(true)
 const paying = ref(false)
+const displayAmount = computed(() => formatMoney(order.value?.totalAmount, locale.value))
 
 onMounted(async () => {
   if (!orderId) {
@@ -64,13 +66,13 @@ const handlePay = async () => {
 
         <div class="amount-panel">
           <span>{{ t('order.totalAmount') }}</span>
-          <strong>${{ order.totalAmount }}</strong>
+          <strong>{{ displayAmount }}</strong>
           <small>{{ t('payment.gateway') }}</small>
         </div>
 
         <button class="btn-pay" type="button" @click="handlePay" :disabled="paying">
           <CreditCard />
-          <span>{{ paying ? t('common.processing') : t('payment.pay', { amount: order.totalAmount }) }}</span>
+          <span>{{ paying ? t('common.processing') : t('payment.pay', { amount: displayAmount }) }}</span>
         </button>
       </section>
     </div>

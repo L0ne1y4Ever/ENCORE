@@ -43,18 +43,9 @@ public class AuthService {
 
     @Transactional
     public LoginResponse register(RegisterRequest request) {
-        String username = clean(request.username());
-        String password = clean(request.password());
-        String displayName = clean(request.displayName());
-        if (!StringUtils.hasText(username) || username.length() < 3 || username.length() > 32) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "账号长度需为 3 到 32 个字符");
-        }
-        if (!StringUtils.hasText(password) || password.length() < 3 || password.length() > 64) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "密码长度需为 3 到 64 个字符");
-        }
-        if (!StringUtils.hasText(displayName) || displayName.length() > 64) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "昵称不能为空");
-        }
+        String username = CredentialPolicy.normalizePublicUsername(request.username());
+        String password = CredentialPolicy.validatePassword(request.password(), username);
+        String displayName = CredentialPolicy.normalizeDisplayName(request.displayName());
         if (findByUsername(username) != null) {
             throw new BusinessException(ErrorCode.CONFLICT, "账号已存在");
         }
@@ -97,10 +88,7 @@ public class AuthService {
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "登录用户不存在");
         }
 
-        String displayName = clean(request.displayName());
-        if (!StringUtils.hasText(displayName) || displayName.length() > 64) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "昵称不能为空");
-        }
+        String displayName = CredentialPolicy.normalizeDisplayName(request.displayName());
 
         user.setDisplayName(displayName);
         user.setUpdatedAt(LocalDateTime.now());
@@ -115,10 +103,6 @@ public class AuthService {
         return userAccountMapper.selectOne(new LambdaQueryWrapper<UserAccount>()
                 .eq(UserAccount::getUsername, username)
                 .last("limit 1"));
-    }
-
-    private String clean(String value) {
-        return value == null ? "" : value.trim();
     }
 
     private String generateUserId() {

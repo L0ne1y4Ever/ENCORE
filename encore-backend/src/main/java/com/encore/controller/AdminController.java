@@ -1,14 +1,18 @@
 package com.encore.controller;
 
 import com.encore.common.ApiResponse;
+import com.encore.dto.AdminBoxOfficeResponse;
 import com.encore.dto.AdminDashboardResponse;
 import com.encore.dto.AdminHallResponse;
 import com.encore.dto.AdminLayoutAreaResponse;
 import com.encore.dto.AdminLayoutResponse;
 import com.encore.dto.AdminLayoutSeatResponse;
+import com.encore.dto.AdminOperationLogResponse;
 import com.encore.dto.AdminOrderResponse;
 import com.encore.dto.AdminScheduleResponse;
 import com.encore.dto.AdminScheduleInventoryResponse;
+import com.encore.dto.AdminShowCategoryOption;
+import com.encore.dto.AdminShowFilterOption;
 import com.encore.dto.AdminShowResponse;
 import com.encore.dto.AdminStaffUserResponse;
 import com.encore.dto.AdminVenueResponse;
@@ -20,6 +24,7 @@ import com.encore.dto.CreateStaffUserRequest;
 import com.encore.dto.CreateVenueRequest;
 import com.encore.dto.LayoutSeatStatusSyncResponse;
 import com.encore.dto.ResetStaffPasswordRequest;
+import com.encore.dto.ReviewRefundRequest;
 import com.encore.dto.SyncLayoutSeatStatusRequest;
 import com.encore.dto.UpdateHallRequest;
 import com.encore.dto.UpdateLayoutRequest;
@@ -32,10 +37,16 @@ import com.encore.dto.UpdateShowRequest;
 import com.encore.dto.UpdateShowStatusRequest;
 import com.encore.dto.UpdateStaffUserRequest;
 import com.encore.dto.UpdateVenueRequest;
+import com.encore.service.AdminCsvExportService;
 import com.encore.service.AdminService;
+import com.encore.service.AuditLogService;
 import com.encore.service.StaffAccountService;
 import com.encore.service.VenueManagementService;
 import jakarta.validation.Valid;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -47,24 +58,79 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/admin")
 public class AdminController {
     private final AdminService adminService;
+    private final AdminCsvExportService adminCsvExportService;
     private final VenueManagementService venueManagementService;
     private final StaffAccountService staffAccountService;
+    private final AuditLogService auditLogService;
 
-    public AdminController(AdminService adminService, VenueManagementService venueManagementService, StaffAccountService staffAccountService) {
+    public AdminController(
+            AdminService adminService,
+            AdminCsvExportService adminCsvExportService,
+            VenueManagementService venueManagementService,
+            StaffAccountService staffAccountService,
+            AuditLogService auditLogService
+    ) {
         this.adminService = adminService;
+        this.adminCsvExportService = adminCsvExportService;
         this.venueManagementService = venueManagementService;
         this.staffAccountService = staffAccountService;
+        this.auditLogService = auditLogService;
     }
 
     @GetMapping("/dashboard")
     public ApiResponse<AdminDashboardResponse> dashboard() {
         return ApiResponse.ok(adminService.dashboard());
+    }
+
+    @GetMapping("/dashboard/export")
+    public ResponseEntity<byte[]> exportDashboard() {
+        return csvAttachment(
+                "encore-dashboard-%s.csv".formatted(LocalDate.now()),
+                adminCsvExportService.exportDashboardCsv()
+        );
+    }
+
+    @GetMapping("/box-office")
+    public ApiResponse<AdminBoxOfficeResponse> boxOffice(
+            @RequestParam(required = false) String range,
+            @RequestParam(required = false) LocalDate startDate,
+            @RequestParam(required = false) LocalDate endDate,
+            @RequestParam(required = false) String showId,
+            @RequestParam(required = false) String category
+    ) {
+        return ApiResponse.ok(adminService.boxOffice(range, startDate, endDate, showId, category));
+    }
+
+    @GetMapping("/box-office/export")
+    public ResponseEntity<byte[]> exportBoxOffice(
+            @RequestParam(required = false) String range,
+            @RequestParam(required = false) LocalDate startDate,
+            @RequestParam(required = false) LocalDate endDate,
+            @RequestParam(required = false) String showId,
+            @RequestParam(required = false) String category
+    ) {
+        return csvAttachment(
+                "encore-box-office-%s.csv".formatted(LocalDate.now()),
+                adminCsvExportService.exportBoxOfficeCsv(range, startDate, endDate, showId, category)
+        );
+    }
+
+    @GetMapping("/audit-logs")
+    public ApiResponse<List<AdminOperationLogResponse>> listAuditLogs(
+            @RequestParam(required = false) String module,
+            @RequestParam(required = false) String result,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Integer limit
+    ) {
+        return ApiResponse.ok(auditLogService.listLogs(module, result, keyword, limit));
     }
 
     @GetMapping("/venues")
@@ -187,6 +253,20 @@ public class AdminController {
         return ApiResponse.ok(adminService.listShows());
     }
 
+    @GetMapping("/show-categories")
+    public ApiResponse<List<AdminShowCategoryOption>> listShowCategories() {
+        return ApiResponse.ok(adminService.listShowCategories());
+    }
+
+    @GetMapping("/show-options")
+    public ApiResponse<List<AdminShowFilterOption>> listShowOptions(
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Integer limit
+    ) {
+        return ApiResponse.ok(adminService.listShowOptions(category, keyword, limit));
+    }
+
     @PostMapping("/shows")
     public ApiResponse<AdminShowResponse> createShow(@Valid @RequestBody CreateShowRequest request) {
         return ApiResponse.ok(adminService.createShow(request));
@@ -272,13 +352,48 @@ public class AdminController {
         return ApiResponse.ok(adminService.listOrders());
     }
 
+    @GetMapping("/orders/export")
+    public ResponseEntity<byte[]> exportOrders() {
+        return csvAttachment(
+                "encore-orders-%s.csv".formatted(LocalDate.now()),
+                adminCsvExportService.exportOrdersCsv()
+        );
+    }
+
     @PostMapping("/orders/{id}/refund")
     public ApiResponse<AdminOrderResponse> refundOrder(@PathVariable String id) {
         return ApiResponse.ok(adminService.refundOrder(id));
     }
 
+    @PostMapping("/orders/{id}/refund/approve")
+    public ApiResponse<AdminOrderResponse> approveRefund(
+            @PathVariable String id,
+            @RequestBody(required = false) ReviewRefundRequest request
+    ) {
+        return ApiResponse.ok(adminService.approveRefund(id, request));
+    }
+
+    @PostMapping("/orders/{id}/refund/reject")
+    public ApiResponse<AdminOrderResponse> rejectRefund(
+            @PathVariable String id,
+            @RequestBody(required = false) ReviewRefundRequest request
+    ) {
+        return ApiResponse.ok(adminService.rejectRefund(id, request));
+    }
+
     @PostMapping("/orders/{id}/force-checkin")
     public ApiResponse<AdminOrderResponse> forceCheckInOrder(@PathVariable String id) {
         return ApiResponse.ok(adminService.forceCheckInOrder(id));
+    }
+
+    private ResponseEntity<byte[]> csvAttachment(String filename, String csv) {
+        byte[] bytes = ("\uFEFF" + csv).getBytes(StandardCharsets.UTF_8);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
+                        .filename(filename, StandardCharsets.UTF_8)
+                        .build()
+                        .toString())
+                .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
+                .body(bytes);
     }
 }

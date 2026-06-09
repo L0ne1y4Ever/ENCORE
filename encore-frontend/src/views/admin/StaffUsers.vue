@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import {
@@ -9,6 +9,7 @@ import {
   updateAdminStaffUser
 } from '../../api/admin'
 import type { AdminStaffUser, StaffStatus } from '../../api/admin'
+import { validateDisplayName, validatePassword, validateUsername } from '../../utils/credentialPolicy'
 
 const { t } = useI18n()
 
@@ -36,6 +37,32 @@ const resetForm = reactive({
   username: '',
   password: ''
 })
+
+const credentialMessages = computed(() => ({
+  usernameRule: t('login.usernameRule'),
+  passwordLength: t('login.passwordLength'),
+  passwordWhitespace: t('login.passwordWhitespace'),
+  passwordLettersNumbers: t('login.passwordLettersNumbers'),
+  passwordContainsUsername: t('login.passwordContainsUsername'),
+  passwordCommon: t('login.passwordCommon'),
+  displayNameRule: t('login.displayNameRule'),
+  displayNameControl: t('login.displayNameControl')
+}))
+
+const formUsernameError = computed(() => (
+  dialogMode.value === 'create'
+    ? validateUsername(form.username, credentialMessages.value, { allowReserved: true })
+    : ''
+))
+const formPasswordError = computed(() => (
+  dialogMode.value === 'create'
+    ? validatePassword(form.password, form.username, credentialMessages.value)
+    : ''
+))
+const formDisplayNameError = computed(() => validateDisplayName(form.displayName, credentialMessages.value))
+const resetPasswordError = computed(() => (
+  validatePassword(resetForm.password, resetForm.username, credentialMessages.value)
+))
 
 const loadUsers = async () => {
   loading.value = true
@@ -94,12 +121,17 @@ const saveUser = async () => {
     ElMessage.error(t('admin.formRequired'))
     return
   }
+  const validationError = formUsernameError.value || formPasswordError.value || formDisplayNameError.value
+  if (validationError) {
+    ElMessage.error(validationError)
+    return
+  }
   saving.value = true
   try {
     const user = dialogMode.value === 'create'
       ? await createAdminStaffUser({
         username: form.username.trim(),
-        password: form.password.trim(),
+        password: form.password,
         displayName: form.displayName.trim(),
         role: form.role,
         status: form.status
@@ -133,9 +165,13 @@ const savePassword = async () => {
     ElMessage.error(t('admin.formRequired'))
     return
   }
+  if (resetPasswordError.value) {
+    ElMessage.error(resetPasswordError.value)
+    return
+  }
   operatingId.value = resetForm.id
   try {
-    replaceUser(await resetAdminStaffPassword(resetForm.id, resetForm.password.trim()))
+    replaceUser(await resetAdminStaffPassword(resetForm.id, resetForm.password))
     resetDialogVisible.value = false
     ElMessage.success(t('admin.passwordResetDone'))
   } catch (error) {
@@ -197,12 +233,21 @@ const statusType = (status: string) => status === 'ACTIVE' ? 'success' : 'info'
       <el-form label-position="top" class="staff-form">
         <el-form-item :label="t('common.username')" required>
           <el-input v-model="form.username" maxlength="32" :disabled="dialogMode === 'edit'" />
+          <p v-if="dialogMode === 'create'" class="form-hint" :class="{ invalid: formUsernameError }">
+            {{ formUsernameError || t('admin.usernamePolicyHint') }}
+          </p>
         </el-form-item>
         <el-form-item v-if="dialogMode === 'create'" :label="t('common.password')" required>
           <el-input v-model="form.password" maxlength="64" show-password />
+          <p class="form-hint" :class="{ invalid: formPasswordError }">
+            {{ formPasswordError || t('admin.passwordPolicyHint') }}
+          </p>
         </el-form-item>
         <el-form-item :label="t('common.nickname')" required>
           <el-input v-model="form.displayName" maxlength="64" />
+          <p class="form-hint" :class="{ invalid: formDisplayNameError }">
+            {{ formDisplayNameError || t('login.nicknameHint') }}
+          </p>
         </el-form-item>
         <el-form-item :label="t('admin.staffRole')" required>
           <el-select v-model="form.role" class="full-control">
@@ -227,6 +272,9 @@ const statusType = (status: string) => status === 'ACTIVE' ? 'success' : 'info'
       <el-form label-position="top">
         <el-form-item :label="t('admin.newPassword')" required>
           <el-input v-model="resetForm.password" maxlength="64" show-password />
+          <p class="form-hint" :class="{ invalid: resetPasswordError }">
+            {{ resetPasswordError || t('admin.passwordPolicyHint') }}
+          </p>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -281,6 +329,17 @@ const statusType = (status: string) => status === 'ACTIVE' ? 'success' : 'info'
 
 .full-control {
   width: 100%;
+}
+
+.form-hint {
+  margin: 6px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+
+  &.invalid {
+    color: #ffb1a8;
+  }
 }
 
 :deep(.el-table) {

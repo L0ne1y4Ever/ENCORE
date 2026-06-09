@@ -2,6 +2,7 @@
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ScheduleAreaResponse } from '../api/seat'
+import { formatMoney } from '../utils/money'
 
 const props = defineProps<{
   area: ScheduleAreaResponse
@@ -12,7 +13,7 @@ const emit = defineEmits<{
   (e: 'book-area', quantity: number): void
 }>()
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const quantity = ref(1)
 
 // Reset quantity to 1 when area changes
@@ -25,8 +26,10 @@ const maxSelectable = computed(() => {
 })
 
 const totalPrice = computed(() => {
-  return (props.area.price * quantity.value).toFixed(2)
+  return formatMoney(props.area.price * quantity.value, locale.value)
 })
+
+const areaPrice = computed(() => formatMoney(props.area.price, locale.value))
 
 const increment = () => {
   if (quantity.value < maxSelectable.value) {
@@ -56,7 +59,7 @@ const handleSubmit = () => {
       </div>
       <div class="price-info">
         <span class="unit-label">{{ t('seat.total') }}</span>
-        <span class="price-val">${{ props.area.price }}</span>
+        <span class="price-val">{{ areaPrice }}</span>
       </div>
     </div>
 
@@ -105,7 +108,7 @@ const handleSubmit = () => {
     <div class="checkout-footer">
       <div class="total-row">
         <span>{{ t('seat.total') }}</span>
-        <span class="total-val">${{ totalPrice }}</span>
+        <span class="total-val">{{ totalPrice }}</span>
       </div>
       <button
         type="button"

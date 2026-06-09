@@ -26,8 +26,9 @@ import type {
   SeatStatus,
   TicketMode
 } from '../../api/admin'
+import { formatMoney } from '../../utils/money'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 type DialogMode = 'create' | 'edit'
 
@@ -67,6 +68,7 @@ const filteredLayouts = computed(() => {
   if (!selectedHallId.value) return layouts.value
   return layouts.value.filter(layout => layout.hallId === selectedHallId.value)
 })
+const money = (value: number | string | undefined | null) => formatMoney(value, locale.value)
 
 const syncableSchedules = computed(() => {
   if (!selectedLayout.value) return []
@@ -414,7 +416,7 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
                 :style="{ borderColor: area.color || '#c8955a', color: area.color || '#c8955a' }"
               >
                 <strong>{{ area.name }}</strong>
-                <span>{{ area.capacity }} · {{ area.basePrice }}</span>
+                <span>{{ area.capacity }} · {{ money(area.basePrice) }}</span>
               </button>
             </div>
             <AdminSeatMapEditor
@@ -438,7 +440,9 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
                 <template #default="{ row }">{{ row.isSeated ? t('common.yes') : t('common.no') }}</template>
               </el-table-column>
               <el-table-column prop="capacity" :label="t('admin.capacity')" width="90" />
-              <el-table-column prop="basePrice" :label="t('admin.price')" width="90" />
+              <el-table-column :label="t('admin.price')" width="110">
+                <template #default="{ row }">{{ money(row.basePrice) }}</template>
+              </el-table-column>
             </el-table>
             <el-table v-if="seats.length > 0" :data="seats" :empty-text="t('admin.empty')" size="small" max-height="320" class="seat-detail-table">
               <el-table-column prop="seatCode" :label="t('admin.seatCode')" min-width="130" />
@@ -452,7 +456,9 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
                   </el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="price" :label="t('admin.price')" width="90" />
+              <el-table-column :label="t('admin.price')" width="110">
+                <template #default="{ row }">{{ money(row.price) }}</template>
+              </el-table-column>
               <el-table-column :label="t('admin.action')" width="120">
                 <template #default="{ row }">
                   <el-button

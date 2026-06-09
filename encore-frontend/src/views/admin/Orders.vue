@@ -2,18 +2,28 @@
 import { computed, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { forceCheckInAdminOrder, getAdminOrders, refundAdminOrder } from '../../api/admin'
+import {
+  approveAdminRefund,
+  downloadAdminOrdersCsv,
+  forceCheckInAdminOrder,
+  getAdminOrders,
+  refundAdminOrder,
+  rejectAdminRefund
+} from '../../api/admin'
 import type { AdminOrder } from '../../api/admin'
+import { downloadBlob } from '../../utils/csv'
+import { formatMoney } from '../../utils/money'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const tableData = ref<AdminOrder[]>([])
 const loading = ref(false)
 const operatingId = ref('')
+const exporting = ref(false)
 const statusFilter = ref('')
 const sortKey = ref<'createdDesc' | 'createdAsc' | 'amountDesc' | 'showName'>('createdDesc')
 
-const orderStatusOptions = ['PENDING_PAYMENT', 'PAID', 'CHECKED_IN', 'EXPIRED', 'CANCELLED', 'REFUNDED']
+const orderStatusOptions = ['PENDING_PAYMENT', 'PAID', 'PENDING_REFUND', 'CHECKED_IN', 'EXPIRED', 'CANCELLED', 'REFUNDED']
 
 const filteredOrders = computed(() => {
   const rows = tableData.value.filter(row => !statusFilter.value || displayStatus(row) === statusFilter.value)
@@ -32,6 +42,7 @@ const orderMetrics = computed(() => {
     { status: '', label: t('admin.allOrders'), value: rows.length },
     { status: 'PENDING_PAYMENT', label: t('profile.orderStatus.pending_payment'), value: rows.filter(row => row.status === 'PENDING_PAYMENT').length },
     { status: 'PAID', label: t('profile.orderStatus.paid'), value: rows.filter(row => displayStatus(row) === 'PAID').length },
+    { status: 'PENDING_REFUND', label: t('admin.pendingRefundOrders'), value: rows.filter(row => row.status === 'PENDING_REFUND').length },
     { status: 'CHECKED_IN', label: t('admin.checkedInTickets'), value: checkedIn },
     { status: 'REFUNDED', label: t('profile.orderStatus.refunded'), value: rows.filter(row => row.status === 'REFUNDED').length }
   ]
@@ -55,7 +66,7 @@ const formatDate = (dateStr: string | null) => {
 }
 
 const formatAmount = (amount: number | string) => {
-  return `$${Number(amount).toFixed(2)}`
+  return formatMoney(amount, locale.value)
 }
 
 const displayStatus = (row: AdminOrder) => {
@@ -65,9 +76,15 @@ const displayStatus = (row: AdminOrder) => {
   return row.status
 }
 
+const orderStatusLabel = (status: string) => {
+  if (status === 'CHECKED_IN') return t('admin.checkedInTickets')
+  return t(`profile.orderStatus.${status.toLowerCase()}`)
+}
+
 const statusTagType = (row: AdminOrder) => {
   const status = displayStatus(row)
   if (status === 'PAID') return 'success'
+  if (status === 'PENDING_REFUND') return 'warning'
   if (status === 'REFUNDED' || status === 'EXPIRED') return 'info'
   if (status === 'CHECKED_IN') return 'warning'
   return 'danger'
@@ -110,6 +127,50 @@ const handleCheckin = async (row: AdminOrder) => {
     operatingId.value = ''
   }
 }
+
+const reviewRefund = async (row: AdminOrder, action: 'approve' | 'reject') => {
+  const approving = action === 'approve'
+  try {
+    const { value } = await ElMessageBox.prompt(
+      t(approving ? 'admin.approveRefundConfirm' : 'admin.rejectRefundConfirm', { id: row.id }),
+      t('admin.refundReview'),
+      {
+        confirmButtonText: t(approving ? 'admin.approveRefund' : 'admin.rejectRefund'),
+        cancelButtonText: t('common.cancel'),
+        inputType: 'textarea',
+        inputPlaceholder: t('admin.refundReviewNotePlaceholder'),
+        inputValidator: (value: string) => !value || value.length <= 500 || t('profile.refundReasonTooLong'),
+        type: approving ? 'warning' : 'info'
+      }
+    )
+    operatingId.value = row.id
+    replaceOrder(
+      approving
+        ? await approveAdminRefund(row.id, { note: value })
+        : await rejectAdminRefund(row.id, { note: value })
+    )
+    ElMessage.success(t(approving ? 'admin.refundApproved' : 'admin.refundRejected'))
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error(error instanceof Error ? error.message : t('admin.operationFailed'))
+    }
+  } finally {
+    operatingId.value = ''
+  }
+}
+
+const exportOrders = async () => {
+  exporting.value = true
+  try {
+    const file = await downloadAdminOrdersCsv()
+    downloadBlob(file.blob, file.filename)
+    ElMessage.success(t('admin.exportDone'))
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : t('admin.exportFailed'))
+  } finally {
+    exporting.value = false
+  }
+}
 </script>
 
 <template>
@@ -121,7 +182,7 @@ const handleCheckin = async (row: AdminOrder) => {
       </div>
       <div class="header-actions">
         <el-select v-model="statusFilter" class="compact-filter" clearable :placeholder="t('admin.allStatuses')">
-          <el-option v-for="status in orderStatusOptions" :key="status" :label="status" :value="status" />
+          <el-option v-for="status in orderStatusOptions" :key="status" :label="orderStatusLabel(status)" :value="status" />
         </el-select>
         <el-select v-model="sortKey" class="sort-filter" :placeholder="t('admin.sortBy')">
           <el-option value="createdDesc" :label="t('admin.sortCreatedDesc')" />
@@ -129,6 +190,9 @@ const handleCheckin = async (row: AdminOrder) => {
           <el-option value="amountDesc" :label="t('admin.sortAmountDesc')" />
           <el-option value="showName" :label="t('admin.sortShowName')" />
         </el-select>
+        <el-button plain :loading="exporting" :disabled="loading" @click="exportOrders">
+          {{ t('admin.exportOrders') }}
+        </el-button>
         <el-button type="primary" plain :loading="loading" @click="loadOrders">
           {{ t('admin.refresh') }}
         </el-button>
@@ -176,30 +240,62 @@ const handleCheckin = async (row: AdminOrder) => {
               :type="statusTagType(row)"
               effect="plain"
             >
-              {{ displayStatus(row) }}
+              {{ orderStatusLabel(displayStatus(row)) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column :label="t('admin.action')" width="180" fixed="right">
+        <el-table-column :label="t('admin.refundReview')" min-width="220">
           <template #default="{ row }">
-            <el-button 
-              link 
-              type="danger" 
-              :loading="operatingId === row.id"
-              :disabled="row.status !== 'PAID' || row.checkedInCount > 0"
-              @click="handleRefund(row)"
-            >
-              {{ t('admin.refund') }}
-            </el-button>
-            <el-button 
-              link 
-              type="primary" 
-              :loading="operatingId === row.id"
-              :disabled="row.status !== 'PAID' || row.checkedInCount >= row.ticketCount"
-              @click="handleCheckin(row)"
-            >
-              {{ t('admin.forceCheckin') }}
-            </el-button>
+            <div v-if="row.refundRequest" class="refund-cell">
+              <strong>{{ t(`profile.refundReviewStatus.${row.refundRequest.status.toLowerCase()}`) }}</strong>
+              <span v-if="row.refundRequest.reason">{{ t('admin.refundReason') }}: {{ row.refundRequest.reason }}</span>
+              <span v-if="row.refundRequest.requestedAt">{{ t('admin.refundRequestedAt') }}: {{ formatDate(row.refundRequest.requestedAt) }}</span>
+              <span v-if="row.refundRequest.reviewNote">{{ t('admin.refundReviewNote') }}: {{ row.refundRequest.reviewNote }}</span>
+            </div>
+            <span v-else class="muted-text">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('admin.action')" width="220" fixed="right">
+          <template #default="{ row }">
+            <template v-if="row.status === 'PENDING_REFUND'">
+              <el-button
+                link
+                type="primary"
+                :loading="operatingId === row.id"
+                :disabled="row.checkedInCount > 0"
+                @click="reviewRefund(row, 'approve')"
+              >
+                {{ t('admin.approveRefund') }}
+              </el-button>
+              <el-button
+                link
+                type="danger"
+                :loading="operatingId === row.id"
+                @click="reviewRefund(row, 'reject')"
+              >
+                {{ t('admin.rejectRefund') }}
+              </el-button>
+            </template>
+            <template v-else>
+              <el-button
+                link
+                type="danger"
+                :loading="operatingId === row.id"
+                :disabled="row.status !== 'PAID' || row.checkedInCount > 0"
+                @click="handleRefund(row)"
+              >
+                {{ t('admin.refund') }}
+              </el-button>
+              <el-button
+                link
+                type="primary"
+                :loading="operatingId === row.id"
+                :disabled="row.status !== 'PAID' || row.checkedInCount >= row.ticketCount"
+                @click="handleCheckin(row)"
+              >
+                {{ t('admin.forceCheckin') }}
+              </el-button>
+            </template>
           </template>
         </el-table-column>
       </el-table>
@@ -239,6 +335,23 @@ const handleCheckin = async (row: AdminOrder) => {
 
 .sort-filter {
   width: 160px;
+}
+
+.refund-cell {
+  display: grid;
+  gap: 3px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+
+  strong {
+    color: var(--color-text-primary);
+    font-size: 13px;
+  }
+}
+
+.muted-text {
+  color: var(--color-text-muted);
 }
 
 .table-container {

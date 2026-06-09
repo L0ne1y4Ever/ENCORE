@@ -15,6 +15,11 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  */
 @Configuration
 public class SaTokenConfigure implements WebMvcConfigurer {
+    private final AdminAuditLogInterceptor adminAuditLogInterceptor;
+
+    public SaTokenConfigure(AdminAuditLogInterceptor adminAuditLogInterceptor) {
+        this.adminAuditLogInterceptor = adminAuditLogInterceptor;
+    }
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
@@ -36,5 +41,6 @@ public class SaTokenConfigure implements WebMvcConfigurer {
             SaRouter.match("/api/admin/**").check(r -> StpUtil.checkRoleOr("admin", "sysadmin"));
             SaRouter.match("/api/checkin/**").check(r -> StpUtil.checkRoleOr("checker", "admin", "sysadmin"));
         })).addPathPatterns("/**");
+        registry.addInterceptor(adminAuditLogInterceptor).addPathPatterns("/api/admin/**");
     }
 }

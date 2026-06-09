@@ -2,15 +2,18 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { getAdminDashboard } from '../../api/admin'
+import { downloadAdminDashboardCsv, getAdminDashboard } from '../../api/admin'
 import type { AdminDashboard } from '../../api/admin'
 import { subscribeToDashboardUpdates } from '../../api/adminRealtime'
 import type { RealtimeConnectionState } from '../../api/realtime'
+import { downloadBlob } from '../../utils/csv'
+import { formatMoney, toBaseAmount } from '../../utils/money'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const dashboard = ref<AdminDashboard | null>(null)
 const loading = ref(false)
+const exporting = ref(false)
 const realtimeState = ref<RealtimeConnectionState>('connecting')
 const realtimeRefreshing = ref(false)
 const realtimeNotice = ref<string | null>(null)
@@ -18,7 +21,7 @@ let disconnectDashboardRealtime: (() => void) | undefined
 let realtimeNoticeTimer: ReturnType<typeof setTimeout> | undefined
 let realtimeRefreshTimer: ReturnType<typeof setTimeout> | undefined
 
-const toNumber = (value: number | string | undefined | null) => Number(value || 0)
+const toNumber = toBaseAmount
 
 const showRealtimeNotice = (messageKey: string) => {
   realtimeNotice.value = messageKey
@@ -80,7 +83,7 @@ onBeforeUnmount(() => {
 })
 
 const formatAmount = (amount: number | string | undefined) => {
-  return `$${toNumber(amount).toFixed(2)}`
+  return formatMoney(amount, locale.value)
 }
 
 const formatPercent = (value: number | string | undefined) => {
@@ -96,6 +99,14 @@ const stats = computed(() => [
   { label: t('admin.ticketsSold'), value: String(dashboard.value?.ticketsSold ?? 0) },
   { label: t('admin.activeShows'), value: String(dashboard.value?.activeShows ?? 0) },
   { label: t('admin.avgAttendance'), value: formatPercent(dashboard.value?.avgAttendance) }
+])
+
+const financeSummary = computed(() => dashboard.value?.financeSummary)
+const financeStats = computed(() => [
+  { label: t('admin.salesRevenue'), value: formatAmount(financeSummary.value?.salesRevenue) },
+  { label: t('admin.refundAmount'), value: formatAmount(financeSummary.value?.refundAmount) },
+  { label: t('admin.netRevenue'), value: formatAmount(financeSummary.value?.netRevenue) },
+  { label: t('admin.pendingAmount'), value: formatAmount(financeSummary.value?.pendingAmount) }
 ])
 
 const trendRows = computed(() => dashboard.value?.salesTrend ?? [])
@@ -159,6 +170,19 @@ const ratioPercent = (value: number | string | undefined, max: number, minimum =
 }
 
 const topShowBarWidth = (value: number | string | undefined) => ratioPercent(value, topShowsMaxTickets.value, 6)
+
+const exportDashboard = async () => {
+  exporting.value = true
+  try {
+    const file = await downloadAdminDashboardCsv()
+    downloadBlob(file.blob, file.filename)
+    ElMessage.success(t('admin.exportDone'))
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : t('admin.exportFailed'))
+  } finally {
+    exporting.value = false
+  }
+}
 </script>
 
 <template>
@@ -178,6 +202,9 @@ const topShowBarWidth = (value: number | string | undefined) => ratioPercent(val
         <el-button type="primary" plain :loading="loading" @click="loadDashboard()">
           {{ t('admin.refresh') }}
         </el-button>
+        <el-button plain :loading="exporting" :disabled="!dashboard" @click="exportDashboard">
+          {{ t('admin.exportDashboard') }}
+        </el-button>
       </div>
     </div>
 
@@ -185,6 +212,19 @@ const topShowBarWidth = (value: number | string | undefined) => ratioPercent(val
       <div class="stat-card" v-for="stat in stats" :key="stat.label">
         <div class="stat-label">{{ stat.label }}</div>
         <div class="stat-value">{{ stat.value }}</div>
+      </div>
+    </div>
+
+    <div class="finance-summary">
+      <div class="summary-copy">
+        <strong>{{ t('admin.financeSnapshot') }}</strong>
+        <span>{{ t('admin.financePolicyHint') }}</span>
+      </div>
+      <div class="finance-summary-items">
+        <div v-for="item in financeStats" :key="item.label" class="finance-summary-item">
+          <span>{{ item.label }}</span>
+          <strong>{{ item.value }}</strong>
+        </div>
       </div>
     </div>
 
@@ -380,14 +420,17 @@ const topShowBarWidth = (value: number | string | undefined) => ratioPercent(val
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: var(--spacing-4);
+  gap: 0;
+  padding: 10px 0;
+  border-top: 1px solid rgba(240, 237, 232, 0.08);
+  border-bottom: 1px solid rgba(240, 237, 232, 0.08);
+  background: linear-gradient(180deg, rgba(240, 237, 232, 0.025), rgba(240, 237, 232, 0.006));
 
   @media (max-width: 1024px) {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 
-.stat-card,
 .chart-card,
 .summary-card {
   background-color: var(--color-bg-elevated);
@@ -396,24 +439,102 @@ const topShowBarWidth = (value: number | string | undefined) => ratioPercent(val
 }
 
 .stat-card {
-  padding: var(--spacing-5);
+  position: relative;
+  min-height: 76px;
+  padding: 12px 22px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: center;
+  border-right: 1px solid rgba(240, 237, 232, 0.07);
+
+  &:first-child {
+    padding-left: 18px;
+
+    &::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 17px;
+      bottom: 17px;
+      width: 2px;
+      border-radius: 2px;
+      background: var(--color-accent);
+    }
+  }
+
+  &:last-child {
+    border-right: 0;
+  }
 
   .stat-label {
     font-family: var(--font-family-sans);
-    font-size: 14px;
+    font-size: 12px;
+    line-height: 1.2;
     color: var(--color-text-secondary);
-    margin-bottom: var(--spacing-4);
+    margin-bottom: 8px;
   }
 
   .stat-value {
     font-family: var(--font-family-display);
-    font-size: 34px;
-    font-weight: 700;
+    font-size: clamp(24px, 2vw, 30px);
+    font-weight: 650;
     color: var(--color-text-primary);
     line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+  }
+
+  &:first-child .stat-value {
+    color: #f0c078;
+  }
+}
+
+.finance-summary {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.7fr) minmax(0, 1.3fr);
+  gap: var(--spacing-4);
+  align-items: center;
+  padding: var(--spacing-4) 0;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.summary-copy {
+  display: grid;
+  gap: 6px;
+
+  strong {
+    color: var(--color-text-primary);
+    font-size: 15px;
+  }
+
+  span {
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+}
+
+.finance-summary-items {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--spacing-4);
+}
+
+.finance-summary-item {
+  display: grid;
+  gap: 8px;
+
+  span {
+    color: var(--color-text-secondary);
+    font-size: 12px;
+  }
+
+  strong {
+    font-family: var(--font-family-display);
+    font-size: 24px;
+    line-height: 1;
+    color: var(--color-text-primary);
   }
 }
 
@@ -709,7 +830,9 @@ const topShowBarWidth = (value: number | string | undefined) => ratioPercent(val
   }
 
   .stats-grid,
-  .summary-grid {
+  .summary-grid,
+  .finance-summary,
+  .finance-summary-items {
     grid-template-columns: 1fr;
   }
 }

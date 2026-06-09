@@ -5,7 +5,10 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.encore.common.ErrorCode;
 import com.encore.dto.CreateOrderRequest;
 import com.encore.dto.OrderResponse;
+import com.encore.dto.RefundOrderRequest;
+import com.encore.dto.RefundRequestSummary;
 import com.encore.dto.TicketItemResponse;
+import com.encore.entity.RefundRequest;
 import com.encore.entity.ScheduleSeat;
 import com.encore.entity.ShowEntity;
 import com.encore.entity.ShowSchedule;
@@ -15,6 +18,7 @@ import com.encore.entity.ScheduleAreaInventory;
 import com.encore.entity.UserAccount;
 import com.encore.entity.VenueArea;
 import com.encore.exception.BusinessException;
+import com.encore.mapper.RefundRequestMapper;
 import com.encore.mapper.ScheduleSeatMapper;
 import com.encore.mapper.ShowMapper;
 import com.encore.mapper.ShowScheduleMapper;
@@ -54,6 +58,7 @@ public class OrderService {
     private final ShowScheduleMapper showScheduleMapper;
     private final ShowMapper showMapper;
     private final UserAccountMapper userAccountMapper;
+    private final RefundRequestMapper refundRequestMapper;
 
     public OrderService(
             TicketOrderMapper ticketOrderMapper,
@@ -66,7 +71,8 @@ public class OrderService {
             VenueAreaMapper venueAreaMapper,
             ShowScheduleMapper showScheduleMapper,
             ShowMapper showMapper,
-            UserAccountMapper userAccountMapper
+            UserAccountMapper userAccountMapper,
+            RefundRequestMapper refundRequestMapper
     ) {
         this.ticketOrderMapper = ticketOrderMapper;
         this.ticketItemMapper = ticketItemMapper;
@@ -79,6 +85,7 @@ public class OrderService {
         this.showScheduleMapper = showScheduleMapper;
         this.showMapper = showMapper;
         this.userAccountMapper = userAccountMapper;
+        this.refundRequestMapper = refundRequestMapper;
     }
 
     @Transactional
@@ -369,11 +376,19 @@ public class OrderService {
 
     @Transactional
     public OrderResponse refundOrder(String orderId) {
+        return refundOrder(orderId, null);
+    }
+
+    @Transactional
+    public OrderResponse refundOrder(String orderId, RefundOrderRequest request) {
         TicketOrder order = getOrder(orderId);
         ensureOrderOwner(order);
         expireIfNeeded(order);
         order = getOrder(orderId);
         if ("REFUNDED".equals(order.getStatus())) {
+            return toOrderResponse(order);
+        }
+        if ("PENDING_REFUND".equals(order.getStatus())) {
             return toOrderResponse(order);
         }
         if (!"PAID".equals(order.getStatus())) {
@@ -384,14 +399,23 @@ public class OrderService {
             throw new BusinessException(ErrorCode.CONFLICT, "场次信息异常，无法自助退票");
         }
         LocalDateTime refundDeadline = schedule.getStartTime().minus(SELF_SERVICE_REFUND_DEADLINE);
-        if (!LocalDateTime.now().isBefore(refundDeadline)) {
-            throw new BusinessException(ErrorCode.CONFLICT, "开演前 2 小时内不可自助退票，请联系管理员处理");
-        }
         List<TicketItem> tickets = listTickets(orderId);
         if (tickets.stream().anyMatch(ticket -> "CHECKED_IN".equals(ticket.getStatus()))) {
             throw new BusinessException(ErrorCode.CONFLICT, "已核销票据不可退票");
         }
-        markRefunded(order, tickets, "USER_REFUNDED");
+        String reason = cleanRefundText(request == null ? null : request.reason());
+        if (LocalDateTime.now().isBefore(refundDeadline)) {
+            createRefundRequest(order, "APPROVED", "USER_AUTO", reason, null, null);
+            markRefunded(order, tickets, "USER_REFUNDED");
+        } else {
+            if (findPendingRefundRequest(order.getId()) == null) {
+                createRefundRequest(order, "PENDING", "USER_REVIEW", reason, null, null);
+            }
+            order.setStatus("PENDING_REFUND");
+            order.setUpdatedAt(LocalDateTime.now());
+            ticketOrderMapper.updateById(order);
+            dashboardRefreshPublisher.publish("ORDER_REFUND_REQUESTED", order.getId());
+        }
         return toOrderResponse(getOrder(orderId));
     }
 
@@ -401,6 +425,76 @@ public class OrderService {
             throw new BusinessException(ErrorCode.NOT_FOUND, "订单不存在");
         }
         return order;
+    }
+
+    private RefundRequest findPendingRefundRequest(String orderId) {
+        List<RefundRequest> rows = refundRequestMapper.selectList(new LambdaQueryWrapper<RefundRequest>()
+                .eq(RefundRequest::getOrderId, orderId)
+                .eq(RefundRequest::getStatus, "PENDING")
+                .orderByDesc(RefundRequest::getRequestedAt));
+        return rows == null || rows.isEmpty() ? null : rows.get(0);
+    }
+
+    private RefundRequest latestRefundRequest(String orderId) {
+        List<RefundRequest> rows = refundRequestMapper.selectList(new LambdaQueryWrapper<RefundRequest>()
+                .eq(RefundRequest::getOrderId, orderId)
+                .orderByDesc(RefundRequest::getRequestedAt));
+        return rows == null || rows.isEmpty() ? null : rows.get(0);
+    }
+
+    private RefundRequest createRefundRequest(
+            TicketOrder order,
+            String status,
+            String source,
+            String reason,
+            String reviewNote,
+            UserAccount reviewer
+    ) {
+        LocalDateTime now = LocalDateTime.now();
+        RefundRequest request = new RefundRequest();
+        request.setId("rr-" + UUID.randomUUID().toString().replace("-", "").substring(0, 18));
+        request.setOrderId(order.getId());
+        request.setUserId(order.getUserId());
+        request.setStatus(status);
+        request.setSource(source);
+        request.setReason(cleanRefundText(reason));
+        request.setReviewNote(cleanRefundText(reviewNote));
+        if (reviewer != null) {
+            request.setReviewerId(reviewer.getId());
+            request.setReviewerUsername(reviewer.getUsername());
+        }
+        request.setRequestedAt(now);
+        request.setReviewedAt("PENDING".equals(status) ? null : now);
+        request.setUpdatedAt(now);
+        refundRequestMapper.insert(request);
+        return request;
+    }
+
+    private String cleanRefundText(String value) {
+        if (value == null) {
+            return null;
+        }
+        String cleaned = value.trim();
+        if (cleaned.isEmpty()) {
+            return null;
+        }
+        return cleaned.length() > 500 ? cleaned.substring(0, 500) : cleaned;
+    }
+
+    private RefundRequestSummary toRefundSummary(RefundRequest request) {
+        if (request == null) {
+            return null;
+        }
+        return new RefundRequestSummary(
+                request.getId(),
+                request.getStatus(),
+                request.getSource(),
+                request.getReason(),
+                request.getReviewNote(),
+                request.getReviewerUsername(),
+                request.getRequestedAt(),
+                request.getReviewedAt()
+        );
     }
 
     private void ensureCanViewOrder(TicketOrder order) {
@@ -462,9 +556,11 @@ public class OrderService {
 
     private void markRefunded(TicketOrder order, List<TicketItem> tickets, String reason) {
         order.setStatus("REFUNDED");
+        order.setUpdatedAt(LocalDateTime.now());
         ticketOrderMapper.updateById(order);
         for (TicketItem ticket : tickets) {
             ticket.setStatus("VOID");
+            ticket.setUpdatedAt(LocalDateTime.now());
             ticketItemMapper.updateById(ticket);
         }
         boolean isZoned = !tickets.isEmpty() && tickets.get(0).getAreaInventoryId() != null;
@@ -634,6 +730,7 @@ public class OrderService {
                 order.getStatus(),
                 order.getCreatedAt(),
                 order.getExpiresAt(),
+                toRefundSummary(latestRefundRequest(order.getId())),
                 tickets
         );
     }

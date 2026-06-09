@@ -3,6 +3,7 @@ package com.encore.controller;
 import com.encore.common.ApiResponse;
 import com.encore.dto.CreateOrderRequest;
 import com.encore.dto.OrderResponse;
+import com.encore.dto.RefundOrderRequest;
 import com.encore.service.OrderService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -49,7 +50,10 @@ public class OrderController {
     }
 
     @PostMapping("/{id}/refund")
-    public ApiResponse<OrderResponse> refundOrder(@PathVariable String id) {
-        return ApiResponse.ok(orderService.refundOrder(id));
+    public ApiResponse<OrderResponse> refundOrder(
+            @PathVariable String id,
+            @RequestBody(required = false) RefundOrderRequest request
+    ) {
+        return ApiResponse.ok(orderService.refundOrder(id, request));
     }
 }

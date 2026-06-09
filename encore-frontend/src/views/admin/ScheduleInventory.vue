@@ -16,9 +16,10 @@ import type {
   AdminScheduleInventorySeat,
   SeatStatus
 } from '../../api/admin'
+import { formatMoney } from '../../utils/money'
 
 const route = useRoute()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const scheduleId = computed(() => route.params.id as string)
 const inventory = ref<AdminScheduleInventory | null>(null)
@@ -74,7 +75,7 @@ onBeforeUnmount(() => {
   }
 })
 
-const money = (value: number | string) => Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })
+const money = (value: number | string) => formatMoney(value, locale.value)
 
 const seatCanToggle = (seat: AdminScheduleInventorySeat) => {
   return seat.status === 'AVAILABLE' || seat.status === 'DISABLED'

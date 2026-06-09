@@ -2,6 +2,7 @@ package com.encore.service;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.encore.dto.OrderResponse;
+import com.encore.entity.RefundRequest;
 import com.encore.entity.ScheduleSeat;
 import com.encore.entity.ShowSchedule;
 import com.encore.entity.TicketItem;
@@ -9,6 +10,7 @@ import com.encore.entity.TicketOrder;
 import com.encore.exception.BusinessException;
 import com.encore.mapper.ScheduleSeatMapper;
 import com.encore.mapper.ScheduleAreaInventoryMapper;
+import com.encore.mapper.RefundRequestMapper;
 import com.encore.mapper.ShowMapper;
 import com.encore.mapper.ShowScheduleMapper;
 import com.encore.mapper.TicketItemMapper;
@@ -28,7 +30,9 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -56,6 +60,8 @@ class OrderServiceTest {
     private ShowMapper showMapper;
     @Mock
     private UserAccountMapper userAccountMapper;
+    @Mock
+    private RefundRequestMapper refundRequestMapper;
 
     @Test
     void simulatePaymentPublishesSoldEvent() {
@@ -194,6 +200,40 @@ class OrderServiceTest {
     }
 
     @Test
+    void lateRefundRequestBecomesPendingReviewWithoutReleasingSeat() {
+        OrderService service = createService();
+        TicketOrder order = pendingOrder(LocalDateTime.now().plusMinutes(10));
+        order.setStatus("PAID");
+        order.setPaidAt(LocalDateTime.now().minusMinutes(5));
+        TicketItem ticket = ticket();
+        ticket.setStatus("UNUSED");
+        ShowSchedule schedule = new ShowSchedule();
+        schedule.setId("sch-1");
+        schedule.setStartTime(LocalDateTime.now().plusMinutes(90));
+        schedule.setTheaterName("Main Hall");
+
+        when(ticketOrderMapper.selectById("ord-1")).thenReturn(order);
+        when(ticketItemMapper.selectList(any())).thenReturn(List.of(ticket));
+        when(showScheduleMapper.selectById("sch-1")).thenReturn(schedule);
+
+        OrderResponse response;
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-1");
+            response = service.refundOrder("ord-1");
+        }
+
+        assertThat(response.status()).isEqualTo("PENDING_REFUND");
+        assertThat(ticket.getStatus()).isEqualTo("UNUSED");
+        verify(refundRequestMapper).insert(argThat((RefundRequest request) ->
+                "ord-1".equals(request.getOrderId())
+                        && "PENDING".equals(request.getStatus())
+                        && "USER_REVIEW".equals(request.getSource())
+        ));
+        verify(seatStatusPublisher, never()).publishSeatStatus(any(), any(), any(), any());
+        verify(dashboardRefreshPublisher).publish("ORDER_REFUND_REQUESTED", "ord-1");
+    }
+
+    @Test
     void getOrderDetailRejectsOtherUserOrder() {
         OrderService service = createService();
         TicketOrder order = pendingOrder(LocalDateTime.now().plusMinutes(10));
@@ -222,7 +262,8 @@ class OrderServiceTest {
                 venueAreaMapper,
                 showScheduleMapper,
                 showMapper,
-                userAccountMapper
+                userAccountMapper,
+                refundRequestMapper
         );
     }
 

@@ -5,8 +5,18 @@
   --admin-line: rgba(240, 237, 232, 0.09);
   --admin-line-strong: rgba(240, 237, 232, 0.16);
   --admin-accent-soft: rgba(200, 149, 90, 0.1);
+  --admin-font-page-title: 22px;
+  --admin-font-page-copy: 13px;
+  --admin-font-panel-title: 18px;
+  --admin-font-body: 13px;
+  --admin-font-meta: 12px;
+  --admin-font-control: 13px;
+  --admin-font-kpi: 20px;
+  --admin-font-money: 22px;
+  --admin-font-hero-metric: 34px;
 
   background: #080808;
+  font-size: var(--admin-font-body);
 
   .content-area .top-bar {
     min-height: 72px;
@@ -22,8 +32,9 @@
     }
 
     h1 {
-      font-size: 22px;
-      font-weight: 700;
+      font-size: var(--admin-font-page-title) !important;
+      font-weight: 700 !important;
+      line-height: 1.2 !important;
     }
   }
 
@@ -55,7 +66,7 @@
     margin: 0 !important;
     max-width: 760px;
     color: var(--color-text-secondary);
-    font-size: 13px !important;
+    font-size: var(--admin-font-page-copy) !important;
     line-height: 1.55;
   }
 
@@ -120,7 +131,7 @@
   .stat-cell span {
     margin: 0 0 3px !important;
     color: var(--color-text-secondary);
-    font-size: 12px !important;
+    font-size: var(--admin-font-meta) !important;
     line-height: 1.35;
   }
 
@@ -130,7 +141,7 @@
   .stat-cell strong {
     margin: 0 !important;
     color: var(--color-text-primary);
-    font-size: 20px !important;
+    font-size: var(--admin-font-kpi) !important;
     font-weight: 650;
     line-height: 1.15;
     font-variant-numeric: tabular-nums;
@@ -169,6 +180,93 @@
     border-bottom: 1px solid var(--admin-line);
   }
 
+  .panel-head h2,
+  .block-head h2,
+  .block-head h3,
+  .detail-head h2,
+  .detail-head h3,
+  .summary-header h3,
+  .chart-card h3,
+  .workspace-panel h2,
+  .workspace-panel h3,
+  .form-section h3 {
+    font-size: var(--admin-font-panel-title) !important;
+    font-weight: 650 !important;
+    line-height: 1.25 !important;
+    letter-spacing: 0 !important;
+  }
+
+  .panel-head p,
+  .block-head p,
+  .detail-head p,
+  .summary-header span,
+  .chart-card p,
+  .workspace-panel p,
+  .form-section p {
+    color: var(--color-text-secondary);
+    font-size: var(--admin-font-body) !important;
+    line-height: 1.5 !important;
+  }
+
+  .summary-copy strong {
+    font-size: 15px !important;
+    font-weight: 650 !important;
+    line-height: 1.3 !important;
+  }
+
+  .summary-copy span,
+  .chart-legend,
+  .top-show-main small,
+  .top-show-head span,
+  .show-subtitle,
+  .show-tags span,
+  .show-meta,
+  .time-stack span,
+  .ticket-stats,
+  .status-stack,
+  .venue-cell span,
+  .schedule-chip small,
+  .day-head span,
+  .axis-label,
+  .date-label,
+  .chart-summary,
+  .empty-chart {
+    font-size: var(--admin-font-meta) !important;
+    line-height: 1.45 !important;
+  }
+
+  .summary-metric span,
+  .finance-summary-item span,
+  .filter-context span,
+  .filter-context-metric span,
+  .ranking-summary span {
+    font-size: var(--admin-font-meta) !important;
+    line-height: 1.35 !important;
+  }
+
+  .summary-metric strong,
+  .finance-summary-item strong,
+  .filter-context-metric strong,
+  .ranking-summary strong {
+    font-size: var(--admin-font-money) !important;
+    font-weight: 650 !important;
+    line-height: 1.05 !important;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .summary-title strong {
+    font-size: var(--admin-font-hero-metric) !important;
+    font-weight: 700 !important;
+    line-height: 1 !important;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .summary-title span,
+  .summary-title p {
+    font-size: var(--admin-font-body) !important;
+    line-height: 1.5 !important;
+  }
+
   .navigator-item,
   .schedule-chip,
   .area-shape,
@@ -195,10 +293,19 @@
 
   .el-button {
     border-radius: 4px;
+    font-size: var(--admin-font-control);
+    font-weight: 500;
+
+    &:not(.is-link) {
+      min-height: 34px;
+    }
   }
 
   .el-button.is-link {
     padding: 0 4px;
+    min-height: auto;
+    font-size: var(--admin-font-body);
+    line-height: 1.35;
     text-decoration: underline;
     text-decoration-color: rgba(240, 237, 232, 0.22);
     text-underline-offset: 3px;
@@ -210,6 +317,7 @@
     background: rgba(255, 255, 255, 0.045);
     border-color: var(--admin-line-strong);
     color: rgba(240, 237, 232, 0.78);
+    font-size: var(--admin-font-meta);
     font-weight: 500;
   }
 
@@ -241,10 +349,22 @@
     --el-table-border-color: var(--admin-line);
     --el-table-header-bg-color: rgba(255, 255, 255, 0.025);
     --el-table-row-hover-bg-color: rgba(255, 255, 255, 0.045);
-    font-size: 13px;
+    font-size: var(--admin-font-body) !important;
 
     .el-table__cell {
       padding: 10px 0;
+    }
+
+    th.el-table__cell {
+      font-size: var(--admin-font-meta) !important;
+      font-weight: 600 !important;
+      line-height: 1.35;
+    }
+
+    td.el-table__cell,
+    .cell {
+      font-size: var(--admin-font-body) !important;
+      line-height: 1.45;
     }
   }
 
@@ -254,6 +374,92 @@
     border-radius: 4px;
     box-shadow: 0 0 0 1px var(--admin-line) inset;
     background: rgba(255, 255, 255, 0.035);
+  }
+
+  .el-input__inner,
+  .el-select__placeholder,
+  .el-select__selected-item,
+  .el-textarea__inner,
+  .el-date-editor,
+  .el-range-input,
+  .el-range-separator {
+    font-size: var(--admin-font-control) !important;
+  }
+
+  .view-tab,
+  .ranking-tabs button,
+  .workspace-tabs .el-tabs__item {
+    font-size: var(--admin-font-control) !important;
+    font-weight: 500 !important;
+    line-height: 1.2 !important;
+  }
+
+  .ranking-tabs button {
+    height: 32px !important;
+    padding: 0 10px !important;
+  }
+
+  .ranking-panel .panel-head {
+    align-items: center !important;
+  }
+
+  .ranking-tools {
+    align-items: center !important;
+  }
+
+  .rank-badge {
+    font-size: var(--admin-font-body) !important;
+    font-weight: 650 !important;
+  }
+
+  .summary-item .label {
+    font-size: var(--admin-font-body) !important;
+  }
+
+  .summary-item .value,
+  .seat-summary-block strong {
+    font-size: var(--admin-font-money) !important;
+    font-weight: 650 !important;
+    line-height: 1.05 !important;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .show-title,
+  .top-show-head strong,
+  .schedule-show-cell .show-title,
+  .venue-cell strong,
+  .time-stack strong,
+  .schedule-chip strong,
+  .day-head strong,
+  .navigator-item strong,
+  .finance-show-option strong {
+    font-size: var(--admin-font-body) !important;
+    font-weight: 650 !important;
+    line-height: 1.4 !important;
+  }
+
+  .el-form-item__label {
+    color: var(--color-text-secondary);
+    font-size: var(--admin-font-body) !important;
+    font-weight: 500;
+    line-height: 1.35 !important;
+  }
+
+  .el-dialog__title,
+  .el-drawer__title {
+    color: var(--color-text-primary);
+    font-size: var(--admin-font-panel-title) !important;
+    font-weight: 650 !important;
+    line-height: 1.25 !important;
+  }
+
+  .field-hint,
+  .sync-hint,
+  .help-text,
+  .empty-hint {
+    color: var(--color-text-secondary);
+    font-size: var(--admin-font-body) !important;
+    line-height: 1.55 !important;
   }
 
   .el-dialog {

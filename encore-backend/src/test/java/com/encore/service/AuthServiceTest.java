@@ -45,19 +45,19 @@ class AuthServiceTest {
         try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
             stp.when(StpUtil::getTokenInfo).thenReturn(tokenInfo);
 
-            LoginResponse response = service.register(new RegisterRequest(" test ", "123456", " Tester "));
+            LoginResponse response = service.register(new RegisterRequest(" test_user ", "Secure123", " Tester "));
 
             assertThat(response.tokenName()).isEqualTo("satoken");
             assertThat(response.tokenValue()).isEqualTo("token-1");
-            assertThat(response.user().username()).isEqualTo("test");
+            assertThat(response.user().username()).isEqualTo("test_user");
             assertThat(response.user().displayName()).isEqualTo("Tester");
             stp.verify(() -> StpUtil.login(response.user().id()));
         }
 
         verify(userAccountMapper).insert(userCaptor.capture());
         UserAccount saved = userCaptor.getValue();
-        assertThat(saved.getUsername()).isEqualTo("test");
-        assertThat(passwordEncoder.matches("123456", saved.getPassword())).isTrue();
+        assertThat(saved.getUsername()).isEqualTo("test_user");
+        assertThat(passwordEncoder.matches("Secure123", saved.getPassword())).isTrue();
         assertThat(saved.getRole()).isEqualTo("user");
         assertThat(saved.getStatus()).isEqualTo("ACTIVE");
     }
@@ -67,9 +67,66 @@ class AuthServiceTest {
         AuthService service = new AuthService(userAccountMapper, passwordEncoder);
         when(userAccountMapper.selectOne(any())).thenReturn(user("u-1", "test", "user", "ACTIVE"));
 
-        assertThatThrownBy(() -> service.register(new RegisterRequest("test", "123456", "Tester")))
+        assertThatThrownBy(() -> service.register(new RegisterRequest("test", "Secure123", "Tester")))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("账号已存在");
+
+        verify(userAccountMapper, never()).insert(any(UserAccount.class));
+    }
+
+    @Test
+    void registerRejectsInvalidUsernameAndReservedName() {
+        AuthService service = new AuthService(userAccountMapper, passwordEncoder);
+
+        assertThatThrownBy(() -> service.register(new RegisterRequest("1user", "Secure123", "Tester")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("账号需为 4 到 20 位小写字母、数字或下划线，并以小写字母开头");
+        assertThatThrownBy(() -> service.register(new RegisterRequest("测试账号", "Secure123", "Tester")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("账号需为 4 到 20 位小写字母、数字或下划线，并以小写字母开头");
+        assertThatThrownBy(() -> service.register(new RegisterRequest("admin", "Secure123", "Tester")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("账号为系统保留名称，请更换");
+
+        verify(userAccountMapper, never()).insert(any(UserAccount.class));
+    }
+
+    @Test
+    void registerRejectsWeakPassword() {
+        AuthService service = new AuthService(userAccountMapper, passwordEncoder);
+
+        assertThatThrownBy(() -> service.register(new RegisterRequest("valid_user", "short1", "Tester")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("密码长度需为 8 到 64 个字符");
+        assertThatThrownBy(() -> service.register(new RegisterRequest("valid_user", "password", "Tester")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("密码需同时包含字母和数字");
+        assertThatThrownBy(() -> service.register(new RegisterRequest("valid_user", "12345678", "Tester")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("密码需同时包含字母和数字");
+        assertThatThrownBy(() -> service.register(new RegisterRequest("valid_user", "abc 12345", "Tester")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("密码不能包含空格或换行");
+        assertThatThrownBy(() -> service.register(new RegisterRequest("valid_user", "valid_user123", "Tester")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("密码不能包含账号");
+        assertThatThrownBy(() -> service.register(new RegisterRequest("valid_user", "pass1234", "Tester")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("密码过于常见，请更换更安全的密码");
+
+        verify(userAccountMapper, never()).insert(any(UserAccount.class));
+    }
+
+    @Test
+    void registerRejectsInvalidDisplayName() {
+        AuthService service = new AuthService(userAccountMapper, passwordEncoder);
+
+        assertThatThrownBy(() -> service.register(new RegisterRequest("valid_user", "Secure123", "A")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("昵称需为 2 到 32 个字符");
+        assertThatThrownBy(() -> service.register(new RegisterRequest("valid_user", "Secure123", "Bad\nName")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("昵称不能包含控制字符");
 
         verify(userAccountMapper, never()).insert(any(UserAccount.class));
     }

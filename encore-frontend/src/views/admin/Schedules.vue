@@ -26,8 +26,11 @@ import type {
   ScheduleStatus,
   UpdateAdminSchedulePayload
 } from '../../api/admin'
+import { formatMoneyRange } from '../../utils/money'
+import { adminCategoryLabel, adminPublishStatusLabel } from '../../utils/adminLabels'
+import { formatLocaleDateTime, formatLocaleWeekday } from '../../utils/date'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const router = useRouter()
 
 type DialogMode = 'create' | 'edit'
@@ -102,6 +105,8 @@ const toDateTimeValue = (date: Date) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:00`
 }
 
+const formatPriceRange = (value: string) => formatMoneyRange(value, locale.value) || value
+
 const defaultStartTime = () => {
   const date = new Date()
   date.setDate(date.getDate() + 7)
@@ -137,7 +142,7 @@ const emptyForm = (): ScheduleForm => {
     saleEndTime: toDateTimeValue(start),
     status: 'PREPARING',
     publishStatus: 'DRAFT',
-    priceRange: '$50 - $150',
+    priceRange: '50 - 150',
     ticketMode: layout?.ticketMode || 'SEATED',
     seatRows: 10,
     seatCols: 15,
@@ -227,7 +232,7 @@ const calendarGroups = computed(() => {
   return Array.from(groups.entries())
     .map(([date, rows]) => ({
       date,
-      weekday: new Date(date).toLocaleDateString(undefined, { weekday: 'short' }),
+      weekday: formatLocaleWeekday(date, locale.value),
       rows: rows.sort((left, right) => left.startTime.localeCompare(right.startTime))
     }))
     .sort((left, right) => left.date.localeCompare(right.date))
@@ -262,8 +267,7 @@ const loadSchedules = async () => {
 onMounted(loadSchedules)
 
 const formatDate = (dateStr?: string | null) => {
-  if (!dateStr) return '-'
-  return new Date(dateStr).toLocaleString()
+  return formatLocaleDateTime(dateStr, locale.value)
 }
 
 const statusFlow: ScheduleStatus[] = ['DRAFT', 'PUBLISHED', 'PREPARING', 'ON_SALE', 'SOLD_OUT']
@@ -276,6 +280,14 @@ const nextStatus = (status: ScheduleStatus): ScheduleStatus => {
 
 const statusLabel = (status: ScheduleStatus) => {
   return t(`admin.scheduleStatusMap.${scheduleStatusKey[status]}`)
+}
+
+const categoryLabel = (category?: string | null) => adminCategoryLabel(t, category)
+
+const publishStatusLabel = (status?: string | null) => adminPublishStatusLabel(t, status)
+
+const layoutOptionLabel = (layout: AdminLayout) => {
+  return `${layout.name} · v${layout.version} · ${publishStatusLabel(layout.status)}`
 }
 
 const statusTagType = (status: ScheduleStatus) => {
@@ -527,10 +539,26 @@ const openInventory = (row: AdminSchedule) => {
 
     <div class="schedule-workspace">
       <div class="schedule-toolbar">
-        <el-radio-group v-model="viewMode" size="small" class="view-switcher">
-          <el-radio-button label="list">{{ t('admin.listView') }}</el-radio-button>
-          <el-radio-button label="calendar">{{ t('admin.calendarView') }}</el-radio-button>
-        </el-radio-group>
+        <div class="view-switcher" role="tablist" :aria-label="t('admin.schedules')">
+          <button
+            type="button"
+            class="view-tab"
+            :class="{ active: viewMode === 'list' }"
+            :aria-pressed="viewMode === 'list'"
+            @click="viewMode = 'list'"
+          >
+            {{ t('admin.listView') }}
+          </button>
+          <button
+            type="button"
+            class="view-tab"
+            :class="{ active: viewMode === 'calendar' }"
+            :aria-pressed="viewMode === 'calendar'"
+            @click="viewMode = 'calendar'"
+          >
+            {{ t('admin.calendarView') }}
+          </button>
+        </div>
         <div class="toolbar-fields">
           <el-input
             v-model="searchKeyword"
@@ -555,7 +583,7 @@ const openInventory = (row: AdminSchedule) => {
             :end-placeholder="t('admin.dateEnd')"
           />
           <el-select v-model="categoryFilter" class="compact-filter" clearable :placeholder="t('admin.allCategories')">
-            <el-option v-for="category in categoryOptions" :key="category" :label="category" :value="category" />
+            <el-option v-for="category in categoryOptions" :key="category" :label="categoryLabel(category)" :value="category" />
           </el-select>
           <el-select v-model="modeFilter" class="compact-filter" clearable :placeholder="t('admin.allTicketModes')">
             <el-option value="SEATED" :label="t('ticketMode.seated')" />
@@ -619,7 +647,7 @@ const openInventory = (row: AdminSchedule) => {
             <div class="schedule-show-cell">
               <div class="show-title">{{ row.showTitle }}</div>
               <div class="show-meta">
-                <el-tag size="small" effect="plain">{{ row.category || t('admin.uncategorized') }}</el-tag>
+                <el-tag size="small" effect="plain">{{ categoryLabel(row.category) }}</el-tag>
                 <span>#{{ row.id }}</span>
               </div>
             </div>
@@ -663,12 +691,14 @@ const openInventory = (row: AdminSchedule) => {
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="priceRange" :label="t('admin.priceRange')" width="130" />
+        <el-table-column :label="t('admin.priceRange')" width="130">
+          <template #default="{ row }">{{ formatPriceRange(row.priceRange) }}</template>
+        </el-table-column>
         <el-table-column :label="t('admin.statusAndPublish')" width="150">
           <template #default="{ row }">
             <div class="status-stack">
               <el-tag :type="statusTagType(row.status)" effect="plain">{{ statusLabel(row.status) }}</el-tag>
-              <el-tag :type="publishTagType(row.publishStatus)" effect="plain">{{ row.publishStatus }}</el-tag>
+              <el-tag :type="publishTagType(row.publishStatus)" effect="plain">{{ publishStatusLabel(row.publishStatus) }}</el-tag>
             </div>
           </template>
         </el-table-column>
@@ -742,7 +772,7 @@ const openInventory = (row: AdminSchedule) => {
                 <el-option
                   v-for="layout in layoutsForSelectedHall"
                   :key="layout.id"
-                  :label="`${layout.name} · v${layout.version} · ${layout.status}`"
+                  :label="layoutOptionLabel(layout)"
                   :value="layout.id"
                   :disabled="layout.status !== 'PUBLISHED'"
                 />
@@ -871,25 +901,31 @@ const openInventory = (row: AdminSchedule) => {
 
 .metric-strip {
   margin-bottom: var(--spacing-4);
-  display: grid;
-  grid-template-columns: repeat(6, minmax(116px, 1fr));
-  gap: var(--spacing-3);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .metric-card {
-  min-width: 0;
-  min-height: 76px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-elevated);
-  padding: var(--spacing-3);
-  display: grid;
-  align-content: center;
-  gap: 4px;
+  position: relative;
+  min-width: 128px;
+  min-height: 58px;
+  border: 0;
+  border-right: 1px solid var(--color-border);
+  border-radius: 0;
+  background: transparent;
+  padding: 10px 18px 10px 0;
+  margin-right: 18px;
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
   color: var(--color-text-primary);
   cursor: pointer;
   text-align: left;
-  transition: border-color 160ms ease, background-color 160ms ease;
+  transition: color 160ms ease;
 
   span {
     color: var(--color-text-secondary);
@@ -899,45 +935,99 @@ const openInventory = (row: AdminSchedule) => {
 
   strong {
     font-family: var(--font-family-sans);
-    font-size: 24px;
+    font-size: 20px;
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
     line-height: 1.1;
   }
 
+  &::after {
+    position: absolute;
+    right: 18px;
+    bottom: -1px;
+    left: 0;
+    height: 2px;
+    background: transparent;
+    content: '';
+  }
+
   &:hover,
   &.active {
-    border-color: rgba(200, 149, 90, 0.38);
-    background: rgba(200, 149, 90, 0.1);
+    background: transparent;
+
+    span,
+    strong {
+      color: var(--color-text-primary);
+    }
+  }
+
+  &.active::after {
+    background: var(--color-accent);
   }
 
   &.passive {
     cursor: default;
 
     &:hover {
-      border-color: var(--color-border);
-      background: var(--color-bg-elevated);
+      background: transparent;
     }
   }
 }
 
 .schedule-workspace {
   min-width: 0;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background-color: var(--color-bg-elevated);
-  padding: var(--spacing-4);
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+  padding: 0;
 }
 
 .schedule-toolbar {
   margin-bottom: var(--spacing-4);
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--spacing-3);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--spacing-4);
+  padding: var(--spacing-3) 0;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .view-switcher {
-  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 40px;
+}
+
+.view-tab {
+  position: relative;
+  border: 0;
+  background: transparent;
+  padding: 0 0 8px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 160ms ease;
+
+  &::after {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 2px;
+    background: transparent;
+    content: '';
+  }
+
+  &:hover,
+  &.active {
+    color: var(--color-text-primary);
+  }
+
+  &.active::after {
+    background: var(--color-accent);
+  }
 }
 
 .toolbar-fields {
@@ -946,7 +1036,7 @@ const openInventory = (row: AdminSchedule) => {
   align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
-  gap: var(--spacing-2);
+  gap: 8px;
 }
 
 .search-input {
@@ -1258,12 +1348,11 @@ const openInventory = (row: AdminSchedule) => {
 
 @media (max-width: 1120px) {
   .metric-strip {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    row-gap: 4px;
   }
 
   .schedule-toolbar {
-    align-items: stretch;
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   .toolbar-fields {
@@ -1282,11 +1371,20 @@ const openInventory = (row: AdminSchedule) => {
   }
 
   .metric-strip {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+    flex-direction: column;
   }
 
-  .schedule-workspace {
-    padding: var(--spacing-3);
+  .metric-card {
+    width: 100%;
+    min-height: 42px;
+    border-right: 0;
+    margin-right: 0;
+    padding-right: 0;
+
+    &::after {
+      right: 0;
+    }
   }
 
   .view-switcher,

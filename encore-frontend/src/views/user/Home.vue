@@ -8,11 +8,12 @@ import type { RecommendedShow } from '../../api/show'
 import type { Show } from '../../mock/shows'
 import { mockShows } from '../../mock/shows'
 import { handlePosterError, lowestPriceLabel, posterImageSrc } from '../../utils/ticketing'
+import { formatMoney } from '../../utils/money'
 
 const router = useRouter()
 const shows = ref<Show[]>([])
 const recommendedShows = ref<RecommendedShow[]>([])
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 type DateFilter = 'all' | 'onSale' | 'comingSoon'
 
@@ -44,7 +45,7 @@ type PriceSource = {
 const formatNumericPrice = (value: string | number) => {
   const amount = Number(String(value).replace(/,/g, ''))
   if (!Number.isFinite(amount) || amount <= 0) return ''
-  return `￥${new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(amount)}`
+  return formatMoney(amount, locale.value)
 }
 
 const priceCandidateLabel = (value: string | number | null | undefined) => {
@@ -52,9 +53,32 @@ const priceCandidateLabel = (value: string | number | null | undefined) => {
   if (typeof value === 'number') return formatNumericPrice(value)
   const text = String(value).trim()
   if (!text) return ''
-  const fromRange = lowestPriceLabel(text)
+  const fromRange = lowestPriceLabel(text, locale.value)
   if (!fromRange) return ''
   return /^[\d,.]+$/.test(fromRange) ? formatNumericPrice(fromRange) : fromRange
+}
+
+const rawPriceFromSource = (source?: PriceSource | null) => {
+  if (!source) return ''
+  const candidates = [
+    source.priceRange,
+    source.price_range,
+    source.lowestPrice,
+    source.lowest_price,
+    source.minPrice,
+    source.min_price,
+    source.minimumPrice,
+    source.minimum_price,
+    source.basePrice,
+    source.base_price,
+    source.price
+  ]
+  for (const candidate of candidates) {
+    if (candidate == null) continue
+    const text = String(candidate).trim()
+    if (text) return text
+  }
+  return ''
 }
 
 const priceLabelFromSource = (source?: PriceSource | null) => {
@@ -99,7 +123,7 @@ const hydrateMissingPrices = async <T extends Show>(source: T[]) => {
     try {
       const schedules = await getShowSchedules(show.id)
       const price = (schedules || [])
-        .map(schedule => priceLabelFromSource(schedule as unknown as PriceSource))
+        .map(schedule => rawPriceFromSource(schedule as unknown as PriceSource))
         .find(Boolean)
       if (price) {
         priceByShow.set(show.id, price)
@@ -119,7 +143,7 @@ const withListPriceFallback = <T extends Show>(source: T[], list: Show[]) => {
   return source.map(show => {
     if (priceLabelFromSource(show)) return show
     const match = list.find(item => item.id === show.id)
-    const price = priceLabelFromSource(match)
+    const price = rawPriceFromSource(match)
     return price ? { ...show, priceRange: price } : show
   })
 }

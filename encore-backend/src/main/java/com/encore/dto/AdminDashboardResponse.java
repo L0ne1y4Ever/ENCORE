@@ -11,7 +11,8 @@ public record AdminDashboardResponse(
         BigDecimal avgAttendance,
         List<SalesTrendItem> salesTrend,
         List<TopShowItem> topShows,
-        CheckInSummary checkInSummary
+        CheckInSummary checkInSummary,
+        AdminBoxOfficeResponse.Summary financeSummary
 ) {
     public record SalesTrendItem(
             LocalDate date,

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { formatMoney } from '../utils/money'
 
 type SeatMapItem = {
   id: string
@@ -36,7 +37,7 @@ const emit = defineEmits<{
   (e: 'toggle', seat: SeatMapItem): void
 }>()
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const seatRow = (seat: SeatMapItem) => Number(seat.row ?? seat.rowNo ?? 0)
 const seatCol = (seat: SeatMapItem) => Number(seat.col ?? seat.colNo ?? 0)
@@ -69,7 +70,7 @@ const canToggle = (seat: SeatMapItem) => {
 
 const money = (value: unknown) => {
   if (value == null || value === '') return ''
-  return Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })
+  return formatMoney(value as number | string, locale.value)
 }
 
 const seatTitle = (seat: SeatMapItem) => {

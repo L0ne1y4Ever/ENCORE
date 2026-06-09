@@ -8,8 +8,10 @@ import {
   Film,
   Fold,
   Histogram,
+  Money,
   List,
   OfficeBuilding,
+  Operation,
   SwitchButton,
   UserFilled
 } from '@element-plus/icons-vue'
@@ -53,8 +55,10 @@ const menuItems = computed(() => {
     { path: '/admin/venues', label: t('admin.venueLayout'), icon: OfficeBuilding },
     { path: '/admin/schedules', label: t('admin.schedules'), icon: Calendar },
     { path: '/admin/orders', label: t('admin.orders'), icon: List },
+    { path: '/admin/finance', label: t('admin.finance'), icon: Money },
   ]
   if (authStore.currentUser?.role === 'sysadmin') {
+    items.push({ path: '/admin/audit-logs', label: t('admin.auditLogs'), icon: Operation })
     items.push({ path: '/admin/users', label: t('admin.staffUsers'), icon: UserFilled })
   }
   return items

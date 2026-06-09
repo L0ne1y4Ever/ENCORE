@@ -48,14 +48,11 @@ public class StaffAccountService {
     @Transactional
     public AdminStaffUserResponse createStaffUser(CreateStaffUserRequest request) {
         ensureSysadminRole();
-        String username = clean(request.username());
-        String password = clean(request.password());
-        String displayName = clean(request.displayName());
+        String username = CredentialPolicy.normalizeUsername(request.username());
+        String password = CredentialPolicy.validatePassword(request.password(), username);
+        String displayName = CredentialPolicy.normalizeDisplayName(request.displayName());
         String role = normalizeEditableRole(request.role());
         String status = normalizeStatus(request.status(), "ACTIVE");
-        validateUsername(username);
-        validatePassword(password);
-        validateDisplayName(displayName);
         if (findByUsername(username) != null) {
             throw new BusinessException(ErrorCode.CONFLICT, "账号已存在");
         }
@@ -79,8 +76,7 @@ public class StaffAccountService {
         ensureSysadminRole();
         UserAccount user = getUser(userId);
         ensureEditable(user);
-        String displayName = clean(request.displayName());
-        validateDisplayName(displayName);
+        String displayName = CredentialPolicy.normalizeDisplayName(request.displayName());
         user.setDisplayName(displayName);
         user.setRole(normalizeEditableRole(request.role()));
         user.setStatus(normalizeStatus(request.status(), user.getStatus()));
@@ -94,8 +90,7 @@ public class StaffAccountService {
         ensureSysadminRole();
         UserAccount user = getUser(userId);
         ensureEditable(user);
-        String password = clean(request.password());
-        validatePassword(password);
+        String password = CredentialPolicy.validatePassword(request.password(), user.getUsername());
         user.setPassword(passwordEncoder.encode(password));
         user.setUpdatedAt(LocalDateTime.now());
         userAccountMapper.updateById(user);
@@ -147,24 +142,6 @@ public class StaffAccountService {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "账号状态仅支持 ACTIVE 或 INACTIVE");
         }
         return normalized;
-    }
-
-    private void validateUsername(String username) {
-        if (!StringUtils.hasText(username) || username.length() < 3 || username.length() > 32) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "账号长度需为 3 到 32 个字符");
-        }
-    }
-
-    private void validatePassword(String password) {
-        if (!StringUtils.hasText(password) || password.length() < 3 || password.length() > 64) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "密码长度需为 3 到 64 个字符");
-        }
-    }
-
-    private void validateDisplayName(String displayName) {
-        if (!StringUtils.hasText(displayName) || displayName.length() > 64) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "昵称不能为空");
-        }
     }
 
     private AdminStaffUserResponse toResponse(UserAccount user) {

@@ -24,11 +24,12 @@ import { useAuthStore } from '../../stores/auth'
 import { getScheduleDetail } from '../../api/show'
 import type { Schedule } from '../../mock/shows'
 import { createOrder } from '../../api/order'
+import { formatMoney } from '../../utils/money'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const scheduleId = route.params.id as string
 
 const schedule = ref<Schedule | null>(null)
@@ -448,6 +449,13 @@ const totalAmount = computed(() => {
   return selectedSeats.value.reduce((sum, seat) => sum + seat.price, 0)
 })
 
+const money = (value: number | string | undefined | null) => formatMoney(value, locale.value)
+
+const seatTitle = (seat: Seat) => {
+  if (seat.status === 'DISABLED') return ''
+  return `${t('seat.info', { row: seat.row, col: seat.col })} - ${money(seat.price)}`
+}
+
 const submitLock = async () => {
   if (selectedSeatIds.value.size === 0) return
 
@@ -557,7 +565,7 @@ const stageDisplayLabel = computed(() => {
                       'selected': selectedSeatIds.has(seat.id)
                     }"
                     :disabled="seat.status !== 'AVAILABLE' && !selectedSeatIds.has(seat.id)"
-                    :title="seat.status !== 'DISABLED' ? t('seat.info', { row: seat.row, col: seat.col }) + ' - $' + seat.price : ''"
+                    :title="seatTitle(seat)"
                     @click="toggleSeat(seat)"
                   >
                     <span class="seat-dot" v-if="selectedSeatIds.has(seat.id)"></span>
@@ -626,7 +634,7 @@ const stageDisplayLabel = computed(() => {
                         'selected': selectedSeatIds.has(seat.id)
                       }"
                       :disabled="seat.status !== 'AVAILABLE' && !selectedSeatIds.has(seat.id)"
-                      :title="seat.status !== 'DISABLED' ? t('seat.info', { row: seat.row, col: seat.col }) + ' - $' + seat.price : ''"
+                      :title="seatTitle(seat)"
                       @click="toggleSeat(seat)"
                     >
                       <span class="seat-dot" v-if="selectedSeatIds.has(seat.id)"></span>
@@ -719,7 +727,7 @@ const stageDisplayLabel = computed(() => {
             <div class="group-meta">
               <span>{{ t('seat.group.host') }} {{ groupOrder.hostDisplayName }}</span>
               <span>{{ t('seat.group.totalSeats') }} {{ groupOrder.members.reduce((sum, member) => sum + member.seatIds.length, 0) }}/{{ groupOrder.maxSeats }}</span>
-              <span>{{ t('seat.group.groupTotal') }} ${{ groupOrder.totalAmount }}</span>
+              <span>{{ t('seat.group.groupTotal') }} {{ money(groupOrder.totalAmount) }}</span>
             </div>
 
             <div class="member-list">
@@ -728,7 +736,7 @@ const stageDisplayLabel = computed(() => {
                   <strong>{{ member.displayName }}</strong>
                   <p>{{ memberSeatLabel(member) }}</p>
                 </div>
-                <span>${{ member.amount }}</span>
+                <span>{{ money(member.amount) }}</span>
               </div>
             </div>
           </template>
@@ -766,7 +774,7 @@ const stageDisplayLabel = computed(() => {
                 </div>
                 <div class="ticket-body">
                   <span class="seat-name">{{ t('seat.info', { row: s.row, col: s.col }) }}</span>
-                  <span class="seat-price">${{ s.price }}</span>
+                  <span class="seat-price">{{ money(s.price) }}</span>
                 </div>
               </div>
             </div>
@@ -783,7 +791,7 @@ const stageDisplayLabel = computed(() => {
         <div class="checkout-dock">
           <div class="total-bar">
             <span>{{ t('seat.total') }}</span>
-            <span class="amount">${{ totalAmount }}</span>
+            <span class="amount">{{ money(totalAmount) }}</span>
           </div>
 
           <button

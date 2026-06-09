@@ -1,8 +1,10 @@
-export function lowestPriceLabel(priceRange?: string | null) {
+import { formatLowestMoney } from './money'
+
+export function lowestPriceLabel(priceRange?: string | null, locale = 'zh') {
   const text = String(priceRange || '').trim()
   if (!text) return ''
   const match = text.match(/[$￥¥€£]?\s*\d+(?:[.,]\d+)?/)
-  return match ? match[0].replace(/\s+/g, '') : text
+  return match ? formatLowestMoney(match[0], locale) : text
 }
 
 export function posterFallbackDataUri(title = 'ENCORE') {

@@ -11,6 +11,7 @@ import {
   updateAdminShowStatus
 } from '../../api/admin'
 import type { AdminShow, AdminShowPayload, AdminShowStatus } from '../../api/admin'
+import { adminCategoryLabel } from '../../utils/adminLabels'
 
 const { t } = useI18n()
 
@@ -118,8 +119,7 @@ const loadShows = async () => {
 onMounted(loadShows)
 
 const categoryLabel = (category: string) => {
-  const key = category.toLowerCase()
-  return t(`home.${key}`)
+  return adminCategoryLabel(t, category)
 }
 
 const statusLabel = (status: AdminShowStatus) => {
@@ -519,51 +519,85 @@ const handleDelete = async (row: AdminShow) => {
 }
 
 .metric-strip {
-  margin-bottom: var(--spacing-4);
+  margin-bottom: var(--spacing-3);
   display: grid;
   grid-template-columns: repeat(5, minmax(120px, 1fr));
-  gap: var(--spacing-3);
+  gap: 0;
+  padding: 8px 0;
+  border-top: 1px solid rgba(240, 237, 232, 0.08);
+  border-bottom: 1px solid rgba(240, 237, 232, 0.08);
+  background: linear-gradient(180deg, rgba(240, 237, 232, 0.02), rgba(240, 237, 232, 0.004));
 }
 
 .metric-card {
+  position: relative;
   min-width: 0;
-  min-height: 76px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-elevated);
-  padding: var(--spacing-3);
+  min-height: 64px;
+  border: 0;
+  border-right: 1px solid rgba(240, 237, 232, 0.07);
+  border-radius: 0;
+  background: transparent;
+  padding: 10px 20px;
   display: grid;
   align-content: center;
-  gap: 4px;
+  gap: 6px;
   color: var(--color-text-primary);
   cursor: pointer;
   text-align: left;
-  transition: border-color 160ms ease, background-color 160ms ease;
+  transition: background-color 160ms ease, color 160ms ease;
+
+  &:last-child {
+    border-right: 0;
+  }
 
   span {
     color: var(--color-text-secondary);
     font-family: var(--font-family-sans);
     font-size: 12px;
+    line-height: 1.2;
   }
 
   strong {
     font-family: var(--font-family-sans);
-    font-size: 24px;
+    font-size: 22px;
+    font-variant-numeric: tabular-nums;
     line-height: 1.1;
   }
 
-  &:hover,
-  &.active {
-    border-color: rgba(200, 149, 90, 0.38);
-    background: rgba(200, 149, 90, 0.1);
+  &:hover {
+    background: rgba(240, 237, 232, 0.035);
+  }
+
+  &:focus-visible {
+    outline: 1px solid rgba(200, 149, 90, 0.48);
+    outline-offset: -2px;
+  }
+
+  &.active::after {
+    content: '';
+    position: absolute;
+    left: 20px;
+    right: 20px;
+    bottom: -9px;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--color-accent);
+  }
+
+  &.active span,
+  &.active strong {
+    color: var(--color-text-primary);
+  }
+
+  &.active strong {
+    color: #f0c078;
   }
 
   &.passive {
     cursor: default;
 
     &:hover {
-      border-color: var(--color-border);
-      background: var(--color-bg-elevated);
+      background: transparent;
     }
   }
 }
@@ -577,17 +611,19 @@ const handleDelete = async (row: AdminShow) => {
 }
 
 .table-container {
-  background-color: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
-  padding: var(--spacing-4);
-  border-radius: var(--radius-md);
+  background-color: transparent;
+  border: 0;
+  padding: 0;
+  border-radius: 0;
 
   .table-toolbar {
-    margin-bottom: var(--spacing-3);
+    margin-bottom: 12px;
+    padding: 10px 0 12px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: var(--spacing-3);
+    border-bottom: 1px solid rgba(240, 237, 232, 0.08);
   }
 
   .search-input {
@@ -602,22 +638,38 @@ const handleDelete = async (row: AdminShow) => {
     gap: var(--spacing-2);
   }
 
+  .table-toolbar :deep(.el-input__wrapper),
+  .table-toolbar :deep(.el-select__wrapper) {
+    min-height: 34px;
+    border-radius: 4px;
+    box-shadow: 0 0 0 1px rgba(240, 237, 232, 0.08) inset;
+    background: rgba(240, 237, 232, 0.035);
+  }
+
+  .table-toolbar :deep(.el-input__wrapper.is-focus),
+  .table-toolbar :deep(.el-select__wrapper.is-focused) {
+    box-shadow: 0 0 0 1px rgba(200, 149, 90, 0.46) inset;
+  }
+
   :deep(.el-table) {
     background-color: transparent;
     --el-table-border-color: var(--color-border);
-    --el-table-header-bg-color: rgba(255, 255, 255, 0.02);
+    --el-table-header-bg-color: rgba(240, 237, 232, 0.035);
     --el-table-header-text-color: var(--color-text-secondary);
     --el-table-text-color: var(--color-text-primary);
-    --el-table-row-hover-bg-color: rgba(255, 255, 255, 0.05);
+    --el-table-row-hover-bg-color: rgba(240, 237, 232, 0.035);
+    border: 1px solid rgba(240, 237, 232, 0.09);
+    border-radius: 6px;
+    overflow: hidden;
 
     th.el-table__cell {
       font-family: var(--font-family-sans);
       font-weight: 600;
-      border-bottom: 1px solid var(--color-border-strong);
+      border-bottom: 1px solid rgba(240, 237, 232, 0.1);
     }
 
     td.el-table__cell {
-      border-bottom: 1px solid var(--color-border);
+      border-bottom: 1px solid rgba(240, 237, 232, 0.07);
       font-family: var(--font-family-sans);
     }
   }
@@ -634,8 +686,8 @@ const handleDelete = async (row: AdminShow) => {
   width: 52px;
   height: 70px;
   flex: 0 0 auto;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border: 1px solid rgba(240, 237, 232, 0.1);
+  border-radius: 4px;
   object-fit: cover;
   background: rgba(255, 255, 255, 0.04);
 }
@@ -666,9 +718,9 @@ const handleDelete = async (row: AdminShow) => {
   span {
     max-width: 88px;
     overflow: hidden;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-full);
-    padding: 2px 8px;
+    border: 1px solid rgba(240, 237, 232, 0.14);
+    border-radius: 3px;
+    padding: 2px 7px;
     color: var(--color-text-secondary);
     font-size: 11px;
     text-overflow: ellipsis;

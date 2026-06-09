@@ -16,6 +16,7 @@ public record AdminOrderResponse(
         int ticketCount,
         int checkedInCount,
         LocalDateTime createdAt,
-        LocalDateTime paidAt
+        LocalDateTime paidAt,
+        RefundRequestSummary refundRequest
 ) {
 }

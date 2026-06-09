@@ -3,14 +3,20 @@ package com.encore.service;
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.encore.common.ErrorCode;
+import com.encore.dto.AdminBoxOfficeResponse;
 import com.encore.dto.AdminDashboardResponse;
 import com.encore.dto.AdminOrderResponse;
 import com.encore.dto.AdminScheduleResponse;
+import com.encore.dto.AdminShowCategoryOption;
+import com.encore.dto.AdminShowFilterOption;
 import com.encore.dto.AdminShowResponse;
 import com.encore.dto.CreateScheduleRequest;
 import com.encore.dto.CreateShowRequest;
+import com.encore.dto.RefundRequestSummary;
+import com.encore.dto.ReviewRefundRequest;
 import com.encore.dto.UpdateScheduleRequest;
 import com.encore.dto.UpdateShowRequest;
+import com.encore.entity.RefundRequest;
 import com.encore.entity.ScheduleSeat;
 import com.encore.entity.SeatLayout;
 import com.encore.entity.ShowEntity;
@@ -21,6 +27,7 @@ import com.encore.entity.UserAccount;
 import com.encore.entity.VenueArea;
 import com.encore.entity.ScheduleAreaInventory;
 import com.encore.exception.BusinessException;
+import com.encore.mapper.RefundRequestMapper;
 import com.encore.mapper.ScheduleSeatMapper;
 import com.encore.mapper.ShowMapper;
 import com.encore.mapper.ShowScheduleMapper;
@@ -42,6 +49,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -62,6 +70,7 @@ public class AdminService {
             );
     private static final Set<String> SHOW_STATUSES = Set.of("DRAFT", "PUBLISHED", "ARCHIVED");
     private static final Set<String> TICKET_MODES = Set.of("SEATED", "ZONED", "MIXED");
+    private static final Set<String> BOX_OFFICE_RANGES = Set.of("LAST_7_DAYS", "LAST_30_DAYS", "ALL", "CUSTOM");
 
     private final ShowScheduleMapper showScheduleMapper;
     private final ShowMapper showMapper;
@@ -76,6 +85,7 @@ public class AdminService {
     private final ScheduleAreaInventoryMapper scheduleAreaInventoryMapper;
     private final VenueManagementService venueManagementService;
     private final SeatService seatService;
+    private final RefundRequestMapper refundRequestMapper;
 
     public AdminService(
             ShowScheduleMapper showScheduleMapper,
@@ -90,7 +100,8 @@ public class AdminService {
             VenueAreaMapper venueAreaMapper,
             ScheduleAreaInventoryMapper scheduleAreaInventoryMapper,
             VenueManagementService venueManagementService,
-            SeatService seatService
+            SeatService seatService,
+            RefundRequestMapper refundRequestMapper
     ) {
         this.showScheduleMapper = showScheduleMapper;
         this.showMapper = showMapper;
@@ -105,6 +116,7 @@ public class AdminService {
         this.scheduleAreaInventoryMapper = scheduleAreaInventoryMapper;
         this.venueManagementService = venueManagementService;
         this.seatService = seatService;
+        this.refundRequestMapper = refundRequestMapper;
     }
 
     public AdminDashboardResponse dashboard() {
@@ -122,6 +134,7 @@ public class AdminService {
 
         BigDecimal totalRevenue = paidOrders.stream()
                 .map(TicketOrder::getTotalAmount)
+                .map(this::moneyOrZero)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         long checkedIn = validTickets.stream()
                 .filter(ticket -> "CHECKED_IN".equals(ticket.getStatus()))
@@ -149,7 +162,126 @@ public class AdminService {
                 avgAttendance,
                 buildSalesTrend(paidOrders, validTickets, paidOrderById),
                 buildTopShows(paidOrders, validTickets),
-                new AdminDashboardResponse.CheckInSummary(checkedIn, unused, voided)
+                new AdminDashboardResponse.CheckInSummary(checkedIn, unused, voided),
+                boxOffice("LAST_7_DAYS", null, null, null, null).summary()
+        );
+    }
+
+    public AdminBoxOfficeResponse boxOffice(String range, LocalDate startDate, LocalDate endDate, String showId, String category) {
+        ensureAdminRole();
+        BoxOfficeWindow window = resolveBoxOfficeWindow(range, startDate, endDate);
+        String selectedShowId = cleanOptional(showId);
+        String selectedCategory = cleanOptional(category);
+        List<TicketOrder> orders = ticketOrderMapper.selectList(new LambdaQueryWrapper<TicketOrder>());
+        List<TicketOrder> scopedOrders = orders.stream()
+                .filter(order -> orderInBoxOfficeScope(order, window))
+                .toList();
+        List<TicketItem> tickets = ticketItemMapper.selectList(new LambdaQueryWrapper<>());
+        Map<String, List<TicketItem>> ticketsByOrderId = tickets.stream()
+                .collect(Collectors.groupingBy(TicketItem::getOrderId));
+        Map<String, ShowSchedule> scheduleById = showScheduleMapper.selectList(new LambdaQueryWrapper<ShowSchedule>())
+                .stream()
+                .collect(Collectors.toMap(ShowSchedule::getId, Function.identity(), (left, right) -> left));
+        Map<String, ShowEntity> showById = showMapper.selectList(new LambdaQueryWrapper<ShowEntity>())
+                .stream()
+                .collect(Collectors.toMap(ShowEntity::getId, Function.identity(), (left, right) -> left));
+        BoxOfficeAccumulator globalSummary = new BoxOfficeAccumulator();
+        orders.stream()
+                .filter(order -> orderInBoxOfficeScope(order, new BoxOfficeWindow("ALL", null, null)))
+                .forEach(order -> globalSummary.add(metricsForOrder(
+                        order,
+                        ticketsByOrderId.getOrDefault(order.getId(), List.of())
+                )));
+
+        List<TicketOrder> filteredOrders = scopedOrders.stream()
+                .filter(order -> {
+                    ShowSchedule schedule = scheduleById.get(order.getScheduleId());
+                    ShowEntity show = schedule == null ? null : showById.get(schedule.getShowId());
+                    if (StringUtils.hasText(selectedCategory)
+                            && (show == null || !selectedCategory.equalsIgnoreCase(categoryName(show)))) {
+                        return false;
+                    }
+                    return !StringUtils.hasText(selectedShowId)
+                            || (schedule != null && selectedShowId.equals(schedule.getShowId()));
+                })
+                .toList();
+
+        BoxOfficeAccumulator summary = new BoxOfficeAccumulator();
+        Map<LocalDate, BoxOfficeAccumulator> trendMap = buildTrendMap(window, filteredOrders);
+        Map<String, BoxOfficeAccumulator> categoryMap = new LinkedHashMap<>();
+        Map<String, BoxOfficeAccumulator> showMap = new LinkedHashMap<>();
+        Map<String, BoxOfficeAccumulator> scheduleMap = new LinkedHashMap<>();
+
+        for (TicketOrder order : filteredOrders) {
+            ShowSchedule schedule = scheduleById.get(order.getScheduleId());
+            ShowEntity show = schedule == null ? null : showById.get(schedule.getShowId());
+            List<TicketItem> orderTickets = ticketsByOrderId.getOrDefault(order.getId(), List.of());
+            BoxOfficeOrderMetrics metrics = metricsForOrder(order, orderTickets);
+
+            summary.add(metrics);
+            LocalDate date = dateForBoxOffice(order);
+            if (date != null && trendMap.containsKey(date)) {
+                trendMap.get(date).add(metrics);
+            }
+            if (schedule != null) {
+                String categoryName = categoryName(show);
+                BoxOfficeAccumulator categoryAccumulator = categoryMap.computeIfAbsent(categoryName, name -> {
+                    BoxOfficeAccumulator accumulator = new BoxOfficeAccumulator();
+                    accumulator.category = name;
+                    return accumulator;
+                });
+                if (StringUtils.hasText(schedule.getShowId())) {
+                    categoryAccumulator.addShow(schedule.getShowId());
+                }
+                categoryAccumulator.addSchedule(schedule.getId());
+                categoryAccumulator.add(metrics);
+
+                BoxOfficeAccumulator showAccumulator = showMap.computeIfAbsent(schedule.getShowId(), id -> {
+                    BoxOfficeAccumulator accumulator = new BoxOfficeAccumulator();
+                    accumulator.showId = id;
+                    accumulator.showTitle = show == null ? "Unknown Show" : show.getTitle();
+                    accumulator.category = categoryName(show);
+                    return accumulator;
+                });
+                showAccumulator.addSchedule(schedule.getId());
+                showAccumulator.add(metrics);
+                scheduleMap.computeIfAbsent(schedule.getId(), id -> {
+                    BoxOfficeAccumulator accumulator = new BoxOfficeAccumulator();
+                    accumulator.scheduleId = id;
+                    accumulator.showId = schedule.getShowId();
+                    accumulator.showTitle = show == null ? "Unknown Show" : show.getTitle();
+                    accumulator.theaterName = schedule.getTheaterName();
+                    accumulator.startTime = schedule.getStartTime();
+                    return accumulator;
+                }).add(metrics);
+            }
+        }
+
+        List<AdminBoxOfficeResponse.CategoryRow> categoryRows = categoryMap.values().stream()
+                .sorted(Comparator.comparing(BoxOfficeAccumulator::netRevenue).reversed()
+                        .thenComparing(accumulator -> accumulator.category == null ? "" : accumulator.category))
+                .map(BoxOfficeAccumulator::toCategoryRow)
+                .toList();
+        List<AdminBoxOfficeResponse.ShowRow> showRows = showMap.values().stream()
+                .sorted(Comparator.comparing(BoxOfficeAccumulator::netRevenue).reversed()
+                        .thenComparing(accumulator -> accumulator.showTitle == null ? "" : accumulator.showTitle))
+                .map(BoxOfficeAccumulator::toShowRow)
+                .toList();
+        List<AdminBoxOfficeResponse.ScheduleRow> scheduleRows = scheduleMap.values().stream()
+                .sorted(Comparator.comparing((BoxOfficeAccumulator accumulator) -> accumulator.startTime,
+                                Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(accumulator -> accumulator.scheduleId == null ? "" : accumulator.scheduleId))
+                .map(BoxOfficeAccumulator::toScheduleRow)
+                .toList();
+        return new AdminBoxOfficeResponse(
+                globalSummary.toSummary(),
+                summary.toSummary(),
+                trendMap.entrySet().stream()
+                        .map(entry -> entry.getValue().toTrendItem(entry.getKey()))
+                        .toList(),
+                categoryRows,
+                showRows,
+                scheduleRows
         );
     }
 
@@ -160,6 +292,55 @@ public class AdminService {
                         .orderByDesc(ShowEntity::getCreatedAt))
                 .stream()
                 .map(this::toShowResponse)
+                .toList();
+    }
+
+    public List<AdminShowCategoryOption> listShowCategories() {
+        ensureAdminRole();
+        Map<String, Long> counts = showMapper.selectList(new LambdaQueryWrapper<ShowEntity>())
+                .stream()
+                .collect(Collectors.groupingBy(
+                        this::categoryName,
+                        LinkedHashMap::new,
+                        Collectors.counting()
+                ));
+        return counts.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey(String.CASE_INSENSITIVE_ORDER))
+                .map(entry -> new AdminShowCategoryOption(entry.getKey(), entry.getValue()))
+                .toList();
+    }
+
+    public List<AdminShowFilterOption> listShowOptions(String category, String keyword, Integer limit) {
+        ensureAdminRole();
+        String selectedCategory = cleanOptional(category);
+        String normalizedKeyword = cleanOptional(keyword);
+        if (normalizedKeyword != null) {
+            normalizedKeyword = normalizedKeyword.toLowerCase(Locale.ROOT);
+        }
+        int max = limit == null ? 30 : Math.max(1, Math.min(limit, 100));
+        Map<String, Long> scheduleCountByShowId = showScheduleMapper.selectList(new LambdaQueryWrapper<ShowSchedule>())
+                .stream()
+                .filter(schedule -> StringUtils.hasText(schedule.getShowId()))
+                .collect(Collectors.groupingBy(ShowSchedule::getShowId, Collectors.counting()));
+
+        String finalNormalizedKeyword = normalizedKeyword;
+        return showMapper.selectList(new LambdaQueryWrapper<ShowEntity>()
+                        .orderByAsc(ShowEntity::getSortOrder)
+                        .orderByDesc(ShowEntity::getCreatedAt))
+                .stream()
+                .filter(show -> !StringUtils.hasText(selectedCategory)
+                        || selectedCategory.equalsIgnoreCase(categoryName(show)))
+                .filter(show -> !StringUtils.hasText(finalNormalizedKeyword)
+                        || showMatchesKeyword(show, finalNormalizedKeyword))
+                .limit(max)
+                .map(show -> new AdminShowFilterOption(
+                        show.getId(),
+                        show.getTitle(),
+                        show.getSubtitle(),
+                        categoryName(show),
+                        show.getStatus(),
+                        scheduleCountByShowId.getOrDefault(show.getId(), 0L)
+                ))
                 .toList();
     }
 
@@ -422,7 +603,7 @@ public class AdminService {
 
     @Transactional
     public AdminOrderResponse refundOrder(String orderId) {
-        ensureAdminRole();
+        UserAccount reviewer = currentAdminUser();
         TicketOrder order = getOrder(orderId);
         if ("REFUNDED".equals(order.getStatus())) {
             return toOrderResponse(order);
@@ -437,33 +618,50 @@ public class AdminService {
             throw new BusinessException(ErrorCode.CONFLICT, "已核销订单不可退款");
         }
 
-        order.setStatus("REFUNDED");
-        ticketOrderMapper.updateById(order);
+        createRefundRequest(order, "APPROVED", "ADMIN_DIRECT", null, null, reviewer);
+        finalizeRefund(order, tickets, "REFUNDED");
+        return toOrderResponse(getOrder(orderId));
+    }
 
-        boolean isZoned = !tickets.isEmpty() && tickets.get(0).getAreaInventoryId() != null;
-        if (isZoned) {
-            String areaInventoryId = tickets.get(0).getAreaInventoryId();
-            int quantity = tickets.size();
-            for (TicketItem ticket : tickets) {
-                ticket.setStatus("VOID");
-                ticketItemMapper.updateById(ticket);
-            }
-            scheduleAreaInventoryMapper.refundInventory(areaInventoryId, quantity);
-            seatService.publishAreaInventory(order.getScheduleId(), "AREA_REFUNDED", areaInventoryId);
-        } else {
-            for (TicketItem ticket : tickets) {
-                ticket.setStatus("VOID");
-                ticketItemMapper.updateById(ticket);
-                markSeatAvailable(ticket.getScheduleId(), ticket.getSeatId());
-            }
-            seatStatusPublisher.publishSeatStatus(
-                    order.getScheduleId(),
-                    "REFUNDED",
-                    "AVAILABLE",
-                    tickets.stream().map(TicketItem::getSeatId).toList()
-            );
+    @Transactional
+    public AdminOrderResponse approveRefund(String orderId, ReviewRefundRequest request) {
+        UserAccount reviewer = currentAdminUser();
+        TicketOrder order = getOrder(orderId);
+        if ("REFUNDED".equals(order.getStatus())) {
+            return toOrderResponse(order);
         }
-        dashboardRefreshPublisher.publish("ORDER_REFUNDED", orderId);
+        if (!"PENDING_REFUND".equals(order.getStatus())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "仅待审核退票订单可通过审核");
+        }
+        RefundRequest refundRequest = findPendingRefundRequest(orderId);
+        if (refundRequest == null) {
+            throw new BusinessException(ErrorCode.CONFLICT, "未找到待审核退票申请");
+        }
+        List<TicketItem> tickets = listTickets(orderId);
+        if (tickets.stream().anyMatch(ticket -> "CHECKED_IN".equals(ticket.getStatus()))) {
+            throw new BusinessException(ErrorCode.CONFLICT, "已核销订单不可退款");
+        }
+        reviewRefundRequest(refundRequest, "APPROVED", request, reviewer);
+        finalizeRefund(order, tickets, "REFUND_APPROVED");
+        return toOrderResponse(getOrder(orderId));
+    }
+
+    @Transactional
+    public AdminOrderResponse rejectRefund(String orderId, ReviewRefundRequest request) {
+        UserAccount reviewer = currentAdminUser();
+        TicketOrder order = getOrder(orderId);
+        if (!"PENDING_REFUND".equals(order.getStatus())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "仅待审核退票订单可拒绝审核");
+        }
+        RefundRequest refundRequest = findPendingRefundRequest(orderId);
+        if (refundRequest == null) {
+            throw new BusinessException(ErrorCode.CONFLICT, "未找到待审核退票申请");
+        }
+        reviewRefundRequest(refundRequest, "REJECTED", request, reviewer);
+        order.setStatus("PAID");
+        order.setUpdatedAt(LocalDateTime.now());
+        ticketOrderMapper.updateById(order);
+        dashboardRefreshPublisher.publish("ORDER_REFUND_REJECTED", orderId);
         return toOrderResponse(getOrder(orderId));
     }
 
@@ -489,11 +687,135 @@ public class AdminService {
     }
 
     private void ensureAdminRole() {
+        currentAdminUser();
+    }
+
+    private UserAccount currentAdminUser() {
         String userId = StpUtil.getLoginIdAsString();
         UserAccount user = userAccountMapper.selectById(userId);
         if (user == null || !"ACTIVE".equals(user.getStatus()) || !ADMIN_ROLES.contains(user.getRole())) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "当前账号无后台管理权限");
         }
+        return user;
+    }
+
+    private RefundRequest findPendingRefundRequest(String orderId) {
+        List<RefundRequest> rows = refundRequestMapper.selectList(new LambdaQueryWrapper<RefundRequest>()
+                .eq(RefundRequest::getOrderId, orderId)
+                .eq(RefundRequest::getStatus, "PENDING")
+                .orderByDesc(RefundRequest::getRequestedAt));
+        return rows == null || rows.isEmpty() ? null : rows.get(0);
+    }
+
+    private RefundRequest latestRefundRequest(String orderId) {
+        List<RefundRequest> rows = refundRequestMapper.selectList(new LambdaQueryWrapper<RefundRequest>()
+                .eq(RefundRequest::getOrderId, orderId)
+                .orderByDesc(RefundRequest::getRequestedAt));
+        return rows == null || rows.isEmpty() ? null : rows.get(0);
+    }
+
+    private RefundRequest createRefundRequest(
+            TicketOrder order,
+            String status,
+            String source,
+            String reason,
+            String reviewNote,
+            UserAccount reviewer
+    ) {
+        LocalDateTime now = LocalDateTime.now();
+        RefundRequest request = new RefundRequest();
+        request.setId("rr-" + UUID.randomUUID().toString().replace("-", "").substring(0, 18));
+        request.setOrderId(order.getId());
+        request.setUserId(order.getUserId());
+        request.setStatus(status);
+        request.setSource(source);
+        request.setReason(cleanRefundText(reason));
+        request.setReviewNote(cleanRefundText(reviewNote));
+        if (reviewer != null) {
+            request.setReviewerId(reviewer.getId());
+            request.setReviewerUsername(reviewer.getUsername());
+        }
+        request.setRequestedAt(now);
+        request.setReviewedAt("PENDING".equals(status) ? null : now);
+        request.setUpdatedAt(now);
+        refundRequestMapper.insert(request);
+        return request;
+    }
+
+    private void reviewRefundRequest(
+            RefundRequest refundRequest,
+            String status,
+            ReviewRefundRequest request,
+            UserAccount reviewer
+    ) {
+        LocalDateTime now = LocalDateTime.now();
+        refundRequest.setStatus(status);
+        refundRequest.setReviewNote(cleanRefundText(request == null ? null : request.note()));
+        refundRequest.setReviewerId(reviewer.getId());
+        refundRequest.setReviewerUsername(reviewer.getUsername());
+        refundRequest.setReviewedAt(now);
+        refundRequest.setUpdatedAt(now);
+        refundRequestMapper.updateById(refundRequest);
+    }
+
+    private void finalizeRefund(TicketOrder order, List<TicketItem> tickets, String seatReason) {
+        LocalDateTime now = LocalDateTime.now();
+        order.setStatus("REFUNDED");
+        order.setUpdatedAt(now);
+        ticketOrderMapper.updateById(order);
+
+        boolean isZoned = !tickets.isEmpty() && tickets.get(0).getAreaInventoryId() != null;
+        if (isZoned) {
+            String areaInventoryId = tickets.get(0).getAreaInventoryId();
+            for (TicketItem ticket : tickets) {
+                ticket.setStatus("VOID");
+                ticket.setUpdatedAt(now);
+                ticketItemMapper.updateById(ticket);
+            }
+            scheduleAreaInventoryMapper.refundInventory(areaInventoryId, tickets.size());
+            seatService.publishAreaInventory(order.getScheduleId(), "AREA_REFUNDED", areaInventoryId);
+        } else {
+            for (TicketItem ticket : tickets) {
+                ticket.setStatus("VOID");
+                ticket.setUpdatedAt(now);
+                ticketItemMapper.updateById(ticket);
+                markSeatAvailable(ticket.getScheduleId(), ticket.getSeatId());
+            }
+            seatStatusPublisher.publishSeatStatus(
+                    order.getScheduleId(),
+                    seatReason,
+                    "AVAILABLE",
+                    tickets.stream().map(TicketItem::getSeatId).toList()
+            );
+        }
+        dashboardRefreshPublisher.publish("ORDER_REFUNDED", order.getId());
+    }
+
+    private String cleanRefundText(String value) {
+        if (value == null) {
+            return null;
+        }
+        String cleaned = value.trim();
+        if (cleaned.isEmpty()) {
+            return null;
+        }
+        return cleaned.length() > 500 ? cleaned.substring(0, 500) : cleaned;
+    }
+
+    private RefundRequestSummary toRefundSummary(RefundRequest request) {
+        if (request == null) {
+            return null;
+        }
+        return new RefundRequestSummary(
+                request.getId(),
+                request.getStatus(),
+                request.getSource(),
+                request.getReason(),
+                request.getReviewNote(),
+                request.getReviewerUsername(),
+                request.getRequestedAt(),
+                request.getReviewedAt()
+        );
     }
 
     private void ensureScheduleStructureStable(ShowSchedule schedule, UpdateScheduleRequest request) {
@@ -634,6 +956,26 @@ public class AdminService {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
 
+    private String categoryName(ShowEntity show) {
+        if (show == null || !StringUtils.hasText(show.getCategory())) {
+            return "Unknown";
+        }
+        return show.getCategory().trim();
+    }
+
+    private boolean showMatchesKeyword(ShowEntity show, String keyword) {
+        if (!StringUtils.hasText(keyword)) {
+            return true;
+        }
+        String haystack = String.join(" ",
+                clean(show.getTitle()),
+                clean(show.getSubtitle()),
+                categoryName(show),
+                clean(show.getStatus())
+        ).toLowerCase(Locale.ROOT);
+        return haystack.contains(keyword);
+    }
+
     private List<TicketItem> listTickets(String orderId) {
         return ticketItemMapper.selectList(new LambdaQueryWrapper<TicketItem>()
                 .eq(TicketItem::getOrderId, orderId)
@@ -721,7 +1063,7 @@ public class AdminService {
             }
             LocalDate paidDate = order.getPaidAt().toLocalDate();
             if (revenueByDate.containsKey(paidDate)) {
-                revenueByDate.compute(paidDate, (date, revenue) -> revenue.add(order.getTotalAmount()));
+                revenueByDate.compute(paidDate, (date, revenue) -> revenue.add(moneyOrZero(order.getTotalAmount())));
             }
         }
 
@@ -768,7 +1110,7 @@ public class AdminService {
         for (TicketOrder order : paidOrders) {
             ShowSchedule schedule = scheduleById.get(order.getScheduleId());
             if (schedule != null) {
-                revenueByShow.merge(schedule.getShowId(), order.getTotalAmount(), BigDecimal::add);
+                revenueByShow.merge(schedule.getShowId(), moneyOrZero(order.getTotalAmount()), BigDecimal::add);
             }
         }
 
@@ -792,6 +1134,248 @@ public class AdminService {
                     );
                 })
                 .toList();
+    }
+
+    private BoxOfficeWindow resolveBoxOfficeWindow(String range, LocalDate startDate, LocalDate endDate) {
+        String normalizedRange = StringUtils.hasText(range) ? range.trim().toUpperCase() : "LAST_30_DAYS";
+        if (!BOX_OFFICE_RANGES.contains(normalizedRange)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "不支持的票房统计范围");
+        }
+        if ("ALL".equals(normalizedRange)) {
+            return new BoxOfficeWindow(normalizedRange, null, null);
+        }
+        LocalDate today = LocalDate.now();
+        if ("CUSTOM".equals(normalizedRange)) {
+            if (startDate == null || endDate == null || endDate.isBefore(startDate)) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "请选择有效的票房统计日期范围");
+            }
+            return new BoxOfficeWindow(normalizedRange, startDate, endDate);
+        }
+        int days = "LAST_7_DAYS".equals(normalizedRange) ? 7 : 30;
+        return new BoxOfficeWindow(normalizedRange, today.minusDays(days - 1L), today);
+    }
+
+    private boolean orderInBoxOfficeScope(TicketOrder order, BoxOfficeWindow window) {
+        String status = order.getStatus();
+        if (!"PAID".equals(status)
+                && !"PENDING_REFUND".equals(status)
+                && !"REFUNDED".equals(status)
+                && !"PENDING_PAYMENT".equals(status)) {
+            return false;
+        }
+        if ("PENDING_PAYMENT".equals(status) && (order.getExpiresAt() == null || !order.getExpiresAt().isAfter(LocalDateTime.now()))) {
+            return false;
+        }
+        if (window.isAll()) {
+            return true;
+        }
+        LocalDate date = dateForBoxOffice(order);
+        return date != null && !date.isBefore(window.startDate()) && !date.isAfter(window.endDate());
+    }
+
+    private LocalDate dateForBoxOffice(TicketOrder order) {
+        if ("PENDING_PAYMENT".equals(order.getStatus())) {
+            return order.getCreatedAt() == null ? null : order.getCreatedAt().toLocalDate();
+        }
+        return order.getPaidAt() == null ? null : order.getPaidAt().toLocalDate();
+    }
+
+    private Map<LocalDate, BoxOfficeAccumulator> buildTrendMap(BoxOfficeWindow window, List<TicketOrder> orders) {
+        Map<LocalDate, BoxOfficeAccumulator> trends = new LinkedHashMap<>();
+        LocalDate start = window.startDate();
+        LocalDate end = window.endDate();
+        if (window.isAll()) {
+            List<LocalDate> dates = orders.stream()
+                    .map(this::dateForBoxOffice)
+                    .filter(Objects::nonNull)
+                    .sorted()
+                    .toList();
+            start = dates.isEmpty() ? LocalDate.now() : dates.get(0);
+            end = dates.isEmpty() ? LocalDate.now() : dates.get(dates.size() - 1);
+        }
+        for (LocalDate date = start; !date.isAfter(end); date = date.plusDays(1)) {
+            trends.put(date, new BoxOfficeAccumulator());
+        }
+        return trends;
+    }
+
+    private BoxOfficeOrderMetrics metricsForOrder(TicketOrder order, List<TicketItem> tickets) {
+        long ticketCount = tickets.size();
+        long checkedInCount = tickets.stream()
+                .filter(ticket -> "CHECKED_IN".equals(ticket.getStatus()))
+                .count();
+        BigDecimal amount = moneyOrZero(order.getTotalAmount());
+        if ("PAID".equals(order.getStatus()) || "PENDING_REFUND".equals(order.getStatus())) {
+            long validTickets = tickets.stream()
+                    .filter(ticket -> "UNUSED".equals(ticket.getStatus()) || "CHECKED_IN".equals(ticket.getStatus()))
+                    .count();
+            return new BoxOfficeOrderMetrics(amount, BigDecimal.ZERO, BigDecimal.ZERO, validTickets, 0, validTickets, checkedInCount);
+        }
+        if ("REFUNDED".equals(order.getStatus())) {
+            return new BoxOfficeOrderMetrics(amount, amount, BigDecimal.ZERO, ticketCount, ticketCount, 0, 0);
+        }
+        if ("PENDING_PAYMENT".equals(order.getStatus())) {
+            return new BoxOfficeOrderMetrics(BigDecimal.ZERO, BigDecimal.ZERO, amount, 0, 0, 0, 0);
+        }
+        return new BoxOfficeOrderMetrics(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, 0, 0, 0, 0);
+    }
+
+    private BigDecimal attendanceRate(long checkedInTickets, long validTickets) {
+        if (validTickets <= 0) {
+            return BigDecimal.ZERO;
+        }
+        return BigDecimal.valueOf(checkedInTickets)
+                .multiply(BigDecimal.valueOf(100))
+                .divide(BigDecimal.valueOf(validTickets), 1, RoundingMode.HALF_UP);
+    }
+
+    private record BoxOfficeWindow(String range, LocalDate startDate, LocalDate endDate) {
+        boolean isAll() {
+            return "ALL".equals(range);
+        }
+    }
+
+    private record BoxOfficeOrderMetrics(
+            BigDecimal salesRevenue,
+            BigDecimal refundAmount,
+            BigDecimal pendingAmount,
+            long paidTickets,
+            long refundedTickets,
+            long validTickets,
+            long checkedInTickets
+    ) {
+    }
+
+    private class BoxOfficeAccumulator {
+        private String showId;
+        private String showTitle;
+        private String category;
+        private String scheduleId;
+        private String theaterName;
+        private LocalDateTime startTime;
+        private BigDecimal salesRevenue = BigDecimal.ZERO;
+        private BigDecimal refundAmount = BigDecimal.ZERO;
+        private BigDecimal pendingAmount = BigDecimal.ZERO;
+        private long paidTickets;
+        private long refundedTickets;
+        private long validTickets;
+        private long checkedInTickets;
+        private long scheduleCount;
+        private long showCount;
+        private Set<String> scheduleIds = new java.util.HashSet<>();
+        private Set<String> showIds = new java.util.HashSet<>();
+
+        private void add(BoxOfficeOrderMetrics metrics) {
+            salesRevenue = salesRevenue.add(metrics.salesRevenue());
+            refundAmount = refundAmount.add(metrics.refundAmount());
+            pendingAmount = pendingAmount.add(metrics.pendingAmount());
+            paidTickets += metrics.paidTickets();
+            refundedTickets += metrics.refundedTickets();
+            validTickets += metrics.validTickets();
+            checkedInTickets += metrics.checkedInTickets();
+            if (StringUtils.hasText(scheduleId)) {
+                scheduleCount = 1;
+            }
+        }
+
+        private void addSchedule(String scheduleId) {
+            if (StringUtils.hasText(scheduleId)) {
+                scheduleIds.add(scheduleId);
+                scheduleCount = scheduleIds.size();
+            }
+        }
+
+        private void addShow(String showId) {
+            if (StringUtils.hasText(showId)) {
+                showIds.add(showId);
+                showCount = showIds.size();
+            }
+        }
+
+        private BigDecimal netRevenue() {
+            return salesRevenue.subtract(refundAmount);
+        }
+
+        private AdminBoxOfficeResponse.Summary toSummary() {
+            return new AdminBoxOfficeResponse.Summary(
+                    salesRevenue,
+                    refundAmount,
+                    netRevenue(),
+                    pendingAmount,
+                    paidTickets,
+                    refundedTickets,
+                    validTickets,
+                    checkedInTickets,
+                    attendanceRate(checkedInTickets, validTickets)
+            );
+        }
+
+        private AdminBoxOfficeResponse.TrendItem toTrendItem(LocalDate date) {
+            return new AdminBoxOfficeResponse.TrendItem(
+                    date,
+                    salesRevenue,
+                    refundAmount,
+                    netRevenue(),
+                    pendingAmount,
+                    paidTickets,
+                    refundedTickets,
+                    validTickets
+            );
+        }
+
+        private AdminBoxOfficeResponse.CategoryRow toCategoryRow() {
+            return new AdminBoxOfficeResponse.CategoryRow(
+                    category,
+                    salesRevenue,
+                    refundAmount,
+                    netRevenue(),
+                    pendingAmount,
+                    paidTickets,
+                    refundedTickets,
+                    validTickets,
+                    checkedInTickets,
+                    attendanceRate(checkedInTickets, validTickets),
+                    showCount,
+                    scheduleCount
+            );
+        }
+
+        private AdminBoxOfficeResponse.ShowRow toShowRow() {
+            return new AdminBoxOfficeResponse.ShowRow(
+                    showId,
+                    showTitle,
+                    category,
+                    salesRevenue,
+                    refundAmount,
+                    netRevenue(),
+                    pendingAmount,
+                    paidTickets,
+                    refundedTickets,
+                    validTickets,
+                    checkedInTickets,
+                    attendanceRate(checkedInTickets, validTickets),
+                    scheduleCount
+            );
+        }
+
+        private AdminBoxOfficeResponse.ScheduleRow toScheduleRow() {
+            return new AdminBoxOfficeResponse.ScheduleRow(
+                    scheduleId,
+                    showId,
+                    showTitle,
+                    theaterName,
+                    startTime,
+                    salesRevenue,
+                    refundAmount,
+                    netRevenue(),
+                    pendingAmount,
+                    paidTickets,
+                    refundedTickets,
+                    validTickets,
+                    checkedInTickets,
+                    attendanceRate(checkedInTickets, validTickets)
+            );
+        }
     }
 
     private AdminShowResponse toShowResponse(ShowEntity show) {
@@ -894,6 +1478,10 @@ public class AdminService {
         return seats.stream().filter(seat -> status.equals(seat.getStatus())).count();
     }
 
+    private BigDecimal moneyOrZero(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
     private AdminOrderResponse toOrderResponse(TicketOrder order) {
         UserAccount user = userAccountMapper.selectById(order.getUserId());
         ShowSchedule schedule = showScheduleMapper.selectById(order.getScheduleId());
@@ -917,7 +1505,8 @@ public class AdminService {
                 tickets.size(),
                 checkedInCount,
                 order.getCreatedAt(),
-                order.getPaidAt()
+                order.getPaidAt(),
+                toRefundSummary(latestRefundRequest(order.getId()))
         );
     }
 }
