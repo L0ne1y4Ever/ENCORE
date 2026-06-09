@@ -600,7 +600,7 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
       </div>
     </div>
 
-    <div class="venue-workspace" :class="{ 'layouts-mode': activeTab === 'layouts' }">
+    <div class="venue-workspace">
       <aside class="navigator-panel">
         <div class="navigator-head">
           <div>
@@ -1079,10 +1079,6 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
   align-items: start;
 }
 
-.venue-workspace.layouts-mode {
-  grid-template-columns: 1fr;
-}
-
 .navigator-panel,
 .workspace-panel {
   min-width: 0;
@@ -1099,20 +1095,6 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
   top: 88px;
   max-height: calc(100vh - 112px);
   overflow: auto;
-}
-
-.layouts-mode .navigator-panel {
-  position: static;
-  max-height: none;
-  padding: 0;
-  border: 0 !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  display: grid;
-  grid-template-columns: minmax(260px, 0.72fr) minmax(420px, 1.28fr);
-  gap: var(--spacing-3) var(--spacing-4);
-  overflow: visible;
 }
 
 .navigator-head {
@@ -1136,49 +1118,10 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
   }
 }
 
-.layouts-mode .navigator-head {
-  min-height: 34px;
-  align-items: flex-start;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.layouts-mode .navigator-head:not(.compact) {
-  grid-column: 1;
-  grid-row: 1;
-}
-
-.layouts-mode .navigator-head.compact {
-  grid-column: 2;
-  grid-row: 1;
-  padding-top: 0;
-  border-top: 0;
-}
-
 .venue-list,
 .hall-list {
   display: grid;
   gap: 8px;
-}
-
-.layouts-mode .venue-list,
-.layouts-mode .hall-list {
-  min-width: 0;
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding-bottom: 2px;
-  scrollbar-width: thin;
-}
-
-.layouts-mode .venue-list {
-  grid-column: 1;
-  grid-row: 2;
-}
-
-.layouts-mode .hall-list {
-  grid-column: 2;
-  grid-row: 2;
 }
 
 .navigator-item {
@@ -1225,17 +1168,6 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
   min-height: 52px;
 }
 
-.layouts-mode .navigator-item {
-  flex: 0 0 210px;
-  min-height: 48px;
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
-}
-
-.layouts-mode .hall-item {
-  flex-basis: 230px;
-}
-
 .workspace-panel {
   padding: 0 var(--spacing-4) var(--spacing-4);
   min-height: 0;
@@ -1275,10 +1207,6 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
 
 .hall-filter {
   width: 280px;
-}
-
-.layouts-mode .hall-filter {
-  display: none;
 }
 
 .management-grid,
@@ -1505,18 +1433,6 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
 
   .hall-filter {
     width: 100%;
-  }
-
-  .layouts-mode .navigator-panel {
-    grid-template-columns: 1fr;
-  }
-
-  .layouts-mode .navigator-head:not(.compact),
-  .layouts-mode .navigator-head.compact,
-  .layouts-mode .venue-list,
-  .layouts-mode .hall-list {
-    grid-column: auto;
-    grid-row: auto;
   }
 
   .area-preview,
