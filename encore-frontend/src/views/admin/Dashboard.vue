@@ -102,7 +102,17 @@ const trendRows = computed(() => dashboard.value?.salesTrend ?? [])
 const topShows = computed(() => dashboard.value?.topShows ?? [])
 const checkInSummary = computed(() => dashboard.value?.checkInSummary ?? { checkedIn: 0, unused: 0, voided: 0 })
 
-const trendMaxRevenue = computed(() => Math.max(1, ...trendRows.value.map(item => toNumber(item.revenue))))
+const trendChartWidth = 700
+const trendChartHeight = 230
+const trendPadding = {
+  top: 18,
+  right: 18,
+  bottom: 34,
+  left: 42
+}
+const trendInnerWidth = trendChartWidth - trendPadding.left - trendPadding.right
+const trendInnerHeight = trendChartHeight - trendPadding.top - trendPadding.bottom
+
 const trendMaxTickets = computed(() => Math.max(1, ...trendRows.value.map(item => toNumber(item.ticketCount))))
 const topShowsMaxTickets = computed(() => Math.max(1, ...topShows.value.map(item => toNumber(item.ticketCount))))
 
@@ -110,13 +120,44 @@ const trendHasSignal = computed(() => {
   return trendRows.value.some(item => toNumber(item.revenue) > 0 || toNumber(item.ticketCount) > 0)
 })
 
+const trendPoints = computed(() => {
+  const rows = trendRows.value
+  const lastIndex = Math.max(1, rows.length - 1)
+  return rows.map((item, index) => {
+    const tickets = toNumber(item.ticketCount)
+    const x = rows.length === 1
+      ? trendPadding.left + trendInnerWidth / 2
+      : trendPadding.left + (index / lastIndex) * trendInnerWidth
+    const y = trendPadding.top + (1 - tickets / trendMaxTickets.value) * trendInnerHeight
+    return {
+      x,
+      y,
+      valueLabelY: Math.max(14, y - 12),
+      tickets,
+      revenue: toNumber(item.revenue),
+      dateLabel: formatDateLabel(item.date)
+    }
+  })
+})
+
+const trendGridLines = computed(() => [0, 0.25, 0.5, 0.75, 1].map(ratio => trendPadding.top + ratio * trendInnerHeight))
+const trendLinePath = computed(() => {
+  return trendPoints.value
+    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+    .join(' ')
+})
+const trendAreaPath = computed(() => {
+  const points = trendPoints.value
+  if (!points.length) return ''
+  const baseY = trendPadding.top + trendInnerHeight
+  return `${trendLinePath.value} L ${points[points.length - 1].x.toFixed(2)} ${baseY} L ${points[0].x.toFixed(2)} ${baseY} Z`
+})
+
 const ratioPercent = (value: number | string | undefined, max: number, minimum = 4) => {
   const ratio = Math.round((toNumber(value) / Math.max(1, max)) * 100)
   return `${Math.max(minimum, Math.min(100, ratio))}%`
 }
 
-const revenueBarHeight = (value: number | string | undefined) => ratioPercent(value, trendMaxRevenue.value, 3)
-const ticketBarHeight = (value: number | string | undefined) => ratioPercent(value, trendMaxTickets.value, 3)
 const topShowBarWidth = (value: number | string | undefined) => ratioPercent(value, topShowsMaxTickets.value, 6)
 </script>
 
@@ -152,29 +193,66 @@ const topShowBarWidth = (value: number | string | undefined) => ratioPercent(val
         <h3>{{ t('admin.salesTrend') }}</h3>
         <div class="chart-container">
           <div v-if="trendRows.length" class="trend-chart" :class="{ muted: !trendHasSignal }">
-            <div class="trend-plot">
-              <div v-for="item in trendRows" :key="item.date" class="trend-column">
-                <div class="trend-bars">
-                  <span
-                    class="trend-bar revenue"
-                    :style="{ height: revenueBarHeight(item.revenue) }"
-                    :title="`${t('admin.revenue')}: ${formatAmount(item.revenue)}`"
-                  ></span>
-                  <span
-                    class="trend-bar tickets"
-                    :style="{ height: ticketBarHeight(item.ticketCount) }"
-                    :title="`${t('admin.tickets')}: ${item.ticketCount}`"
-                  ></span>
-                </div>
-                <div class="trend-meta">
-                  <strong>{{ item.ticketCount }}</strong>
-                  <span>{{ formatDateLabel(item.date) }}</span>
-                </div>
-              </div>
-            </div>
+            <svg
+              class="trend-line-chart"
+              :viewBox="`0 0 ${trendChartWidth} ${trendChartHeight}`"
+              role="img"
+              :aria-label="t('admin.salesTrend')"
+            >
+              <line
+                v-for="lineY in trendGridLines"
+                :key="lineY"
+                class="trend-grid-line"
+                :x1="trendPadding.left"
+                :x2="trendChartWidth - trendPadding.right"
+                :y1="lineY"
+                :y2="lineY"
+              />
+              <text class="trend-axis-label" :x="trendPadding.left - 10" :y="trendPadding.top + 4" text-anchor="end">
+                {{ trendMaxTickets }}
+              </text>
+              <text
+                class="trend-axis-label"
+                :x="trendPadding.left - 10"
+                :y="trendPadding.top + trendInnerHeight + 4"
+                text-anchor="end"
+              >
+                0
+              </text>
+              <path class="trend-area" :d="trendAreaPath" />
+              <path class="trend-line" :d="trendLinePath" />
+              <g v-for="point in trendPoints" :key="point.dateLabel">
+                <line
+                  v-if="point.tickets > 0"
+                  class="trend-hit-line"
+                  :x1="point.x"
+                  :x2="point.x"
+                  :y1="point.y"
+                  :y2="trendPadding.top + trendInnerHeight"
+                />
+                <circle class="trend-point-ring" :cx="point.x" :cy="point.y" r="8" />
+                <circle class="trend-point" :class="{ active: point.tickets > 0 }" :cx="point.x" :cy="point.y" r="4.5">
+                  <title>
+                    {{ point.dateLabel }} · {{ t('admin.tickets') }} {{ point.tickets }} · {{ t('admin.revenue') }} {{ formatAmount(point.revenue) }}
+                  </title>
+                </circle>
+                <text
+                  v-if="point.tickets > 0"
+                  class="trend-point-value"
+                  :x="point.x"
+                  :y="point.valueLabelY"
+                  text-anchor="middle"
+                >
+                  {{ point.tickets }}
+                </text>
+                <text class="trend-date-label" :x="point.x" :y="trendChartHeight - 8" text-anchor="middle">
+                  {{ point.dateLabel }}
+                </text>
+              </g>
+            </svg>
             <div class="chart-legend">
-              <span><i class="legend-revenue"></i>{{ t('admin.revenue') }}</span>
               <span><i class="legend-tickets"></i>{{ t('admin.tickets') }}</span>
+              <span>{{ t('admin.revenue') }} {{ formatAmount(dashboard?.totalRevenue) }}</span>
             </div>
           </div>
           <div v-else class="empty-chart">{{ t('admin.noDashboardData') }}</div>
@@ -375,73 +453,71 @@ const topShowBarWidth = (value: number | string | undefined) => ratioPercent(val
   height: 264px;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
-  gap: var(--spacing-3);
+  gap: var(--spacing-2);
 }
 
 .trend-chart.muted {
   opacity: 0.78;
 }
 
-.trend-plot {
-  min-height: 0;
-  display: grid;
-  grid-template-columns: repeat(7, minmax(42px, 1fr));
-  align-items: end;
-  gap: 12px;
-  padding: 14px 2px 0;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.trend-column {
-  min-width: 0;
-  display: grid;
-  grid-template-rows: minmax(140px, 1fr) auto;
-  gap: 10px;
-}
-
-.trend-bars {
-  min-height: 140px;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 6px;
-}
-
-.trend-bar {
-  width: 14px;
-  min-height: 4px;
-  border-radius: 3px 3px 0 0;
+.trend-line-chart {
+  width: 100%;
+  height: 230px;
   display: block;
-  transition: height 180ms ease;
+  overflow: visible;
 }
 
-.trend-bar.revenue {
-  background: #c8955a;
+.trend-grid-line {
+  stroke: rgba(240, 237, 232, 0.08);
+  stroke-width: 1;
 }
 
-.trend-bar.tickets {
-  background: rgba(93, 160, 140, 0.8);
+.trend-axis-label,
+.trend-date-label {
+  fill: var(--color-text-secondary);
+  font-family: var(--font-family-sans);
+  font-size: 12px;
 }
 
-.trend-meta {
-  min-width: 0;
-  display: grid;
-  gap: 3px;
-  text-align: center;
+.trend-area {
+  fill: rgba(200, 149, 90, 0.12);
+}
 
-  strong {
-    color: var(--color-text-primary);
-    font-size: 14px;
-    line-height: 1;
+.trend-line {
+  fill: none;
+  stroke: #c8955a;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.trend-hit-line {
+  stroke: rgba(200, 149, 90, 0.26);
+  stroke-width: 1;
+  stroke-dasharray: 4 6;
+}
+
+.trend-point-ring {
+  fill: rgba(8, 8, 8, 0.95);
+  stroke: rgba(200, 149, 90, 0.28);
+  stroke-width: 1;
+}
+
+.trend-point {
+  fill: rgba(200, 149, 90, 0.86);
+  stroke: #080808;
+  stroke-width: 2;
+
+  &.active {
+    fill: #d9a25f;
   }
+}
 
-  span {
-    color: var(--color-text-secondary);
-    font-size: 12px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+.trend-point-value {
+  fill: var(--color-text-primary);
+  font-family: var(--font-family-display);
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .chart-legend {
@@ -466,12 +542,8 @@ const topShowBarWidth = (value: number | string | undefined) => ratioPercent(val
   }
 }
 
-.legend-revenue {
-  background: #c8955a;
-}
-
 .legend-tickets {
-  background: rgba(93, 160, 140, 0.8);
+  background: #c8955a;
 }
 
 .top-show-list {
