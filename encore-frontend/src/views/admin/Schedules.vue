@@ -605,9 +605,16 @@ const openInventory = (row: AdminSchedule) => {
         <el-empty v-if="calendarGroups.length === 0" :description="t('admin.empty')" />
       </div>
 
-      <div v-else class="table-container">
-      <el-table :data="filteredSchedules" style="width: 100%" :empty-text="t('admin.empty')" v-loading="loading">
-        <el-table-column :label="t('admin.showAndCategory')" min-width="260">
+      <div v-else class="table-container schedule-table-wrap">
+        <el-table
+          class="schedule-table"
+          :data="filteredSchedules"
+          style="width: 100%; min-width: 1580px"
+          :fit="false"
+          :empty-text="t('admin.empty')"
+          v-loading="loading"
+        >
+        <el-table-column :label="t('admin.showAndCategory')" width="260">
           <template #default="{ row }">
             <div class="schedule-show-cell">
               <div class="show-title">{{ row.showTitle }}</div>
@@ -618,7 +625,7 @@ const openInventory = (row: AdminSchedule) => {
             </div>
           </template>
         </el-table-column>
-        <el-table-column :label="t('admin.venueAndLayout')" min-width="220">
+        <el-table-column :label="t('admin.venueAndLayout')" width="220">
           <template #default="{ row }">
             <div class="venue-cell">
               <strong>{{ row.hallName || row.theaterName }}</strong>
@@ -629,7 +636,7 @@ const openInventory = (row: AdminSchedule) => {
             </div>
           </template>
         </el-table-column>
-        <el-table-column :label="t('admin.scheduleTime')" min-width="210">
+        <el-table-column :label="t('admin.scheduleTime')" width="210">
           <template #default="{ row }">
             <div class="time-stack">
               <strong>{{ formatDate(row.startTime) }}</strong>
@@ -637,7 +644,7 @@ const openInventory = (row: AdminSchedule) => {
             </div>
           </template>
         </el-table-column>
-        <el-table-column :label="t('admin.saleWindow')" min-width="190">
+        <el-table-column :label="t('admin.saleWindow')" width="190">
           <template #default="{ row }">
             <div class="time-stack subtle">
               <span>{{ formatDate(row.saleStartTime) }}</span>
@@ -645,7 +652,7 @@ const openInventory = (row: AdminSchedule) => {
             </div>
           </template>
         </el-table-column>
-        <el-table-column :label="t('admin.salesProgress')" min-width="170">
+        <el-table-column :label="t('admin.salesProgress')" width="190">
           <template #default="{ row }">
             <div class="sales-cell">
               <el-progress :percentage="ticketProgress(row)" :stroke-width="8" :show-text="false" />
@@ -657,7 +664,7 @@ const openInventory = (row: AdminSchedule) => {
           </template>
         </el-table-column>
         <el-table-column prop="priceRange" :label="t('admin.priceRange')" width="130" />
-        <el-table-column :label="t('admin.statusAndPublish')" width="140">
+        <el-table-column :label="t('admin.statusAndPublish')" width="150">
           <template #default="{ row }">
             <div class="status-stack">
               <el-tag :type="statusTagType(row.status)" effect="plain">{{ statusLabel(row.status) }}</el-tag>
@@ -665,35 +672,37 @@ const openInventory = (row: AdminSchedule) => {
             </div>
           </template>
         </el-table-column>
-        <el-table-column :label="t('admin.action')" width="300" fixed="right">
+        <el-table-column :label="t('admin.action')" width="220">
           <template #default="{ row }">
-            <el-button link type="primary" :icon="Calendar" :disabled="operatingId === row.id" @click="openInventory(row)">
-              {{ t('admin.inventory') }}
-            </el-button>
-            <el-button link type="primary" :icon="Edit" :disabled="operatingId === row.id" @click="openEdit(row)">
-              {{ t('admin.edit') }}
-            </el-button>
-            <el-button
-              link
-              type="primary"
-              :loading="operatingId === row.id"
-              :disabled="row.status === 'CANCELLED'"
-              @click="setScheduleStatus(row, nextStatus(row.status))"
-            >
-              {{ t('admin.statusNext') }}
-            </el-button>
-            <el-button
-              link
-              type="danger"
-              :loading="operatingId === row.id"
-              :disabled="row.status === 'CANCELLED'"
-              @click="handleCancel(row)"
-            >
-              {{ t('admin.cancelSchedule') }}
-            </el-button>
+            <div class="schedule-actions">
+              <el-button link type="primary" :icon="Calendar" :disabled="operatingId === row.id" @click="openInventory(row)">
+                {{ t('admin.inventory') }}
+              </el-button>
+              <el-button link type="primary" :icon="Edit" :disabled="operatingId === row.id" @click="openEdit(row)">
+                {{ t('admin.edit') }}
+              </el-button>
+              <el-button
+                link
+                type="primary"
+                :loading="operatingId === row.id"
+                :disabled="row.status === 'CANCELLED'"
+                @click="setScheduleStatus(row, nextStatus(row.status))"
+              >
+                {{ t('admin.statusNext') }}
+              </el-button>
+              <el-button
+                link
+                type="danger"
+                :loading="operatingId === row.id"
+                :disabled="row.status === 'CANCELLED'"
+                @click="handleCancel(row)"
+              >
+                {{ t('admin.cancelSchedule') }}
+              </el-button>
+            </div>
           </template>
         </el-table-column>
-      </el-table>
+        </el-table>
       </div>
     </div>
 
@@ -960,6 +969,26 @@ const openInventory = (row: AdminSchedule) => {
   min-width: 0;
 }
 
+.schedule-table-wrap {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(200, 149, 90, 0.45) rgba(255, 255, 255, 0.04);
+
+  &::-webkit-scrollbar {
+    height: 10px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  &::-webkit-scrollbar-thumb {
+    border-radius: 4px;
+    background: rgba(200, 149, 90, 0.45);
+  }
+}
+
 .calendar-board {
   min-height: 420px;
   display: grid;
@@ -1170,6 +1199,20 @@ const openInventory = (row: AdminSchedule) => {
   color: var(--color-text-secondary);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+
+.schedule-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(74px, 1fr));
+  align-items: center;
+  gap: 6px 10px;
+
+  :deep(.el-button) {
+    min-width: 0;
+    margin: 0;
+    justify-content: flex-start;
+    font-size: 12px;
+  }
 }
 
 .schedule-form {
