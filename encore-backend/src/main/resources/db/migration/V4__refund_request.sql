@@ -12,9 +12,5 @@ CREATE TABLE IF NOT EXISTS refund_request (
   reviewed_at DATETIME NULL,
   updated_at DATETIME NOT NULL,
   INDEX idx_refund_request_order_status (order_id, status),
-  INDEX idx_refund_request_user_status (user_id, status),
-  CONSTRAINT fk_refund_request_order
-    FOREIGN KEY (order_id) REFERENCES ticket_order (id),
-  CONSTRAINT fk_refund_request_user
-    FOREIGN KEY (user_id) REFERENCES user_account (id)
+  INDEX idx_refund_request_user_status (user_id, status)
 );
