@@ -600,7 +600,7 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
       </div>
     </div>
 
-    <div class="venue-workspace">
+    <div class="venue-workspace" :class="{ 'layouts-mode': activeTab === 'layouts' }">
       <aside class="navigator-panel">
         <div class="navigator-head">
           <div>
@@ -785,70 +785,79 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
                     </div>
                   </div>
 
-                  <div class="preview-band">
-                    <div v-if="areas.length > 0" class="area-preview">
-                      <button
-                        v-for="area in areas"
-                        :key="area.id"
-                        type="button"
-                        class="area-shape"
-                        :class="{ seated: area.isSeated }"
-                        :style="{ borderColor: area.color || '#c8955a', color: area.color || '#c8955a' }"
-                      >
-                        <strong>{{ area.name }}</strong>
-                        <span>{{ area.capacity }} · {{ area.basePrice }}</span>
-                      </button>
+                  <div class="layout-detail-grid">
+                    <div class="preview-band">
+                      <div v-if="areas.length > 0" class="area-preview">
+                        <button
+                          v-for="area in areas"
+                          :key="area.id"
+                          type="button"
+                          class="area-shape"
+                          :class="{ seated: area.isSeated }"
+                          :style="{ borderColor: area.color || '#c8955a', color: area.color || '#c8955a' }"
+                        >
+                          <strong>{{ area.name }}</strong>
+                          <span>{{ area.capacity }} · {{ area.basePrice }}</span>
+                        </button>
+                      </div>
+                      <AdminSeatMapEditor
+                        v-if="seats.length > 0"
+                        :seats="seats"
+                        :operating-seat-id="operatingSeat"
+                        :hint="t('admin.layoutSeatStatusHint')"
+                        :disabled="selectedLayout.status === 'ARCHIVED'"
+                        :disabled-reason="t('admin.archivedLayoutReadonly')"
+                        :stage-label="t('seat.stage')"
+                        @toggle="toggleSeatFromMap"
+                      />
+                      <el-empty v-if="areas.length === 0 && seats.length === 0" :description="t('admin.empty')" />
                     </div>
-                    <AdminSeatMapEditor
-                      v-if="seats.length > 0"
-                      :seats="seats"
-                      :operating-seat-id="operatingSeat"
-                      :hint="t('admin.layoutSeatStatusHint')"
-                      :disabled="selectedLayout.status === 'ARCHIVED'"
-                      :disabled-reason="t('admin.archivedLayoutReadonly')"
-                      :stage-label="t('seat.stage')"
-                      @toggle="toggleSeatFromMap"
-                    />
-                    <el-empty v-if="areas.length === 0 && seats.length === 0" :description="t('admin.empty')" />
-                  </div>
 
-                  <div class="detail-tables">
-                    <el-table :data="areas" :empty-text="t('admin.empty')" size="small">
-                      <el-table-column prop="name" :label="t('admin.areaName')" min-width="130" />
-                      <el-table-column prop="code" label="Code" width="110" />
-                      <el-table-column prop="isSeated" :label="t('admin.seatedArea')" width="90">
-                        <template #default="{ row }">{{ row.isSeated ? t('common.yes') : t('common.no') }}</template>
-                      </el-table-column>
-                      <el-table-column prop="capacity" :label="t('admin.capacity')" width="90" />
-                      <el-table-column prop="basePrice" :label="t('admin.price')" width="90" />
-                    </el-table>
-                    <el-table v-if="seats.length > 0" :data="seats" :empty-text="t('admin.empty')" size="small" max-height="320">
-                      <el-table-column prop="seatCode" :label="t('admin.seatCode')" min-width="130" />
-                      <el-table-column prop="rowNo" :label="t('admin.rowNo')" width="72" />
-                      <el-table-column prop="colNo" :label="t('admin.colNo')" width="72" />
-                      <el-table-column prop="section" :label="t('ticket.section')" width="90" />
-                      <el-table-column prop="status" :label="t('common.status')" width="120">
-                        <template #default="{ row }">
-                          <el-tag size="small" :type="row.status === 'DISABLED' ? 'danger' : 'success'" effect="plain">
-                            {{ row.status }}
-                          </el-tag>
-                        </template>
-                      </el-table-column>
-                      <el-table-column prop="price" :label="t('admin.price')" width="90" />
-                      <el-table-column :label="t('admin.action')" width="120">
-                        <template #default="{ row }">
-                          <el-button
-                            link
-                            type="primary"
-                            :disabled="!canToggleSeat(row) || operatingSeat === row.id"
-                            :loading="operatingSeat === row.id"
-                            @click="toggleSeatStatus(row)"
-                          >
-                            {{ row.status === 'AVAILABLE' ? t('admin.disableSeat') : t('admin.restoreSeat') }}
-                          </el-button>
-                        </template>
-                      </el-table-column>
-                    </el-table>
+                    <div class="detail-tables">
+                      <section class="detail-table-block">
+                        <div class="block-head compact-head">
+                          <h3>{{ t('admin.areas') }}</h3>
+                        </div>
+                        <el-table :data="areas" :empty-text="t('admin.empty')" size="small">
+                          <el-table-column prop="name" :label="t('admin.areaName')" min-width="120" />
+                          <el-table-column prop="code" label="Code" width="92" />
+                          <el-table-column prop="capacity" :label="t('admin.capacity')" width="82" />
+                          <el-table-column prop="basePrice" :label="t('admin.price')" width="82" />
+                        </el-table>
+                      </section>
+                      <section class="detail-table-block">
+                        <div class="block-head compact-head">
+                          <h3>{{ t('admin.seats') }}</h3>
+                        </div>
+                        <el-table v-if="seats.length > 0" :data="seats" :empty-text="t('admin.empty')" size="small" max-height="360">
+                          <el-table-column prop="seatCode" :label="t('admin.seatCode')" min-width="110" />
+                          <el-table-column prop="rowNo" :label="t('admin.rowNo')" width="56" />
+                          <el-table-column prop="colNo" :label="t('admin.colNo')" width="56" />
+                          <el-table-column prop="section" :label="t('ticket.section')" width="76" />
+                          <el-table-column prop="status" :label="t('common.status')" width="112">
+                            <template #default="{ row }">
+                              <el-tag size="small" :type="row.status === 'DISABLED' ? 'danger' : 'success'" effect="plain">
+                                {{ row.status }}
+                              </el-tag>
+                            </template>
+                          </el-table-column>
+                          <el-table-column :label="t('admin.action')" width="86">
+                            <template #default="{ row }">
+                              <el-button
+                                link
+                                type="primary"
+                                :disabled="!canToggleSeat(row) || operatingSeat === row.id"
+                                :loading="operatingSeat === row.id"
+                                @click="toggleSeatStatus(row)"
+                              >
+                                {{ row.status === 'AVAILABLE' ? t('admin.disableSeat') : t('admin.restoreSeat') }}
+                              </el-button>
+                            </template>
+                          </el-table-column>
+                        </el-table>
+                        <el-empty v-else :description="t('admin.empty')" />
+                      </section>
+                    </div>
                   </div>
                 </template>
                 <el-empty v-else :description="t('admin.empty')" />
@@ -1065,9 +1074,13 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
 
 .venue-workspace {
   display: grid;
-  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  grid-template-columns: 300px minmax(0, 1fr);
   gap: var(--spacing-4);
   align-items: start;
+}
+
+.venue-workspace.layouts-mode {
+  grid-template-columns: 1fr;
 }
 
 .navigator-panel,
@@ -1083,7 +1096,23 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
   display: grid;
   gap: var(--spacing-3);
   position: sticky;
-  top: var(--spacing-4);
+  top: 88px;
+  max-height: calc(100vh - 112px);
+  overflow: auto;
+}
+
+.layouts-mode .navigator-panel {
+  position: static;
+  max-height: none;
+  padding: 0;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  display: grid;
+  grid-template-columns: minmax(260px, 0.72fr) minmax(420px, 1.28fr);
+  gap: var(--spacing-3) var(--spacing-4);
+  overflow: visible;
 }
 
 .navigator-head {
@@ -1107,10 +1136,49 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
   }
 }
 
+.layouts-mode .navigator-head {
+  min-height: 34px;
+  align-items: flex-start;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.layouts-mode .navigator-head:not(.compact) {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.layouts-mode .navigator-head.compact {
+  grid-column: 2;
+  grid-row: 1;
+  padding-top: 0;
+  border-top: 0;
+}
+
 .venue-list,
 .hall-list {
   display: grid;
   gap: 8px;
+}
+
+.layouts-mode .venue-list,
+.layouts-mode .hall-list {
+  min-width: 0;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+
+.layouts-mode .venue-list {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.layouts-mode .hall-list {
+  grid-column: 2;
+  grid-row: 2;
 }
 
 .navigator-item {
@@ -1157,8 +1225,20 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
   min-height: 52px;
 }
 
+.layouts-mode .navigator-item {
+  flex: 0 0 210px;
+  min-height: 48px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+}
+
+.layouts-mode .hall-item {
+  flex-basis: 230px;
+}
+
 .workspace-panel {
   padding: 0 var(--spacing-4) var(--spacing-4);
+  min-height: 0;
 }
 
 .workspace-tabs {
@@ -1168,6 +1248,10 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
 
   :deep(.el-tabs__nav-wrap::after) {
     background-color: var(--color-border);
+  }
+
+  :deep(.el-tabs__content) {
+    overflow: visible;
   }
 }
 
@@ -1193,17 +1277,38 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
   width: 280px;
 }
 
+.layouts-mode .hall-filter {
+  display: none;
+}
+
 .management-grid,
 .layout-grid {
   display: grid;
-  grid-template-columns: minmax(360px, 0.95fr) minmax(420px, 1.15fr);
   gap: var(--spacing-4);
+}
+
+.management-grid {
+  grid-template-columns: minmax(360px, 0.95fr) minmax(420px, 1.15fr);
+}
+
+.layout-grid {
+  grid-template-columns: 1fr;
 }
 
 .table-block,
 .layout-list,
 .layout-detail {
   min-width: 0;
+}
+
+.layout-list {
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--spacing-4);
+}
+
+.layout-list :deep(.el-table__body-wrapper) {
+  max-height: 220px;
+  overflow-y: auto;
 }
 
 .block-head {
@@ -1235,6 +1340,17 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
   }
 }
 
+.layout-detail {
+  min-height: 0;
+}
+
+.layout-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.18fr) minmax(340px, 0.82fr);
+  gap: var(--spacing-4);
+  align-items: start;
+}
+
 .detail-actions {
   display: grid;
   justify-items: end;
@@ -1253,11 +1369,12 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
   background: rgba(255, 255, 255, 0.02);
   border-radius: var(--radius-md);
   padding: var(--spacing-3);
+  min-width: 0;
 }
 
 .area-preview {
   display: grid;
-  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: var(--spacing-2);
   margin-bottom: var(--spacing-3);
 }
@@ -1285,9 +1402,24 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
 }
 
 .detail-tables {
-  margin-top: var(--spacing-3);
   display: grid;
   gap: var(--spacing-3);
+  min-width: 0;
+}
+
+.detail-table-block {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.015);
+  padding: var(--spacing-3);
+}
+
+.compact-head {
+  min-height: 28px;
+  margin-bottom: var(--spacing-2);
+  padding-bottom: var(--spacing-2);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .dialog-grid-form {
@@ -1349,12 +1481,14 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
 
   .venue-workspace,
   .management-grid,
-  .layout-grid {
+  .layout-grid,
+  .layout-detail-grid {
     grid-template-columns: 1fr;
   }
 
   .navigator-panel {
     position: static;
+    max-height: none;
   }
 }
 
@@ -1371,6 +1505,18 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
 
   .hall-filter {
     width: 100%;
+  }
+
+  .layouts-mode .navigator-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .layouts-mode .navigator-head:not(.compact),
+  .layouts-mode .navigator-head.compact,
+  .layouts-mode .venue-list,
+  .layouts-mode .hall-list {
+    grid-column: auto;
+    grid-row: auto;
   }
 
   .area-preview,
