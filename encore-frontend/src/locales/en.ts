@@ -261,6 +261,8 @@ export default {
     halls: 'Halls',
     layouts: 'Layouts',
     adminConsole: 'Admin Console',
+    collapseSidebar: 'Collapse sidebar',
+    expandSidebar: 'Expand sidebar',
     venueLayout: 'Venues & Layouts',
     venueLayoutSubtitle: 'Manage venues, halls, layout versions, and seat status in one operational workspace.',
     venueOperations: 'Venues and Halls',

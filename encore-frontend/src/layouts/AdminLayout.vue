@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { computed, type Component } from 'vue'
+import { computed, ref, watch, type Component } from 'vue'
 import {
   Calendar,
+  Expand,
   Film,
+  Fold,
   Histogram,
   List,
   OfficeBuilding,
@@ -18,6 +20,25 @@ const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const { t } = useI18n()
+const SIDEBAR_COLLAPSED_KEY = 'encore.admin.sidebarCollapsed'
+
+const readSidebarCollapsed = () => {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+const writeSidebarCollapsed = (collapsed: boolean) => {
+  try {
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed))
+  } catch {
+    // Storage can be unavailable in restricted browser contexts.
+  }
+}
+
+const isSidebarCollapsed = ref(readSidebarCollapsed())
 
 interface AdminMenuItem {
   path: string
@@ -46,11 +67,22 @@ const isActive = (path: string) => {
 
 const activeMenuItem = computed(() => menuItems.value.find(item => isActive(item.path)))
 const pageTitle = computed(() => activeMenuItem.value?.label || t('admin.dashboard'))
+const sidebarToggleLabel = computed(() => (
+  isSidebarCollapsed.value ? t('admin.expandSidebar') : t('admin.collapseSidebar')
+))
 const accountName = computed(() => {
   const user = authStore.currentUser
   return user?.displayName || user?.nickname || user?.username || 'ENCORE'
 })
 const accountRole = computed(() => authStore.currentUser?.role?.toUpperCase() || 'ADMIN')
+
+watch(isSidebarCollapsed, collapsed => {
+  writeSidebarCollapsed(collapsed)
+})
+
+const toggleSidebar = () => {
+  isSidebarCollapsed.value = !isSidebarCollapsed.value
+}
 
 const logout = async () => {
   await authStore.logout()
@@ -59,11 +91,23 @@ const logout = async () => {
 </script>
 
 <template>
-  <div class="admin-layout">
+  <div class="admin-layout" :class="{ 'sidebar-collapsed': isSidebarCollapsed }">
     <aside class="sidebar">
       <div class="brand-block">
-        <div class="brand">ENCORE<span class="dot">.</span></div>
-        <div class="brand-caption">{{ t('admin.adminConsole') }}</div>
+        <div class="brand-copy">
+          <div class="brand">ENCORE<span class="dot">.</span></div>
+          <div class="brand-caption">{{ t('admin.adminConsole') }}</div>
+        </div>
+        <button
+          class="sidebar-toggle"
+          type="button"
+          :aria-label="sidebarToggleLabel"
+          :title="sidebarToggleLabel"
+          :aria-expanded="!isSidebarCollapsed"
+          @click="toggleSidebar"
+        >
+          <component :is="isSidebarCollapsed ? Expand : Fold" class="toggle-icon" />
+        </button>
       </div>
       <nav class="menu">
         <button
@@ -72,14 +116,15 @@ const logout = async () => {
           type="button"
           class="menu-item"
           :class="{ active: isActive(item.path) }"
+          :title="item.label"
           @click="router.push(item.path)"
         >
           <component :is="item.icon" class="menu-icon" />
-          <span>{{ item.label }}</span>
+          <span class="menu-label">{{ item.label }}</span>
         </button>
       </nav>
       <div class="bottom-action">
-        <div class="account-card">
+        <div class="account-card" :title="`${accountName} · ${accountRole}`">
           <div class="account-avatar">{{ accountName.slice(0, 1).toUpperCase() }}</div>
           <div class="account-meta">
             <strong>{{ accountName }}</strong>
@@ -90,7 +135,7 @@ const logout = async () => {
           <LanguageSwitch />
           <button class="logout" type="button" :aria-label="t('common.logout')" @click="logout">
             <SwitchButton class="logout-icon" />
-            <span>{{ t('common.logout') }}</span>
+            <span class="logout-label">{{ t('common.logout') }}</span>
           </button>
         </div>
       </div>
@@ -129,14 +174,22 @@ const logout = async () => {
   flex-direction: column;
   background:
     linear-gradient(180deg, rgba(17, 17, 17, 0.98), rgba(10, 10, 10, 0.98));
+  transition: width 180ms ease;
 
   .brand-block {
     min-height: 72px;
     display: grid;
-    align-content: center;
-    gap: 4px;
+    grid-template-columns: minmax(0, 1fr) 32px;
+    align-items: center;
+    gap: var(--spacing-2);
     padding: 0 var(--spacing-4);
     border-bottom: 1px solid var(--color-border);
+  }
+
+  .brand-copy {
+    min-width: 0;
+    display: grid;
+    gap: 4px;
   }
 
   .brand {
@@ -145,6 +198,9 @@ const logout = async () => {
     font-size: 22px;
     line-height: 1;
     letter-spacing: 0;
+    overflow: hidden;
+    text-overflow: clip;
+    white-space: nowrap;
 
     .dot {
       color: var(--color-accent);
@@ -155,6 +211,30 @@ const logout = async () => {
     color: var(--color-text-secondary);
     font-family: var(--font-family-sans);
     font-size: 12px;
+  }
+
+  .sidebar-toggle {
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    display: inline-grid;
+    place-items: center;
+    background: rgba(255, 255, 255, 0.035);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+
+    .toggle-icon {
+      width: 16px;
+      height: 16px;
+    }
+
+    &:hover {
+      border-color: rgba(200, 149, 90, 0.38);
+      background: rgba(200, 149, 90, 0.1);
+      color: var(--color-accent);
+    }
   }
 
   .menu {
@@ -186,6 +266,13 @@ const logout = async () => {
         width: 18px;
         height: 18px;
         flex: 0 0 auto;
+      }
+
+      .menu-label {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       &:hover {
@@ -286,6 +373,70 @@ const logout = async () => {
   }
 }
 
+.admin-layout.sidebar-collapsed {
+  .sidebar {
+    width: 72px;
+
+    .brand-block {
+      grid-template-columns: 1fr;
+      justify-items: center;
+      padding: 0 10px;
+    }
+
+    .brand-copy {
+      display: none;
+    }
+
+    .menu {
+      padding: var(--spacing-3) 10px;
+
+      .menu-item {
+        justify-content: center;
+        padding: 0;
+        gap: 0;
+      }
+
+      .menu-label {
+        display: none;
+      }
+    }
+
+    .bottom-action {
+      padding: var(--spacing-3) 10px;
+      justify-items: center;
+
+      .account-card {
+        justify-content: center;
+        padding: 0;
+      }
+
+      .account-meta {
+        display: none;
+      }
+
+      .utility-row {
+        display: grid;
+        justify-items: center;
+        gap: var(--spacing-2);
+
+        :deep(.language-switch) {
+          display: none;
+        }
+      }
+
+      .logout {
+        width: 36px;
+        justify-content: center;
+        padding: 0;
+      }
+
+      .logout-label {
+        display: none;
+      }
+    }
+  }
+}
+
 .content-area {
   flex: 1;
   display: flex;
@@ -334,6 +485,7 @@ const logout = async () => {
     min-height: auto;
     border-right: 0;
     border-bottom: 1px solid var(--color-border);
+    transition: none;
 
     .brand-block {
       min-height: 72px;
@@ -347,6 +499,36 @@ const logout = async () => {
 
     .bottom-action {
       display: none;
+    }
+  }
+
+  .admin-layout.sidebar-collapsed {
+    .sidebar {
+      width: 100%;
+
+      .brand-block {
+        grid-template-columns: minmax(0, 1fr) 32px;
+        justify-items: stretch;
+        padding: 0 var(--spacing-4);
+      }
+
+      .brand-copy {
+        display: grid;
+      }
+
+      .menu {
+        padding: var(--spacing-3);
+
+        .menu-item {
+          justify-content: flex-start;
+          padding: 0 var(--spacing-3);
+          gap: 12px;
+        }
+
+        .menu-label {
+          display: inline;
+        }
+      }
     }
   }
 

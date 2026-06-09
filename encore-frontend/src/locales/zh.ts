@@ -260,6 +260,8 @@ export default {
     halls: '厅',
     layouts: '布局管理',
     adminConsole: '后台管理',
+    collapseSidebar: '收起侧边栏',
+    expandSidebar: '展开侧边栏',
     venueLayout: '场馆与布局',
     venueLayoutSubtitle: '集中维护场馆、厅、布局版本和座位状态，减少跨页面切换',
     venueOperations: '场馆与厅',
