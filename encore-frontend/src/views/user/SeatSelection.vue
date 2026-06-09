@@ -1156,9 +1156,9 @@ const stageDisplayLabel = computed(() => {
   .stage-apron {
     height: 10px;
     border-radius: 50% / 100% 100% 0 0;
-    background: linear-gradient(180deg, var(--color-accent) 0%, rgba(200, 149, 90, 0.12) 100%);
-    box-shadow: 0 -4px 16px rgba(200, 149, 90, 0.3);
-    border: 1px solid var(--color-accent);
+    background: linear-gradient(180deg, #d8a66c 0%, rgba(200, 149, 90, 0.18) 100%);
+    box-shadow: 0 -5px 18px rgba(200, 149, 90, 0.42);
+    border: 1px solid rgba(222, 176, 116, 0.92);
     border-bottom: none;
   }
 
@@ -1166,10 +1166,11 @@ const stageDisplayLabel = computed(() => {
     font-family: var(--font-family-sans);
     font-size: 11px;
     font-weight: 700;
-    color: var(--color-accent);
+    color: #d8a66c;
     letter-spacing: 0.2em;
     text-transform: uppercase;
     margin-top: 8px;
+    text-shadow: 0 0 12px rgba(200, 149, 90, 0.28);
   }
 }
 
@@ -1187,7 +1188,7 @@ const stageDisplayLabel = computed(() => {
     background: transparent;
   }
   &::-webkit-scrollbar-thumb {
-    background: var(--color-border-strong);
+    background: rgba(255, 255, 255, 0.26);
     border-radius: 3px;
   }
 }
@@ -1207,7 +1208,7 @@ const stageDisplayLabel = computed(() => {
       width: 24px;
       text-align: center;
       font-size: 12px;
-      color: var(--color-text-ghost);
+      color: rgba(255, 255, 255, 0.54);
       font-family: var(--font-family-sans);
       font-weight: 700;
     }
@@ -1227,26 +1228,27 @@ const stageDisplayLabel = computed(() => {
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 1px solid var(--color-border-strong);
-  background-color: var(--color-bg-elevated);
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  background-color: rgba(255, 255, 255, 0.045);
   cursor: pointer;
   position: relative;
   transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
 
   &:hover:not(:disabled) {
-    border-color: var(--color-accent);
+    border-color: #d8a66c;
+    background-color: rgba(200, 149, 90, 0.12);
     transform: scale(1.15);
-    box-shadow: 0 4px 8px rgba(200, 149, 90, 0.18);
+    box-shadow: 0 4px 10px rgba(200, 149, 90, 0.24);
   }
 
   &.status-available {
-    background-color: transparent;
-    border-color: var(--color-border-strong);
+    background-color: rgba(255, 255, 255, 0.045);
+    border-color: rgba(255, 255, 255, 0.34);
   }
 
   &.status-locked {
-    background-color: rgba(255, 255, 255, 0.05);
-    border-color: var(--color-border);
+    background-color: rgba(255, 255, 255, 0.085);
+    border-color: rgba(255, 255, 255, 0.22);
     border-style: dashed;
     cursor: not-allowed;
     &::after {
@@ -1254,23 +1256,22 @@ const stageDisplayLabel = computed(() => {
       position: absolute;
       width: 4px;
       height: 4px;
-      background-color: var(--color-text-ghost);
+      background-color: rgba(255, 255, 255, 0.56);
       border-radius: 50%;
     }
   }
 
   &.status-sold {
-    background-color: transparent;
-    border-color: transparent;
+    background-color: rgba(255, 255, 255, 0.02);
+    border-color: rgba(255, 255, 255, 0.08);
     cursor: not-allowed;
     &::after {
       content: '';
       position: absolute;
       width: 6px;
       height: 6px;
-      background-color: var(--color-border-strong);
+      background-color: rgba(255, 255, 255, 0.42);
       border-radius: 50%;
-      opacity: 0.4;
     }
   }
 

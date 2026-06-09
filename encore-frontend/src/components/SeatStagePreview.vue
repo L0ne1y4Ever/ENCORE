@@ -98,7 +98,7 @@ const createLights = () => {
   const isMovie = props.category?.toLowerCase() === 'movie'
 
   // 环境光
-  const ambientLight = new THREE.AmbientLight(isMovie ? 0x15151b : 0x1a1a24, 0.8)
+  const ambientLight = new THREE.AmbientLight(isMovie ? 0x1a1a21 : 0x20202a, 1.0)
   scene.add(ambientLight)
 
   const stats = getSeatStats()
@@ -106,14 +106,14 @@ const createLights = () => {
 
   if (isMovie) {
     // 银幕反射光：冷蓝光
-    const screenReflectLight = new THREE.DirectionalLight(0x5588cc, 1.2)
+    const screenReflectLight = new THREE.DirectionalLight(0x6f9ed0, 1.32)
     screenReflectLight.position.set(0, 4, stageZ)
     screenReflectLight.target.position.set(0, 0, 0)
     scene.add(screenReflectLight)
     scene.add(screenReflectLight.target)
   } else {
     // 舞台反射光：温暖的金黄光
-    const stageReflectLight = new THREE.DirectionalLight(0xffdfb0, 1.0)
+    const stageReflectLight = new THREE.DirectionalLight(0xffdfb0, 1.16)
     stageReflectLight.position.set(0, 5, stageZ)
     stageReflectLight.target.position.set(0, 0, 0)
     scene.add(stageReflectLight)
@@ -121,12 +121,12 @@ const createLights = () => {
   }
 
   // 顶部微弱填充光
-  const topFill = new THREE.DirectionalLight(isMovie ? 0x6688aa : 0x8877aa, 0.4)
+  const topFill = new THREE.DirectionalLight(isMovie ? 0x7796b4 : 0xa08d82, 0.54)
   topFill.position.set(0, 12, -2)
   scene.add(topFill)
 
   // 观众席后方微弱光线
-  const audienceBackLight = new THREE.DirectionalLight(isMovie ? 0x443322 : 0x332244, 0.3)
+  const audienceBackLight = new THREE.DirectionalLight(isMovie ? 0x554436 : 0x514333, 0.42)
   audienceBackLight.position.set(0, 12, stats.depth / 2 + 2.0)
   scene.add(audienceBackLight)
 }
@@ -461,16 +461,16 @@ const getSeatMaterialConfig = (status: SeatStatus, selected: boolean) => {
 
   switch (status) {
     case 'SOLD':
-      // 已售座位：哑光极深炭灰色，没有任何荧光
-      return { color: 0x222225, roughness: 1.0, metalness: 0.05, emissive: 0x000000, emissiveIntensity: 0 }
+      // 已售座位：哑光炭灰，保持低调但不沉入背景
+      return { color: 0x303035, roughness: 1.0, metalness: 0.05, emissive: 0x020202, emissiveIntensity: 0.04 }
     case 'LOCKED':
       // 锁定座位：深红褐色带有微弱警示性红色呼吸灯，容易跟已售区分
-      return { color: 0x5a2323, roughness: 0.85, metalness: 0.1, emissive: 0x2a0808, emissiveIntensity: 0.6 }
+      return { color: 0x6a2a2a, roughness: 0.85, metalness: 0.1, emissive: 0x2a0808, emissiveIntensity: 0.65 }
     case 'DISABLED':
-      return { color: 0x111112, roughness: 1.0, metalness: 0, emissive: 0x000000, emissiveIntensity: 0 }
+      return { color: 0x18181a, roughness: 1.0, metalness: 0, emissive: 0x010101, emissiveIntensity: 0.02 }
     case 'AVAILABLE':
     default:
-      return { color: 0x6e604f, roughness: 0.75, metalness: 0.1, emissive: 0x0a0500, emissiveIntensity: 0.15 }
+      return { color: 0x8a7964, roughness: 0.75, metalness: 0.1, emissive: 0x1d1205, emissiveIntensity: 0.22 }
   }
 }
 

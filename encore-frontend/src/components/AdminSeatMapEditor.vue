@@ -194,23 +194,25 @@ const handleToggle = (seat: SeatMapItem) => {
     width: 14px;
     height: 14px;
     border-radius: 4px;
-    border: 1px solid var(--color-border-strong);
-    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.34);
+    background: rgba(255, 255, 255, 0.05);
   }
 
   .status-disabled {
     border-style: dashed;
-    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.34);
+    background: rgba(255, 255, 255, 0.08);
   }
 
   .status-locked {
     border-style: dashed;
-    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.24);
+    background: rgba(255, 255, 255, 0.09);
   }
 
   .status-sold {
-    border-color: transparent;
-    background: rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.24);
   }
 }
 
@@ -223,21 +225,22 @@ const handleToggle = (seat: SeatMapItem) => {
 
   .stage-apron {
     height: 10px;
-    border: 1px solid var(--color-accent);
+    border: 1px solid rgba(222, 176, 116, 0.92);
     border-bottom: none;
     border-radius: 50% / 100% 100% 0 0;
-    background: linear-gradient(180deg, var(--color-accent) 0%, rgba(200, 149, 90, 0.1) 100%);
-    box-shadow: 0 -4px 16px rgba(200, 149, 90, 0.35);
+    background: linear-gradient(180deg, #d8a66c 0%, rgba(200, 149, 90, 0.18) 100%);
+    box-shadow: 0 -5px 18px rgba(200, 149, 90, 0.44);
   }
 
   .stage-label {
     margin-top: 8px;
-    color: var(--color-accent);
+    color: #d8a66c;
     font-family: var(--font-family-sans);
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.2em;
     text-transform: uppercase;
+    text-shadow: 0 0 12px rgba(200, 149, 90, 0.28);
   }
 }
 
@@ -259,7 +262,7 @@ const handleToggle = (seat: SeatMapItem) => {
   }
 
   &::-webkit-scrollbar-thumb {
-    background: var(--color-border-strong);
+    background: rgba(255, 255, 255, 0.26);
     border-radius: 3px;
   }
 }
@@ -280,7 +283,7 @@ const handleToggle = (seat: SeatMapItem) => {
 .row-label {
   width: 24px;
   text-align: center;
-  color: var(--color-text-ghost);
+  color: rgba(255, 255, 255, 0.54);
   font-family: var(--font-family-sans);
   font-size: 12px;
   font-weight: 700;
@@ -294,9 +297,9 @@ const handleToggle = (seat: SeatMapItem) => {
 .seat-item {
   width: 24px;
   height: 24px;
-  border: 1px solid var(--color-border-strong);
+  border: 1px solid rgba(255, 255, 255, 0.34);
   border-radius: 6px;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.045);
   cursor: not-allowed;
   display: flex;
   align-items: center;
@@ -312,43 +315,43 @@ const handleToggle = (seat: SeatMapItem) => {
     cursor: pointer;
 
     &:hover:not(:disabled) {
-      border-color: var(--color-accent);
+      border-color: #d8a66c;
+      background: rgba(200, 149, 90, 0.12);
       transform: scale(1.15);
-      box-shadow: 0 4px 8px rgba(200, 149, 90, 0.15);
+      box-shadow: 0 4px 10px rgba(200, 149, 90, 0.24);
     }
   }
 
   &.status-disabled {
     border-style: dashed;
-    border-color: rgba(255, 255, 255, 0.24);
-    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.34);
+    background: rgba(255, 255, 255, 0.085);
   }
 
   &.status-locked {
     border-style: dashed;
-    border-color: var(--color-border);
-    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.22);
+    background: rgba(255, 255, 255, 0.085);
 
     &::after {
       content: '';
       width: 4px;
       height: 4px;
       border-radius: 50%;
-      background: var(--color-text-ghost);
+      background: rgba(255, 255, 255, 0.56);
     }
   }
 
   &.status-sold {
-    border-color: transparent;
-    background: transparent;
+    border-color: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.02);
 
     &::after {
       content: '';
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background: var(--color-border-strong);
-      opacity: 0.45;
+      background: rgba(255, 255, 255, 0.42);
     }
   }
 
@@ -367,7 +370,7 @@ const handleToggle = (seat: SeatMapItem) => {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--color-text-ghost);
+  background: rgba(255, 255, 255, 0.48);
 }
 
 .map-empty {

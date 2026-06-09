@@ -96,8 +96,8 @@ const getAreaPattern = (area: ScheduleAreaResponse) => {
 const getAreaOpacity = (area: ScheduleAreaResponse) => {
   if (area.totalCount <= 0) return 0.12
   const ratio = area.availableCount / area.totalCount
-  if (ratio === 0) return 0.08
-  return 0.2 + ratio * 0.4 // Highly refined glass opacity
+  if (ratio === 0) return 0.1
+  return 0.26 + ratio * 0.42 // Keep dark-map atmosphere while improving area readability
 }
 </script>
 
@@ -143,12 +143,12 @@ const getAreaOpacity = (area: ScheduleAreaResponse) => {
 
           <!-- Seating pattern for seated stands -->
           <pattern id="seats-pattern" x="0" y="0" width="10" height="10" patternUnits="userSpaceOnUse">
-            <circle cx="5" cy="5" r="1.2" fill="rgba(255, 255, 255, 0.15)" />
+            <circle cx="5" cy="5" r="1.2" fill="rgba(255, 255, 255, 0.2)" />
           </pattern>
 
           <!-- Crowd/Standing texture pattern -->
           <pattern id="standing-pattern" x="0" y="0" width="6" height="6" patternUnits="userSpaceOnUse">
-            <circle cx="3" cy="3" r="0.8" fill="rgba(255, 255, 255, 0.08)" />
+            <circle cx="3" cy="3" r="0.8" fill="rgba(255, 255, 255, 0.12)" />
           </pattern>
 
           <!-- Spotlight gradient overlays (Hex + stop-opacity to fix cross-browser rendering bugs) -->
@@ -163,14 +163,14 @@ const getAreaOpacity = (area: ScheduleAreaResponse) => {
             <stop offset="100%" stop-color="#c8955a" stop-opacity="0" />
           </linearGradient>
           <linearGradient id="spotlight-blue" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stop-color="#4a90e2" stop-opacity="0.25" />
-            <stop offset="60%" stop-color="#4a90e2" stop-opacity="0.08" />
-            <stop offset="100%" stop-color="#4a90e2" stop-opacity="0" />
+            <stop offset="0%" stop-color="#d8c2a0" stop-opacity="0.18" />
+            <stop offset="60%" stop-color="#d8c2a0" stop-opacity="0.06" />
+            <stop offset="100%" stop-color="#d8c2a0" stop-opacity="0" />
           </linearGradient>
           <linearGradient id="spotlight-magenta" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stop-color="#bd10e0" stop-opacity="0.22" />
-            <stop offset="60%" stop-color="#bd10e0" stop-opacity="0.06" />
-            <stop offset="100%" stop-color="#bd10e0" stop-opacity="0" />
+            <stop offset="0%" stop-color="#f0e6d6" stop-opacity="0.14" />
+            <stop offset="60%" stop-color="#f0e6d6" stop-opacity="0.045" />
+            <stop offset="100%" stop-color="#f0e6d6" stop-opacity="0" />
           </linearGradient>
 
           <!-- Screen backdrop gradient -->
@@ -215,13 +215,13 @@ const getAreaOpacity = (area: ScheduleAreaResponse) => {
 
           <!-- Digital LED screen matrix grid pattern -->
           <pattern id="screen-grid" width="6" height="6" patternUnits="userSpaceOnUse">
-            <line x1="0" y1="0" x2="6" y2="0" stroke="rgba(255,255,255,0.03)" stroke-width="0.5" />
-            <line x1="0" y1="0" x2="0" y2="6" stroke="rgba(255,255,255,0.03)" stroke-width="0.5" />
+            <line x1="0" y1="0" x2="6" y2="0" stroke="rgba(255,255,255,0.045)" stroke-width="0.5" />
+            <line x1="0" y1="0" x2="0" y2="6" stroke="rgba(255,255,255,0.045)" stroke-width="0.5" />
           </pattern>
         </defs>
 
         <!-- Spatial Blueprint Grid Lines (Adding high-fidelity architectural aura) -->
-        <g opacity="0.1" pointer-events="none">
+        <g opacity="0.14" pointer-events="none">
           <!-- Horizontal grid lines -->
           <line x1="50" y1="100" x2="750" y2="100" stroke="#c8955a" stroke-width="0.5" stroke-dasharray="2,8" />
           <line x1="50" y1="200" x2="750" y2="200" stroke="#c8955a" stroke-width="0.5" stroke-dasharray="2,8" />
@@ -240,9 +240,9 @@ const getAreaOpacity = (area: ScheduleAreaResponse) => {
         </g>
 
         <!-- Stadium Blueprint Outer Rings -->
-        <ellipse cx="400" cy="275" rx="385" ry="260" fill="none" stroke="rgba(200, 149, 90, 0.04)" stroke-width="1.5" />
-        <ellipse cx="400" cy="275" rx="378" ry="253" fill="none" stroke="rgba(200, 149, 90, 0.08)" stroke-width="1" stroke-dasharray="5,5" />
-        <ellipse cx="400" cy="275" rx="392" ry="267" fill="none" stroke="rgba(255,255,255,0.015)" stroke-width="1" />
+        <ellipse cx="400" cy="275" rx="385" ry="260" fill="none" stroke="rgba(200, 149, 90, 0.08)" stroke-width="1.5" />
+        <ellipse cx="400" cy="275" rx="378" ry="253" fill="none" stroke="rgba(200, 149, 90, 0.12)" stroke-width="1" stroke-dasharray="5,5" />
+        <ellipse cx="400" cy="275" rx="392" ry="267" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="1" />
 
         <!-- Sweeping Concert Spotlights (Dynamic, Multi-colored Beams) -->
         <g class="spotlight-layer">
@@ -265,7 +265,7 @@ const getAreaOpacity = (area: ScheduleAreaResponse) => {
 
           <!-- Abstract Soundwaves on Screen -->
           <path d="M225,50 Q260,30 300,50 T380,50 T460,50 T540,50 T575,50" fill="none" stroke="rgba(200,149,90,0.18)" stroke-width="1.2" />
-          <path d="M225,50 Q280,68 330,45 T430,45 T530,55 T575,50" fill="none" stroke="rgba(74, 144, 226, 0.12)" stroke-width="1" />
+          <path d="M225,50 Q280,68 330,45 T430,45 T530,55 T575,50" fill="none" stroke="rgba(240,230,214,0.12)" stroke-width="1" />
 
           <!-- Dynamic equalizer bars bouncing on screen -->
           <g fill="#c8955a" opacity="0.6" class="screen-eq" filter="url(#screen-glow)">
@@ -431,9 +431,9 @@ const getAreaOpacity = (area: ScheduleAreaResponse) => {
   flex-direction: column;
   align-items: center;
   background-image:
-    radial-gradient(circle at 50% 15%, rgba(200, 149, 90, 0.15) 0%, rgba(8, 8, 8, 0) 65%),
-    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+    radial-gradient(circle at 50% 15%, rgba(200, 149, 90, 0.2) 0%, rgba(8, 8, 8, 0) 65%),
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
   background-size: 100% 100%, 24px 24px, 24px 24px;
   background-position: center top;
   background-color: var(--color-bg-base);
@@ -455,11 +455,11 @@ const getAreaOpacity = (area: ScheduleAreaResponse) => {
 .stage-board {
   width: 100%;
   padding: 10px;
-  background: linear-gradient(90deg, rgba(200, 149, 90, 0) 0%, rgba(200, 149, 90, 0.15) 50%, rgba(200, 149, 90, 0) 100%);
-  border-bottom: 1.5px solid var(--color-accent);
+  background: linear-gradient(90deg, rgba(200, 149, 90, 0) 0%, rgba(200, 149, 90, 0.22) 50%, rgba(200, 149, 90, 0) 100%);
+  border-bottom: 1.5px solid rgba(222, 176, 116, 0.92);
   text-align: center;
   border-radius: var(--radius-sm);
-  box-shadow: 0 4px 20px rgba(200, 149, 90, 0.05);
+  box-shadow: 0 4px 22px rgba(200, 149, 90, 0.12);
 }
 
 .stage-text {
@@ -469,7 +469,7 @@ const getAreaOpacity = (area: ScheduleAreaResponse) => {
   color: var(--color-accent);
   letter-spacing: 0.4em;
   text-transform: uppercase;
-  text-shadow: 0 0 10px rgba(200, 149, 90, 0.4);
+  text-shadow: 0 0 12px rgba(200, 149, 90, 0.55);
 }
 
 .stage-light {
@@ -477,7 +477,7 @@ const getAreaOpacity = (area: ScheduleAreaResponse) => {
   top: 100%;
   width: 1.5px;
   height: 250px;
-  background: linear-gradient(180deg, rgba(200, 149, 90, 0.25) 0%, rgba(200, 149, 90, 0) 100%);
+  background: linear-gradient(180deg, rgba(200, 149, 90, 0.32) 0%, rgba(200, 149, 90, 0) 100%);
   transform-origin: top center;
   pointer-events: none;
   z-index: 1;
@@ -597,12 +597,12 @@ const getAreaOpacity = (area: ScheduleAreaResponse) => {
   stroke-dasharray: 2000;
   stroke-dashoffset: 0;
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  opacity: 0.55;
+  opacity: 0.68;
 
   &:hover {
     stroke-width: 2.2px !important;
     opacity: 1 !important;
-    filter: drop-shadow(0 0 8px currentColor);
+    filter: drop-shadow(0 0 6px currentColor);
   }
 }
 
@@ -620,7 +620,7 @@ const getAreaOpacity = (area: ScheduleAreaResponse) => {
     .area-path-border {
       stroke-width: 2.5px !important;
       opacity: 1 !important;
-      filter: drop-shadow(0 0 10px currentColor);
+      filter: drop-shadow(0 0 8px currentColor);
     }
     .label-card {
       fill: rgba(16, 16, 20, 0.95) !important;
@@ -665,11 +665,11 @@ const getAreaOpacity = (area: ScheduleAreaResponse) => {
 
     .area-path-bg {
       fill: #16161a !important;
-      fill-opacity: 0.12 !important;
+      fill-opacity: 0.16 !important;
     }
 
     .area-path-border {
-      stroke: rgba(255,255,255,0.05) !important;
+      stroke: rgba(255,255,255,0.09) !important;
       stroke-width: 1px !important;
       cursor: not-allowed;
     }
