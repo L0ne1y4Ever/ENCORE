@@ -543,13 +543,15 @@ public class VenueManagementService {
         BigDecimal vipPrice = request.vipPrice() == null ? BigDecimal.valueOf(150) : request.vipPrice();
         BigDecimal standardPrice = request.standardPrice() == null ? BigDecimal.valueOf(100) : request.standardPrice();
         BigDecimal economyPrice = request.economyPrice() == null ? BigDecimal.valueOf(50) : request.economyPrice();
-        int vipRows = Math.max(1, (int) Math.ceil(rows * 0.3));
-        int standardRows = Math.max(vipRows, (int) Math.ceil(rows * 0.7));
+        // 贴近真实剧场定价：最前排紧贴舞台、仰视疲劳 → 最便宜(B)；
+        // 中段视野最佳 → 最贵(VIP)；后段 → 中等(A)。少于 3 排时不设前排低价段。
+        int frontRows = rows >= 3 ? Math.max(1, (int) Math.round(rows * 0.2)) : 0;
+        int premiumEndRow = Math.max(frontRows + 1, (int) Math.ceil(rows * 0.65));
         int centerCol = (cols + 1) / 2;
         for (int row = 1; row <= rows; row++) {
             for (int col = 1; col <= cols; col++) {
-                String section = row <= vipRows ? "VIP" : row <= standardRows ? "A" : "B";
-                BigDecimal price = row <= vipRows ? vipPrice : row <= standardRows ? standardPrice : economyPrice;
+                String section = row <= frontRows ? "B" : row <= premiumEndRow ? "VIP" : "A";
+                BigDecimal price = row <= frontRows ? economyPrice : row <= premiumEndRow ? vipPrice : standardPrice;
                 boolean disabled = cols >= 6 && row % 4 == 1 && col == centerCol;
                 insertLayoutSeat(layout.getId(), null, "seat-%d-%d".formatted(row, col), row, col, section, disabled ? "DISABLED" : "AVAILABLE", price);
             }

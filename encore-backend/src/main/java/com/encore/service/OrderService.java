@@ -9,6 +9,7 @@ import com.encore.dto.RefundOrderRequest;
 import com.encore.dto.RefundRequestSummary;
 import com.encore.dto.TicketItemResponse;
 import com.encore.entity.RefundRequest;
+import com.encore.entity.RefundRequestTicket;
 import com.encore.entity.ScheduleSeat;
 import com.encore.entity.ShowEntity;
 import com.encore.entity.ShowSchedule;
@@ -19,6 +20,7 @@ import com.encore.entity.UserAccount;
 import com.encore.entity.VenueArea;
 import com.encore.exception.BusinessException;
 import com.encore.mapper.RefundRequestMapper;
+import com.encore.mapper.RefundRequestTicketMapper;
 import com.encore.mapper.ScheduleSeatMapper;
 import com.encore.mapper.ShowMapper;
 import com.encore.mapper.ShowScheduleMapper;
@@ -32,12 +34,18 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Comparator;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -46,6 +54,12 @@ import java.util.stream.Collectors;
 public class OrderService {
     private static final Duration PAYMENT_TTL = Duration.ofMinutes(15);
     private static final Duration SELF_SERVICE_REFUND_DEADLINE = Duration.ofHours(2);
+
+    public record GroupSeatHolder(String seatId, String userId, String displayName) {
+    }
+
+    private record RefundScope(String scope, List<TicketItem> tickets, boolean wholeOrder) {
+    }
 
     private final TicketOrderMapper ticketOrderMapper;
     private final TicketItemMapper ticketItemMapper;
@@ -59,6 +73,7 @@ public class OrderService {
     private final ShowMapper showMapper;
     private final UserAccountMapper userAccountMapper;
     private final RefundRequestMapper refundRequestMapper;
+    private final RefundRequestTicketMapper refundRequestTicketMapper;
 
     public OrderService(
             TicketOrderMapper ticketOrderMapper,
@@ -72,7 +87,8 @@ public class OrderService {
             ShowScheduleMapper showScheduleMapper,
             ShowMapper showMapper,
             UserAccountMapper userAccountMapper,
-            RefundRequestMapper refundRequestMapper
+            RefundRequestMapper refundRequestMapper,
+            RefundRequestTicketMapper refundRequestTicketMapper
     ) {
         this.ticketOrderMapper = ticketOrderMapper;
         this.ticketItemMapper = ticketItemMapper;
@@ -86,11 +102,13 @@ public class OrderService {
         this.showMapper = showMapper;
         this.userAccountMapper = userAccountMapper;
         this.refundRequestMapper = refundRequestMapper;
+        this.refundRequestTicketMapper = refundRequestTicketMapper;
     }
 
     @Transactional
     public String createOrder(CreateOrderRequest request) {
         String userId = StpUtil.getLoginIdAsString();
+        String holderDisplayName = currentDisplayName(userId);
         seatService.ensureOnSaleSchedule(request.scheduleId());
 
         // ZONED / standing area mode
@@ -141,6 +159,8 @@ public class OrderService {
                 ticket.setAreaInventoryId(request.areaInventoryId());
                 ticket.setTicketCode("T" + Long.toString(System.currentTimeMillis(), 36).toUpperCase() + "Z" + i + "XYZ");
                 ticket.setStatus("RESERVED");
+                ticket.setHolderUserId(userId);
+                ticket.setHolderDisplayName(holderDisplayName);
                 ticket.setCreatedAt(now);
                 ticket.setUpdatedAt(now);
                 ticketItemMapper.insert(ticket);
@@ -185,7 +205,7 @@ public class OrderService {
 
         List<TicketItem> tickets = seatIds.stream()
                 .sorted()
-                .map(seatId -> createReservedTicket(orderId, request.scheduleId(), seatId))
+                .map(seatId -> createReservedTicket(orderId, request.scheduleId(), seatId, userId, holderDisplayName))
                 .toList();
         tickets.forEach(ticketItemMapper::insert);
         seatService.attachOrderToLocks(request.scheduleId(), seatIds, orderId, PAYMENT_TTL);
@@ -194,10 +214,13 @@ public class OrderService {
     }
 
     @Transactional
-    public String createGroupOrder(String scheduleId, List<String> requestedSeatIds, String lockOwner) {
+    public String createGroupOrder(String scheduleId, List<GroupSeatHolder> requestedSeatHolders, String lockOwner) {
         String userId = StpUtil.getLoginIdAsString();
         seatService.ensureOnSaleSchedule(scheduleId);
-        List<String> seatIds = normalizeSeatIds(requestedSeatIds);
+        List<GroupSeatHolder> seatHolders = normalizeGroupSeatHolders(requestedSeatHolders);
+        List<String> seatIds = seatHolders.stream().map(GroupSeatHolder::seatId).toList();
+        Map<String, GroupSeatHolder> holderBySeatId = seatHolders.stream()
+                .collect(Collectors.toMap(GroupSeatHolder::seatId, holder -> holder, (left, right) -> left, LinkedHashMap::new));
         List<ScheduleSeat> seats = seatService.findSeats(scheduleId, seatIds);
         seats.forEach(seat -> seatService.ensureSeatAvailableForOrder(scheduleId, seat));
         seatService.ensureLocksOwnedBy(scheduleId, seatIds, lockOwner);
@@ -221,7 +244,10 @@ public class OrderService {
 
         List<TicketItem> tickets = seatIds.stream()
                 .sorted()
-                .map(seatId -> createReservedTicket(orderId, scheduleId, seatId))
+                .map(seatId -> {
+                    GroupSeatHolder holder = holderBySeatId.get(seatId);
+                    return createReservedTicket(orderId, scheduleId, seatId, holder.userId(), holder.displayName());
+                })
                 .toList();
         tickets.forEach(ticketItemMapper::insert);
         seatService.transferLocksOwner(scheduleId, seatIds, lockOwner, orderId, PAYMENT_TTL);
@@ -278,13 +304,75 @@ public class OrderService {
         return toOrderResponse(getOrder(orderId));
     }
 
+    public String getOrderStatus(String orderId) {
+        TicketOrder order = ticketOrderMapper.selectById(orderId);
+        return order == null ? null : order.getStatus();
+    }
+
+    @Transactional
+    public void repairGroupTicketHolders(String orderId, List<GroupSeatHolder> requestedSeatHolders) {
+        if (orderId == null || orderId.isBlank() || requestedSeatHolders == null || requestedSeatHolders.isEmpty()) {
+            return;
+        }
+        TicketOrder order = ticketOrderMapper.selectById(orderId);
+        if (order == null) {
+            return;
+        }
+        Map<String, GroupSeatHolder> holderBySeatId = normalizeGroupSeatHolders(requestedSeatHolders).stream()
+                .collect(Collectors.toMap(GroupSeatHolder::seatId, holder -> holder, (left, right) -> left, LinkedHashMap::new));
+        if (holderBySeatId.isEmpty()) {
+            return;
+        }
+
+        for (TicketItem ticket : listTickets(orderId)) {
+            if (ticket.getAreaInventoryId() != null || ticket.getSeatId() == null) {
+                continue;
+            }
+            GroupSeatHolder holder = holderBySeatId.get(ticket.getSeatId());
+            if (holder == null) {
+                continue;
+            }
+            String displayName = holder.displayName() == null || holder.displayName().isBlank()
+                    ? holder.userId()
+                    : holder.displayName();
+            boolean holderChanged = !holder.userId().equals(ticket.getHolderUserId());
+            boolean displayNameChanged = !displayName.equals(ticket.getHolderDisplayName());
+            if (!holderChanged && !displayNameChanged) {
+                continue;
+            }
+            ticket.setHolderUserId(holder.userId());
+            ticket.setHolderDisplayName(displayName);
+            ticket.setUpdatedAt(LocalDateTime.now());
+            ticketItemMapper.updateById(ticket);
+        }
+    }
+
     @Transactional
     public List<OrderResponse> listMyOrders() {
         String userId = StpUtil.getLoginIdAsString();
-        return ticketOrderMapper.selectList(new LambdaQueryWrapper<TicketOrder>()
-                        .eq(TicketOrder::getUserId, userId)
-                        .orderByDesc(TicketOrder::getCreatedAt))
+        Map<String, TicketOrder> ordersById = new LinkedHashMap<>();
+        safeList(ticketOrderMapper.selectList(new LambdaQueryWrapper<TicketOrder>()
+                        .eq(TicketOrder::getUserId, userId)))
+                .forEach(order -> ordersById.put(order.getId(), order));
+
+        Set<String> heldOrderIds = safeList(ticketItemMapper.selectList(new LambdaQueryWrapper<TicketItem>()
+                        .eq(TicketItem::getHolderUserId, userId)))
                 .stream()
+                .map(TicketItem::getOrderId)
+                .collect(Collectors.toSet());
+        for (String heldOrderId : heldOrderIds) {
+            if (ordersById.containsKey(heldOrderId)) {
+                continue;
+            }
+            TicketOrder order = ticketOrderMapper.selectById(heldOrderId);
+            if (order != null && !"PENDING_PAYMENT".equals(order.getStatus())) {
+                ordersById.put(order.getId(), order);
+            }
+        }
+
+        return ordersById.values().stream()
+                .sorted((left, right) -> Comparator.nullsLast(LocalDateTime::compareTo)
+                        .compare(right.getCreatedAt(), left.getCreatedAt()))
                 .map(order -> {
                     expireIfNeeded(order);
                     return toOrderResponse(getOrder(order.getId()));
@@ -382,7 +470,7 @@ public class OrderService {
     @Transactional
     public OrderResponse refundOrder(String orderId, RefundOrderRequest request) {
         TicketOrder order = getOrder(orderId);
-        ensureOrderOwner(order);
+        String currentUserId = StpUtil.getLoginIdAsString();
         expireIfNeeded(order);
         order = getOrder(orderId);
         if ("REFUNDED".equals(order.getStatus())) {
@@ -400,20 +488,17 @@ public class OrderService {
         }
         LocalDateTime refundDeadline = schedule.getStartTime().minus(SELF_SERVICE_REFUND_DEADLINE);
         List<TicketItem> tickets = listTickets(orderId);
-        if (tickets.stream().anyMatch(ticket -> "CHECKED_IN".equals(ticket.getStatus()))) {
-            throw new BusinessException(ErrorCode.CONFLICT, "已核销票据不可退票");
+        RefundScope refundScope = resolveRefundScope(order, tickets, request, currentUserId);
+        if (hasPendingRefundForTickets(order.getId(), refundScope.tickets())) {
+            return toOrderResponse(getOrder(orderId));
         }
         String reason = cleanRefundText(request == null ? null : request.reason());
         if (LocalDateTime.now().isBefore(refundDeadline)) {
-            createRefundRequest(order, "APPROVED", "USER_AUTO", reason, null, null);
-            markRefunded(order, tickets, "USER_REFUNDED");
+            createRefundRequest(order, "APPROVED", "USER_AUTO", refundScope.scope(), reason, null, null, currentUserId, refundScope.tickets());
+            markRefunded(order, refundScope.tickets(), "USER_REFUNDED");
         } else {
-            if (findPendingRefundRequest(order.getId()) == null) {
-                createRefundRequest(order, "PENDING", "USER_REVIEW", reason, null, null);
-            }
-            order.setStatus("PENDING_REFUND");
-            order.setUpdatedAt(LocalDateTime.now());
-            ticketOrderMapper.updateById(order);
+            createRefundRequest(order, "PENDING", "USER_REVIEW", refundScope.scope(), reason, null, null, currentUserId, refundScope.tickets());
+            markTicketsPendingRefund(order, refundScope.tickets(), refundScope.wholeOrder());
             dashboardRefreshPublisher.publish("ORDER_REFUND_REQUESTED", order.getId());
         }
         return toOrderResponse(getOrder(orderId));
@@ -442,23 +527,57 @@ public class OrderService {
         return rows == null || rows.isEmpty() ? null : rows.get(0);
     }
 
+    private RefundRequest latestRefundRequest(String orderId, List<TicketItem> visibleTickets, boolean fullAccess) {
+        if (fullAccess) {
+            return latestRefundRequest(orderId);
+        }
+        List<String> ticketIds = visibleTickets.stream()
+                .map(TicketItem::getId)
+                .filter(id -> id != null && !id.isBlank())
+                .toList();
+        if (ticketIds.isEmpty()) {
+            return null;
+        }
+        List<String> requestIds = safeList(refundRequestTicketMapper.selectList(new LambdaQueryWrapper<RefundRequestTicket>()
+                        .eq(RefundRequestTicket::getOrderId, orderId)
+                        .in(RefundRequestTicket::getTicketId, ticketIds)))
+                .stream()
+                .map(RefundRequestTicket::getRefundRequestId)
+                .distinct()
+                .toList();
+        if (requestIds.isEmpty()) {
+            return null;
+        }
+        List<RefundRequest> rows = refundRequestMapper.selectList(new LambdaQueryWrapper<RefundRequest>()
+                .in(RefundRequest::getId, requestIds)
+                .orderByDesc(RefundRequest::getRequestedAt));
+        return rows == null || rows.isEmpty() ? null : rows.get(0);
+    }
+
     private RefundRequest createRefundRequest(
             TicketOrder order,
             String status,
             String source,
+            String scope,
             String reason,
             String reviewNote,
-            UserAccount reviewer
+            UserAccount reviewer,
+            String requesterId,
+            List<TicketItem> tickets
     ) {
         LocalDateTime now = LocalDateTime.now();
         RefundRequest request = new RefundRequest();
         request.setId("rr-" + UUID.randomUUID().toString().replace("-", "").substring(0, 18));
         request.setOrderId(order.getId());
         request.setUserId(order.getUserId());
+        request.setRequesterId(StringUtils.hasText(requesterId) ? requesterId : order.getUserId());
         request.setStatus(status);
         request.setSource(source);
+        request.setScope(StringUtils.hasText(scope) ? scope : "ORDER");
         request.setReason(cleanRefundText(reason));
         request.setReviewNote(cleanRefundText(reviewNote));
+        request.setRefundAmount(calculateTicketAmount(order, tickets));
+        request.setTicketCount(tickets == null ? 0 : tickets.size());
         if (reviewer != null) {
             request.setReviewerId(reviewer.getId());
             request.setReviewerUsername(reviewer.getUsername());
@@ -467,7 +586,111 @@ public class OrderService {
         request.setReviewedAt("PENDING".equals(status) ? null : now);
         request.setUpdatedAt(now);
         refundRequestMapper.insert(request);
+        for (TicketItem ticket : tickets == null ? List.<TicketItem>of() : tickets) {
+            RefundRequestTicket row = new RefundRequestTicket();
+            row.setId("rrt-" + UUID.randomUUID().toString().replace("-", "").substring(0, 18));
+            row.setRefundRequestId(request.getId());
+            row.setOrderId(order.getId());
+            row.setTicketId(ticket.getId());
+            row.setHolderUserId(ticket.getHolderUserId());
+            row.setAmount(calculateTicketAmount(order, List.of(ticket)));
+            row.setCreatedAt(now);
+            refundRequestTicketMapper.insert(row);
+        }
         return request;
+    }
+
+    private RefundScope resolveRefundScope(
+            TicketOrder order,
+            List<TicketItem> tickets,
+            RefundOrderRequest request,
+            String currentUserId
+    ) {
+        boolean isOwner = order.getUserId().equals(currentUserId);
+        List<String> requestedTicketIds = normalizeOptionalTicketIds(request == null ? null : request.ticketIds());
+        if (!isOwner && !hasTicketForHolder(order.getId(), currentUserId)) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "无权操作该订单");
+        }
+
+        List<TicketItem> targetTickets;
+        if (requestedTicketIds.isEmpty()) {
+            targetTickets = tickets.stream()
+                    .filter(ticket -> isOwner || currentUserId.equals(ticket.getHolderUserId()))
+                    .filter(ticket -> !"VOID".equals(ticket.getStatus()))
+                    .toList();
+        } else {
+            Set<String> requestedSet = new LinkedHashSet<>(requestedTicketIds);
+            targetTickets = tickets.stream()
+                    .filter(ticket -> requestedSet.contains(ticket.getId()))
+                    .toList();
+            if (targetTickets.size() != requestedSet.size()) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "退票票据不存在");
+            }
+            if (!isOwner && targetTickets.stream().anyMatch(ticket -> !currentUserId.equals(ticket.getHolderUserId()))) {
+                throw new BusinessException(ErrorCode.UNAUTHORIZED, "只能申请退还自己持有的票据");
+            }
+        }
+
+        if (targetTickets.isEmpty()) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "没有可申请退票的票据");
+        }
+        if (targetTickets.stream().anyMatch(ticket -> "CHECKED_IN".equals(ticket.getStatus()))) {
+            throw new BusinessException(ErrorCode.CONFLICT, "已核销票据不可退票");
+        }
+        if (targetTickets.stream().anyMatch(ticket -> "PENDING_REFUND".equals(ticket.getStatus()))) {
+            return new RefundScope("TICKET", targetTickets, false);
+        }
+        if (targetTickets.stream().anyMatch(ticket -> !"UNUSED".equals(ticket.getStatus()))) {
+            throw new BusinessException(ErrorCode.CONFLICT, "仅未使用票据可申请退票");
+        }
+        boolean allActiveTickets = tickets.stream()
+                .filter(ticket -> !"VOID".equals(ticket.getStatus()))
+                .allMatch(targetTickets::contains);
+        boolean isTicketLevel = !isOwner || !requestedTicketIds.isEmpty() || !allActiveTickets;
+        if (isTicketLevel && targetTickets.stream().anyMatch(ticket -> ticket.getAreaInventoryId() != null)) {
+            throw new BusinessException(ErrorCode.CONFLICT, "区域票暂不支持票级退票，请由订单发起人处理整单退票");
+        }
+        return new RefundScope(isTicketLevel ? "TICKET" : "ORDER", targetTickets, !isTicketLevel);
+    }
+
+    private boolean hasPendingRefundForTickets(String orderId, List<TicketItem> tickets) {
+        if (tickets == null || tickets.isEmpty()) {
+            return false;
+        }
+        if (tickets.stream().anyMatch(ticket -> "PENDING_REFUND".equals(ticket.getStatus()))) {
+            return true;
+        }
+        List<RefundRequest> pendingRequests = refundRequestMapper.selectList(new LambdaQueryWrapper<RefundRequest>()
+                .eq(RefundRequest::getOrderId, orderId)
+                .eq(RefundRequest::getStatus, "PENDING"));
+        if (pendingRequests == null || pendingRequests.isEmpty()) {
+            return false;
+        }
+        Set<String> targetTicketIds = tickets.stream()
+                .map(TicketItem::getId)
+                .collect(Collectors.toSet());
+        for (RefundRequest request : pendingRequests) {
+            List<RefundRequestTicket> rows = refundRequestTicketMapper.selectList(new LambdaQueryWrapper<RefundRequestTicket>()
+                    .eq(RefundRequestTicket::getRefundRequestId, request.getId()));
+            if (rows == null || rows.isEmpty()) {
+                return true;
+            }
+            if (rows.stream().anyMatch(row -> targetTicketIds.contains(row.getTicketId()))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private List<String> normalizeOptionalTicketIds(List<String> ticketIds) {
+        if (ticketIds == null) {
+            return List.of();
+        }
+        return ticketIds.stream()
+                .filter(id -> id != null && !id.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
     }
 
     private String cleanRefundText(String value) {
@@ -485,13 +708,23 @@ public class OrderService {
         if (request == null) {
             return null;
         }
+        List<String> ticketIds = refundRequestTicketMapper.selectList(new LambdaQueryWrapper<RefundRequestTicket>()
+                        .eq(RefundRequestTicket::getRefundRequestId, request.getId()))
+                .stream()
+                .map(RefundRequestTicket::getTicketId)
+                .toList();
         return new RefundRequestSummary(
                 request.getId(),
                 request.getStatus(),
                 request.getSource(),
+                request.getScope() == null ? "ORDER" : request.getScope(),
                 request.getReason(),
                 request.getReviewNote(),
                 request.getReviewerUsername(),
+                moneyOrZero(request.getRefundAmount()),
+                request.getTicketCount() == null ? ticketIds.size() : request.getTicketCount(),
+                ticketIds,
+                request.getRequesterId(),
                 request.getRequestedAt(),
                 request.getReviewedAt()
         );
@@ -500,6 +733,9 @@ public class OrderService {
     private void ensureCanViewOrder(TicketOrder order) {
         String userId = StpUtil.getLoginIdAsString();
         if (order.getUserId().equals(userId)) {
+            return;
+        }
+        if (hasTicketForHolder(order.getId(), userId)) {
             return;
         }
         UserAccount user = userAccountMapper.selectById(userId);
@@ -554,13 +790,29 @@ public class OrderService {
         dashboardRefreshPublisher.publish("ORDER_CANCELLED", order.getId());
     }
 
-    private void markRefunded(TicketOrder order, List<TicketItem> tickets, String reason) {
-        order.setStatus("REFUNDED");
-        order.setUpdatedAt(LocalDateTime.now());
+    private void markTicketsPendingRefund(TicketOrder order, List<TicketItem> tickets, boolean wholeOrder) {
+        LocalDateTime now = LocalDateTime.now();
+        if (!wholeOrder) {
+            for (TicketItem ticket : tickets) {
+                ticket.setStatus("PENDING_REFUND");
+                ticket.setUpdatedAt(now);
+                ticketItemMapper.updateById(ticket);
+            }
+        }
+        if (wholeOrder) {
+            order.setStatus("PENDING_REFUND");
+        } else {
+            order.setStatus("PAID");
+        }
+        order.setUpdatedAt(now);
         ticketOrderMapper.updateById(order);
+    }
+
+    private void markRefunded(TicketOrder order, List<TicketItem> tickets, String reason) {
+        LocalDateTime now = LocalDateTime.now();
         for (TicketItem ticket : tickets) {
             ticket.setStatus("VOID");
-            ticket.setUpdatedAt(LocalDateTime.now());
+            ticket.setUpdatedAt(now);
             ticketItemMapper.updateById(ticket);
         }
         boolean isZoned = !tickets.isEmpty() && tickets.get(0).getAreaInventoryId() != null;
@@ -575,6 +827,12 @@ public class OrderService {
             }
             seatStatusPublisher.publishSeatStatus(order.getScheduleId(), reason, "AVAILABLE", seatIds);
         }
+        List<TicketItem> latestTickets = listTickets(order.getId());
+        boolean allVoided = !latestTickets.isEmpty()
+                && latestTickets.stream().allMatch(ticket -> "VOID".equals(ticket.getStatus()));
+        order.setStatus(allVoided ? "REFUNDED" : "PAID");
+        order.setUpdatedAt(now);
+        ticketOrderMapper.updateById(order);
         dashboardRefreshPublisher.publish("ORDER_REFUNDED", order.getId());
     }
 
@@ -611,7 +869,13 @@ public class OrderService {
         }
     }
 
-    private TicketItem createReservedTicket(String orderId, String scheduleId, String seatId) {
+    private TicketItem createReservedTicket(
+            String orderId,
+            String scheduleId,
+            String seatId,
+            String holderUserId,
+            String holderDisplayName
+    ) {
         TicketItem ticket = new TicketItem();
         ticket.setId("tk-" + UUID.randomUUID().toString().replace("-", "").substring(0, 18));
         ticket.setOrderId(orderId);
@@ -619,6 +883,8 @@ public class OrderService {
         ticket.setSeatId(seatId);
         ticket.setTicketCode("T" + Long.toString(System.currentTimeMillis(), 36).toUpperCase() + seatId.replace("seat-", "") + "XYZ");
         ticket.setStatus("RESERVED");
+        ticket.setHolderUserId(holderUserId);
+        ticket.setHolderDisplayName(holderDisplayName == null || holderDisplayName.isBlank() ? holderUserId : holderDisplayName);
         return ticket;
     }
 
@@ -660,12 +926,22 @@ public class OrderService {
     }
 
     private List<TicketItem> listTickets(String orderId) {
-        return ticketItemMapper.selectList(new LambdaQueryWrapper<TicketItem>()
-                .eq(TicketItem::getOrderId, orderId));
+        return safeList(ticketItemMapper.selectList(new LambdaQueryWrapper<TicketItem>()
+                .eq(TicketItem::getOrderId, orderId)));
     }
 
     private OrderResponse toOrderResponse(TicketOrder order) {
-        List<TicketItemResponse> tickets = listTickets(order.getId()).stream()
+        String viewerId = StpUtil.getLoginIdAsString();
+        boolean fullAccess = canViewAllTickets(order, viewerId);
+        List<TicketItem> rawTickets = listTickets(order.getId());
+        List<TicketItem> visibleTickets = fullAccess
+                ? rawTickets
+                : rawTickets.stream()
+                        .filter(ticket -> viewerId.equals(ticket.getHolderUserId()))
+                        .toList();
+        BigDecimal visibleAmount = fullAccess ? order.getTotalAmount() : calculateTicketAmount(order, visibleTickets);
+
+        List<TicketItemResponse> tickets = visibleTickets.stream()
                 .sorted(Comparator.comparing(t -> t.getSeatId() == null ? "" : t.getSeatId()))
                 .map(ticket -> {
                     String areaName = null;
@@ -714,7 +990,9 @@ public class OrderService {
                             areaType,
                             seatLabel,
                             rowNo,
-                            colNo
+                            colNo,
+                            ticket.getHolderUserId(),
+                            ticket.getHolderDisplayName()
                     );
                 })
                 .toList();
@@ -726,11 +1004,11 @@ public class OrderService {
                 showTitle(order.getScheduleId()),
                 theaterName(order.getScheduleId()),
                 startTime(order.getScheduleId()),
-                order.getTotalAmount(),
+                visibleAmount,
                 order.getStatus(),
                 order.getCreatedAt(),
                 order.getExpiresAt(),
-                toRefundSummary(latestRefundRequest(order.getId())),
+                toRefundSummary(latestRefundRequest(order.getId(), visibleTickets, fullAccess)),
                 tickets
         );
     }
@@ -778,5 +1056,88 @@ public class OrderService {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "请选择 1 到 6 个座位");
         }
         return normalized;
+    }
+
+    private List<GroupSeatHolder> normalizeGroupSeatHolders(List<GroupSeatHolder> seatHolders) {
+        Map<String, GroupSeatHolder> normalized = new LinkedHashMap<>();
+        if (seatHolders != null) {
+            for (GroupSeatHolder holder : seatHolders) {
+                if (holder == null || holder.seatId() == null || holder.seatId().isBlank()
+                        || holder.userId() == null || holder.userId().isBlank()) {
+                    continue;
+                }
+                normalized.putIfAbsent(holder.seatId(), new GroupSeatHolder(
+                        holder.seatId(),
+                        holder.userId(),
+                        holder.displayName() == null || holder.displayName().isBlank()
+                                ? holder.userId()
+                                : holder.displayName()
+                ));
+            }
+        }
+        if (normalized.isEmpty() || normalized.size() > 6) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "请选择 1 到 6 个座位");
+        }
+        return new ArrayList<>(normalized.values());
+    }
+
+    private boolean hasTicketForHolder(String orderId, String userId) {
+        return !safeList(ticketItemMapper.selectList(new LambdaQueryWrapper<TicketItem>()
+                .eq(TicketItem::getOrderId, orderId)
+                .eq(TicketItem::getHolderUserId, userId)
+                .last("limit 1"))).isEmpty();
+    }
+
+    private boolean canViewAllTickets(TicketOrder order, String viewerId) {
+        if (order.getUserId().equals(viewerId)) {
+            return true;
+        }
+        UserAccount user = userAccountMapper.selectById(viewerId);
+        return user != null && ("admin".equals(user.getRole()) || "sysadmin".equals(user.getRole()));
+    }
+
+    private BigDecimal calculateTicketAmount(TicketOrder order, List<TicketItem> tickets) {
+        if (tickets.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        if (tickets.get(0).getAreaInventoryId() != null) {
+            ScheduleAreaInventory inventory = scheduleAreaInventoryMapper.selectById(tickets.get(0).getAreaInventoryId());
+            return inventory == null
+                    ? BigDecimal.ZERO
+                    : inventory.getPrice().multiply(BigDecimal.valueOf(tickets.size()));
+        }
+        return tickets.stream()
+                .map(ticket -> ticketSeatPrice(order.getScheduleId(), ticket.getSeatId()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal moneyOrZero(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
+    private BigDecimal ticketSeatPrice(String scheduleId, String seatId) {
+        if (seatId == null) {
+            return BigDecimal.ZERO;
+        }
+        ScheduleSeat seat = scheduleSeatMapper.selectOne(new LambdaQueryWrapper<ScheduleSeat>()
+                .eq(ScheduleSeat::getScheduleId, scheduleId)
+                .eq(ScheduleSeat::getSeatCode, seatId)
+                .last("limit 1"));
+        return seat == null || seat.getPrice() == null ? BigDecimal.ZERO : seat.getPrice();
+    }
+
+    private String currentDisplayName(String userId) {
+        UserAccount user = userAccountMapper.selectById(userId);
+        if (user == null) {
+            return userId;
+        }
+        if (user.getDisplayName() != null && !user.getDisplayName().isBlank()) {
+            return user.getDisplayName();
+        }
+        return user.getUsername() == null || user.getUsername().isBlank() ? userId : user.getUsername();
+    }
+
+    private <T> List<T> safeList(List<T> rows) {
+        return rows == null ? List.of() : rows;
     }
 }

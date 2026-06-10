@@ -6,6 +6,7 @@ import { ArrowRight, Calendar, Clock, Location, PriceTag } from '@element-plus/i
 import { getShowDetail, getShowSchedules } from '../../api/show'
 import type { Schedule, Show } from '../../mock/shows'
 import { formatScheduleDay, formatScheduleTime, handlePosterError, lowestPriceLabel, posterImageSrc } from '../../utils/ticketing'
+import { formatMoney } from '../../utils/money'
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -20,8 +21,30 @@ const introText = computed(() => show.value?.intro || show.value?.description ||
 const castText = computed(() => show.value?.castMembers || t('detail.pendingContent'))
 const creativeText = computed(() => show.value?.creativeTeam || t('detail.pendingContent'))
 const fullSynopsisText = computed(() => show.value?.fullSynopsis || show.value?.description || '')
+
+const numericPrice = (value: number | string | null | undefined) => {
+  const amount = Number(String(value ?? '').replace(/,/g, ''))
+  return Number.isFinite(amount) && amount > 0 ? amount : null
+}
+
+const schedulePriceLabel = (schedule: Schedule) => {
+  const min = numericPrice(schedule.minPrice)
+  if (min != null) return formatMoney(min, locale.value)
+  return lowestPriceLabel(schedule.priceRange, locale.value) || schedule.priceRange
+}
+
 const lowestPrice = computed(() => {
-  const price = schedules.value.map(item => lowestPriceLabel(item.priceRange, locale.value)).find(Boolean)
+  const minimums = schedules.value
+    .map(item => numericPrice(item.minPrice))
+    .filter((value): value is number => value != null)
+  if (minimums.length) {
+    return formatMoney(Math.min(...minimums), locale.value)
+  }
+  const fromShow = numericPrice(show.value?.minPrice)
+  if (fromShow != null) {
+    return formatMoney(fromShow, locale.value)
+  }
+  const price = schedules.value.map(schedulePriceLabel).find(Boolean)
   return price || t('home.pricePending')
 })
 const onSaleSchedules = computed(() => schedules.value.filter(item => item.status === 'ON_SALE'))
@@ -175,7 +198,7 @@ const ticketModeLabel = (mode?: string) => {
                   </div>
                   <div class="schedule-price">
                     <span>{{ t('home.ticketFrom') }}</span>
-                    <strong>{{ lowestPriceLabel(sch.priceRange, locale) || sch.priceRange }}</strong>
+                    <strong>{{ schedulePriceLabel(sch) }}</strong>
                   </div>
                   <button
                     v-if="sch.status === 'ON_SALE'"

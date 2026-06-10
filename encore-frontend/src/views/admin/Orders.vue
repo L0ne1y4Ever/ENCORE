@@ -25,6 +25,8 @@ const sortKey = ref<'createdDesc' | 'createdAsc' | 'amountDesc' | 'showName'>('c
 
 const orderStatusOptions = ['PENDING_PAYMENT', 'PAID', 'PENDING_REFUND', 'CHECKED_IN', 'EXPIRED', 'CANCELLED', 'REFUNDED']
 
+const hasPendingRefund = (row: AdminOrder) => row.refundRequest?.status === 'PENDING'
+
 const filteredOrders = computed(() => {
   const rows = tableData.value.filter(row => !statusFilter.value || displayStatus(row) === statusFilter.value)
   return [...rows].sort((left, right) => {
@@ -42,7 +44,7 @@ const orderMetrics = computed(() => {
     { status: '', label: t('admin.allOrders'), value: rows.length },
     { status: 'PENDING_PAYMENT', label: t('profile.orderStatus.pending_payment'), value: rows.filter(row => row.status === 'PENDING_PAYMENT').length },
     { status: 'PAID', label: t('profile.orderStatus.paid'), value: rows.filter(row => displayStatus(row) === 'PAID').length },
-    { status: 'PENDING_REFUND', label: t('admin.pendingRefundOrders'), value: rows.filter(row => row.status === 'PENDING_REFUND').length },
+    { status: 'PENDING_REFUND', label: t('admin.pendingRefundOrders'), value: rows.filter(row => hasPendingRefund(row) || row.status === 'PENDING_REFUND').length },
     { status: 'CHECKED_IN', label: t('admin.checkedInTickets'), value: checkedIn },
     { status: 'REFUNDED', label: t('profile.orderStatus.refunded'), value: rows.filter(row => row.status === 'REFUNDED').length }
   ]
@@ -70,6 +72,7 @@ const formatAmount = (amount: number | string) => {
 }
 
 const displayStatus = (row: AdminOrder) => {
+  if (hasPendingRefund(row)) return 'PENDING_REFUND'
   if (row.status === 'PAID' && row.ticketCount > 0 && row.checkedInCount >= row.ticketCount) {
     return 'CHECKED_IN'
   }
@@ -248,6 +251,9 @@ const exportOrders = async () => {
           <template #default="{ row }">
             <div v-if="row.refundRequest" class="refund-cell">
               <strong>{{ t(`profile.refundReviewStatus.${row.refundRequest.status.toLowerCase()}`) }}</strong>
+              <span v-if="row.refundRequest.scope">{{ t('admin.refundScope') }}: {{ t(`admin.refundScopes.${String(row.refundRequest.scope).toLowerCase()}`) }}</span>
+              <span v-if="row.refundRequest.ticketCount">{{ t('admin.refundTicketCount') }}: {{ row.refundRequest.ticketCount }}</span>
+              <span v-if="row.refundRequest.refundAmount">{{ t('admin.refundAmount') }}: {{ formatAmount(row.refundRequest.refundAmount) }}</span>
               <span v-if="row.refundRequest.reason">{{ t('admin.refundReason') }}: {{ row.refundRequest.reason }}</span>
               <span v-if="row.refundRequest.requestedAt">{{ t('admin.refundRequestedAt') }}: {{ formatDate(row.refundRequest.requestedAt) }}</span>
               <span v-if="row.refundRequest.reviewNote">{{ t('admin.refundReviewNote') }}: {{ row.refundRequest.reviewNote }}</span>
@@ -257,7 +263,7 @@ const exportOrders = async () => {
         </el-table-column>
         <el-table-column :label="t('admin.action')" width="220" fixed="right">
           <template #default="{ row }">
-            <template v-if="row.status === 'PENDING_REFUND'">
+            <template v-if="hasPendingRefund(row) || row.status === 'PENDING_REFUND'">
               <el-button
                 link
                 type="primary"
@@ -290,7 +296,7 @@ const exportOrders = async () => {
                 link
                 type="primary"
                 :loading="operatingId === row.id"
-                :disabled="row.status !== 'PAID' || row.checkedInCount >= row.ticketCount"
+                :disabled="row.status !== 'PAID' || hasPendingRefund(row) || row.checkedInCount >= row.ticketCount"
                 @click="handleCheckin(row)"
               >
                 {{ t('admin.forceCheckin') }}

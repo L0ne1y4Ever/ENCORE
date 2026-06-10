@@ -628,13 +628,17 @@ const handleSubmit = async () => {
 }
 
 .reveal-line {
-  height: 0;
+  max-height: 0;
   opacity: 0;
   overflow: hidden;
   transform: translateY(-4px);
+  transition: max-height 280ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 160ms ease,
+    opacity 220ms ease,
+    transform 280ms cubic-bezier(0.16, 1, 0.3, 1);
 
   &.active {
-    height: auto;
+    max-height: 38px;
     opacity: 1;
     overflow: visible;
     transform: translateY(0);
@@ -1048,6 +1052,7 @@ const handleSubmit = async () => {
   --auth-card-register-height: 760px;
   --auth-card-max-height: 920px;
   --auth-card-active-height: var(--auth-card-login-height);
+  --auth-card-stable-height: var(--auth-card-register-height);
   --auth-card-width: min(100%, 468px);
   --auth-reveal-width: min(260px, calc(100vw - 48px));
   --auth-reveal-height: 58px;
@@ -1055,7 +1060,7 @@ const handleSubmit = async () => {
   animation: auth-panel-in 720ms 90ms ease-out both;
   align-self: center;
   width: 100%;
-  min-height: min(calc(var(--auth-card-active-height) + 72px), calc(100dvh - 96px));
+  min-height: calc(var(--auth-card-stable-height) + 72px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1131,8 +1136,9 @@ const handleSubmit = async () => {
 
 .auth-card {
   width: var(--auth-reveal-width);
-  min-height: var(--auth-reveal-height);
-  max-height: var(--auth-reveal-height);
+  height: var(--auth-reveal-height);
+  min-height: 0;
+  max-height: none;
   border: 1.5px solid rgba(255, 255, 255, 0.9);
   border-radius: 4px;
   background: rgba(0, 0, 0, 0.18);
@@ -1154,8 +1160,7 @@ const handleSubmit = async () => {
   transform: translate3d(0, 0, 0) scale(0.995);
   transform-origin: center;
   transition: width 640ms var(--auth-reveal-ease),
-    max-height 640ms var(--auth-reveal-ease),
-    min-height 640ms var(--auth-reveal-ease),
+    height 520ms var(--auth-reveal-ease),
     padding 640ms var(--auth-reveal-ease),
     transform 640ms var(--auth-reveal-ease),
     backdrop-filter 420ms 100ms ease,
@@ -1183,8 +1188,9 @@ const handleSubmit = async () => {
 .auth-panel.revealed {
   .auth-card {
     width: var(--auth-card-width);
-    min-height: var(--auth-card-active-height);
-    max-height: var(--auth-card-max-height);
+    height: var(--auth-card-active-height);
+    min-height: 0;
+    max-height: none;
     border-color: rgba(255, 255, 255, 0.18);
     background: rgba(8, 8, 8, 0.84);
     backdrop-filter: blur(16px) saturate(1.05);
@@ -1397,19 +1403,17 @@ const handleSubmit = async () => {
     --auth-card-login-height: 590px;
     --auth-card-register-height: 760px;
     --auth-card-width: min(100%, 560px);
-    min-height: 0;
+    min-height: calc(var(--auth-card-stable-height) + 40px);
     align-self: auto;
     padding: 0;
   }
 
   .auth-card {
-    min-height: var(--auth-reveal-height);
-    max-height: var(--auth-reveal-height);
+    height: var(--auth-reveal-height);
   }
 
   .auth-panel.revealed .auth-card {
-    min-height: var(--auth-card-active-height);
-    max-height: var(--auth-card-max-height);
+    height: var(--auth-card-active-height);
   }
 }
 
@@ -1488,7 +1492,8 @@ const handleSubmit = async () => {
     --auth-card-login-height: 560px;
     --auth-card-register-height: 700px;
     --auth-card-max-height: 900px;
-    min-height: calc(var(--auth-card-active-height) + 24px);
+    --auth-card-stable-height: var(--auth-card-register-height);
+    min-height: calc(var(--auth-card-stable-height) + 24px);
   }
 
   .auth-panel.revealed .auth-card {
@@ -1552,8 +1557,9 @@ const handleSubmit = async () => {
 
   .auth-card {
     width: var(--auth-card-width);
-    min-height: var(--auth-card-active-height);
-    max-height: var(--auth-card-max-height);
+    height: var(--auth-card-active-height);
+    min-height: 0;
+    max-height: none;
     transform: none;
     border-color: rgba(255, 255, 255, 0.18);
     background: rgba(8, 8, 8, 0.84);

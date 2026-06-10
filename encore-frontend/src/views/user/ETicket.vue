@@ -46,8 +46,10 @@ const seatDisplay = (ticket: TicketItem) => {
 }
 
 const ticketStatusKey = (ticket: TicketItem) => {
+  if (order.value?.status === 'PENDING_REFUND' && ticket.status === 'UNUSED') return 'pendingRefund'
   const status = (ticket.status || 'UNUSED').toLowerCase()
   if (status === 'checked_in') return 'checkedIn'
+  if (status === 'pending_refund') return 'pendingRefund'
   if (status === 'void') return 'void'
   if (status === 'reserved') return 'reserved'
   return 'unused'
@@ -60,6 +62,7 @@ const ticketStatusLabel = (ticket: TicketItem) => {
 const ticketSubStatusLabel = (ticket: TicketItem) => {
   const status = (ticket.status || 'UNUSED').toLowerCase()
   if (status === 'checked_in') return locale.value === 'zh' ? '已核销' : 'Checked In'
+  if (status === 'pending_refund') return locale.value === 'zh' ? '退票审核中' : 'Refund Review'
   if (status === 'void') return locale.value === 'zh' ? '已作废' : 'Void'
   if (status === 'reserved') return locale.value === 'zh' ? '待支付' : 'Reserved'
   return t('ticket.unused')
@@ -68,7 +71,7 @@ const ticketSubStatusLabel = (ticket: TicketItem) => {
 const ticketStateClass = (ticket: TicketItem) => {
   const key = ticketStatusKey(ticket)
   return {
-    'ticket-card--inactive': key === 'checkedIn' || key === 'void',
+    'ticket-card--inactive': key === 'checkedIn' || key === 'void' || key === 'pendingRefund',
     'ticket-card--reserved': key === 'reserved'
   }
 }
@@ -202,6 +205,9 @@ const barcodeBars = (ticketCode: string) => {
                 <div class="zoned-info">
                   <div class="sm">{{ t('ticket.seatInfo') }}</div>
                   <div class="lg-label">{{ seatDisplay(ticket) }}</div>
+                  <div class="holder-line" v-if="ticket.holderDisplayName">
+                    {{ t('ticket.holder') }} · {{ ticket.holderDisplayName }}
+                  </div>
                   <div class="instructions" v-if="!ticket.seatId">{{ t('ticket.standingInstructions') }}</div>
                 </div>
               </div>
@@ -549,6 +555,14 @@ const barcodeBars = (ticketCode: string) => {
         color: var(--color-text-secondary);
         margin-top: 4px;
         line-height: 1.35;
+      }
+
+      .holder-line {
+        font-family: var(--font-family-sans);
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.55);
+        margin-top: 6px;
+        letter-spacing: 0.02em;
       }
     }
   }

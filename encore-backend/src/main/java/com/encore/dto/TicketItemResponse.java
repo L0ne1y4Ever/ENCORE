@@ -12,6 +12,8 @@ public record TicketItemResponse(
         String areaType,
         String seatLabel,
         Integer rowNo,
-        Integer colNo
+        Integer colNo,
+        String holderUserId,
+        String holderDisplayName
 ) {
 }

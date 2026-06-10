@@ -103,9 +103,14 @@ onMounted(() => {
     </header>
 
     <main class="main-content" id="main-content">
-      <router-view v-slot="{ Component }">
+      <router-view v-slot="{ Component, route }">
         <transition name="page-fade" mode="out-in">
-          <component :is="Component" />
+          <keep-alive include="UserHome">
+            <component
+              :is="Component"
+              :key="route.name === 'Home' ? 'user-home' : route.fullPath"
+            />
+          </keep-alive>
         </transition>
       </router-view>
     </main>

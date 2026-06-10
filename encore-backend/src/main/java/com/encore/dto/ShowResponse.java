@@ -1,6 +1,7 @@
 package com.encore.dto;
 
 import java.util.List;
+import java.math.BigDecimal;
 
 public record ShowResponse(
         String id,
@@ -15,6 +16,8 @@ public record ShowResponse(
         Integer duration,
         String category,
         List<String> tags,
-        String priceRange
+        String priceRange,
+        BigDecimal minPrice,
+        BigDecimal maxPrice
 ) {
 }

@@ -11,6 +11,7 @@ import com.encore.exception.BusinessException;
 import com.encore.mapper.ScheduleSeatMapper;
 import com.encore.mapper.ScheduleAreaInventoryMapper;
 import com.encore.mapper.RefundRequestMapper;
+import com.encore.mapper.RefundRequestTicketMapper;
 import com.encore.mapper.ShowMapper;
 import com.encore.mapper.ShowScheduleMapper;
 import com.encore.mapper.TicketItemMapper;
@@ -19,10 +20,12 @@ import com.encore.mapper.UserAccountMapper;
 import com.encore.mapper.VenueAreaMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Duration;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -31,8 +34,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -62,6 +67,8 @@ class OrderServiceTest {
     private UserAccountMapper userAccountMapper;
     @Mock
     private RefundRequestMapper refundRequestMapper;
+    @Mock
+    private RefundRequestTicketMapper refundRequestTicketMapper;
 
     @Test
     void simulatePaymentPublishesSoldEvent() {
@@ -142,6 +149,160 @@ class OrderServiceTest {
         assertThat(responses).hasSize(1);
         assertThat(responses.get(0).id()).isEqualTo("ord-1");
         assertThat(responses.get(0).tickets()).hasSize(1);
+    }
+
+    @Test
+    void createGroupOrderAssignsTicketHolders() {
+        OrderService service = createService();
+        List<OrderService.GroupSeatHolder> holders = List.of(
+                new OrderService.GroupSeatHolder("seat-1-1", "u-101", "发起人"),
+                new OrderService.GroupSeatHolder("seat-1-2", "u-102", "拼座好友")
+        );
+        when(seatService.findSeats("sch-1", List.of("seat-1-1", "seat-1-2")))
+                .thenReturn(List.of(seat("seat-1-1", 150), seat("seat-1-2", 100)));
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-101");
+            service.createGroupOrder("sch-1", holders, "group:g-test");
+        }
+
+        verify(seatService).ensureLocksOwnedBy("sch-1", List.of("seat-1-1", "seat-1-2"), "group:g-test");
+        verify(seatService).transferLocksOwner(
+                eq("sch-1"),
+                eq(List.of("seat-1-1", "seat-1-2")),
+                eq("group:g-test"),
+                any(),
+                eq(Duration.ofMinutes(15))
+        );
+        ArgumentCaptor<TicketItem> ticketCaptor = ArgumentCaptor.forClass(TicketItem.class);
+        verify(ticketItemMapper, times(2)).insert(ticketCaptor.capture());
+        assertThat(ticketCaptor.getAllValues())
+                .anySatisfy(ticket -> {
+                    assertThat(ticket.getSeatId()).isEqualTo("seat-1-1");
+                    assertThat(ticket.getHolderUserId()).isEqualTo("u-101");
+                    assertThat(ticket.getHolderDisplayName()).isEqualTo("发起人");
+                })
+                .anySatisfy(ticket -> {
+                    assertThat(ticket.getSeatId()).isEqualTo("seat-1-2");
+                    assertThat(ticket.getHolderUserId()).isEqualTo("u-102");
+                    assertThat(ticket.getHolderDisplayName()).isEqualTo("拼座好友");
+                });
+    }
+
+    @Test
+    void repairGroupTicketHoldersCorrectsInviteeTicketOwner() {
+        OrderService service = createService();
+        TicketOrder order = paidGroupOrder();
+        TicketItem hostTicket = heldTicket("tk-1", "seat-1-1", "u-101", "发起人");
+        TicketItem inviteeTicket = heldTicket("tk-2", "seat-1-2", "u-101", "发起人");
+        List<OrderService.GroupSeatHolder> holders = List.of(
+                new OrderService.GroupSeatHolder("seat-1-1", "u-101", "发起人"),
+                new OrderService.GroupSeatHolder("seat-1-2", "u-102", "拼座好友")
+        );
+
+        when(ticketOrderMapper.selectById("ord-1")).thenReturn(order);
+        when(ticketItemMapper.selectList(any())).thenReturn(List.of(hostTicket, inviteeTicket));
+
+        service.repairGroupTicketHolders("ord-1", holders);
+
+        assertThat(hostTicket.getHolderUserId()).isEqualTo("u-101");
+        assertThat(inviteeTicket.getHolderUserId()).isEqualTo("u-102");
+        assertThat(inviteeTicket.getHolderDisplayName()).isEqualTo("拼座好友");
+        verify(ticketItemMapper).updateById(inviteeTicket);
+    }
+
+    @Test
+    void inviteeCanViewOnlyOwnHeldTicket() {
+        OrderService service = createService();
+        TicketOrder order = paidGroupOrder();
+        TicketItem hostTicket = heldTicket("tk-1", "seat-1-1", "u-101", "发起人");
+        TicketItem inviteeTicket = heldTicket("tk-2", "seat-1-2", "u-102", "拼座好友");
+
+        when(ticketOrderMapper.selectById("ord-1")).thenReturn(order);
+        when(ticketItemMapper.selectList(any())).thenReturn(List.of(hostTicket, inviteeTicket));
+        when(userAccountMapper.selectById("u-102")).thenReturn(user("u-102", "拼座好友", "user"));
+        when(scheduleSeatMapper.selectOne(any())).thenReturn(seat("seat-1-2", 100));
+
+        OrderResponse response;
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-102");
+            response = service.getOrderDetail("ord-1");
+        }
+
+        assertThat(response.totalAmount()).isEqualByComparingTo(BigDecimal.valueOf(100));
+        assertThat(response.tickets()).singleElement().satisfies(ticket -> {
+            assertThat(ticket.seatId()).isEqualTo("seat-1-2");
+            assertThat(ticket.holderUserId()).isEqualTo("u-102");
+            assertThat(ticket.holderDisplayName()).isEqualTo("拼座好友");
+        });
+    }
+
+    @Test
+    void groupOrderOwnerCanViewAllHeldTickets() {
+        OrderService service = createService();
+        TicketOrder order = paidGroupOrder();
+        TicketItem hostTicket = heldTicket("tk-1", "seat-1-1", "u-101", "发起人");
+        TicketItem inviteeTicket = heldTicket("tk-2", "seat-1-2", "u-102", "拼座好友");
+
+        when(ticketOrderMapper.selectById("ord-1")).thenReturn(order);
+        when(ticketItemMapper.selectList(any())).thenReturn(List.of(hostTicket, inviteeTicket));
+        when(scheduleSeatMapper.selectOne(any()))
+                .thenReturn(seat("seat-1-1", 150), seat("seat-1-2", 100));
+
+        OrderResponse response;
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-101");
+            response = service.getOrderDetail("ord-1");
+        }
+
+        assertThat(response.totalAmount()).isEqualByComparingTo(BigDecimal.valueOf(250));
+        assertThat(response.tickets()).hasSize(2);
+        assertThat(response.tickets())
+                .extracting(ticket -> ticket.holderUserId())
+                .containsExactlyInAnyOrder("u-101", "u-102");
+    }
+
+    @Test
+    void groupOrderRejectsViewerWithoutHeldTicket() {
+        OrderService service = createService();
+        TicketOrder order = paidGroupOrder();
+
+        when(ticketOrderMapper.selectById("ord-1")).thenReturn(order);
+        when(ticketItemMapper.selectList(any())).thenReturn(List.of());
+        when(userAccountMapper.selectById("u-999")).thenReturn(user("u-999", "陌生用户", "user"));
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-999");
+            assertThatThrownBy(() -> service.getOrderDetail("ord-1"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("无权查看该订单");
+        }
+    }
+
+    @Test
+    void listMyOrdersIncludesPaidHeldGroupOrderForInvitee() {
+        OrderService service = createService();
+        TicketOrder order = paidGroupOrder();
+        TicketItem inviteeTicket = heldTicket("tk-2", "seat-1-2", "u-102", "拼座好友");
+
+        when(ticketOrderMapper.selectList(any())).thenReturn(List.of());
+        when(ticketItemMapper.selectList(any())).thenReturn(List.of(inviteeTicket));
+        when(ticketOrderMapper.selectById("ord-1")).thenReturn(order);
+        when(userAccountMapper.selectById("u-102")).thenReturn(user("u-102", "拼座好友", "user"));
+        when(scheduleSeatMapper.selectOne(any())).thenReturn(seat("seat-1-2", 100));
+
+        List<OrderResponse> responses;
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-102");
+            responses = service.listMyOrders();
+        }
+
+        assertThat(responses).hasSize(1);
+        assertThat(responses.get(0).id()).isEqualTo("ord-1");
+        assertThat(responses.get(0).totalAmount()).isEqualByComparingTo(BigDecimal.valueOf(100));
+        assertThat(responses.get(0).tickets()).singleElement()
+                .extracting(ticket -> ticket.holderUserId())
+                .isEqualTo("u-102");
     }
 
     @Test
@@ -263,7 +424,8 @@ class OrderServiceTest {
                 showScheduleMapper,
                 showMapper,
                 userAccountMapper,
-                refundRequestMapper
+                refundRequestMapper,
+                refundRequestTicketMapper
         );
     }
 
@@ -279,6 +441,19 @@ class OrderServiceTest {
         return order;
     }
 
+    private TicketOrder paidGroupOrder() {
+        TicketOrder order = new TicketOrder();
+        order.setId("ord-1");
+        order.setUserId("u-101");
+        order.setScheduleId("sch-1");
+        order.setTotalAmount(BigDecimal.valueOf(250));
+        order.setStatus("PAID");
+        order.setCreatedAt(LocalDateTime.now().minusMinutes(5));
+        order.setExpiresAt(LocalDateTime.now().plusMinutes(10));
+        order.setPaidAt(LocalDateTime.now().minusMinutes(1));
+        return order;
+    }
+
     private TicketItem ticket() {
         TicketItem ticket = new TicketItem();
         ticket.setId("tk-1");
@@ -290,6 +465,17 @@ class OrderServiceTest {
         return ticket;
     }
 
+    private TicketItem heldTicket(String id, String seatId, String holderUserId, String holderDisplayName) {
+        TicketItem ticket = ticket();
+        ticket.setId(id);
+        ticket.setSeatId(seatId);
+        ticket.setTicketCode(id.toUpperCase());
+        ticket.setStatus("UNUSED");
+        ticket.setHolderUserId(holderUserId);
+        ticket.setHolderDisplayName(holderDisplayName);
+        return ticket;
+    }
+
     private ScheduleSeat availableSeat() {
         ScheduleSeat seat = new ScheduleSeat();
         seat.setId("sch-1:seat-1-1");
@@ -297,5 +483,27 @@ class OrderServiceTest {
         seat.setSeatCode("seat-1-1");
         seat.setStatus("AVAILABLE");
         return seat;
+    }
+
+    private ScheduleSeat seat(String seatId, int price) {
+        ScheduleSeat seat = new ScheduleSeat();
+        seat.setId("sch-1:" + seatId);
+        seat.setScheduleId("sch-1");
+        seat.setSeatCode(seatId);
+        seat.setRowNo(seatId.endsWith("2") ? 1 : 1);
+        seat.setColNo(seatId.endsWith("2") ? 2 : 1);
+        seat.setStatus("AVAILABLE");
+        seat.setPrice(BigDecimal.valueOf(price));
+        return seat;
+    }
+
+    private com.encore.entity.UserAccount user(String id, String displayName, String role) {
+        com.encore.entity.UserAccount user = new com.encore.entity.UserAccount();
+        user.setId(id);
+        user.setUsername(id);
+        user.setDisplayName(displayName);
+        user.setRole(role);
+        user.setStatus("ACTIVE");
+        return user;
     }
 }

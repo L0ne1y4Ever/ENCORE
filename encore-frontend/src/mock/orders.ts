@@ -6,22 +6,29 @@ export interface TicketItem {
   scheduleId: string
   seatId: string | null
   ticketCode: string
-  status: 'RESERVED' | 'UNUSED' | 'CHECKED_IN' | 'VOID'
+  status: 'RESERVED' | 'UNUSED' | 'PENDING_REFUND' | 'CHECKED_IN' | 'VOID'
   areaInventoryId?: string | null
   areaName?: string | null
   areaType?: string | null
   seatLabel?: string | null
   rowNo?: number | null
   colNo?: number | null
+  holderUserId?: string | null
+  holderDisplayName?: string | null
 }
 
 export interface RefundRequestSummary {
   id: string
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | string
   source: 'USER_AUTO' | 'USER_REVIEW' | 'ADMIN_DIRECT' | string
+  scope?: 'ORDER' | 'TICKET' | string | null
   reason?: string | null
   reviewNote?: string | null
   reviewerUsername?: string | null
+  refundAmount?: number | string | null
+  ticketCount?: number | null
+  ticketIds?: string[] | null
+  requesterId?: string | null
   requestedAt?: string | null
   reviewedAt?: string | null
 }

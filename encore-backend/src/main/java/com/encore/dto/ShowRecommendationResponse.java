@@ -17,6 +17,8 @@ public record ShowRecommendationResponse(
         String category,
         List<String> tags,
         String priceRange,
+        BigDecimal minPrice,
+        BigDecimal maxPrice,
         Integer rank,
         Long ticketsSold,
         Long availableScheduleCount,

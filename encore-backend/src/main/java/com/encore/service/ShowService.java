@@ -92,11 +92,11 @@ public class ShowService {
                 .orderByDesc(ShowEntity::getCreatedAt);
 
         List<ShowEntity> shows = showMapper.selectList(wrapper);
-        Map<String, String> priceRangeByShow = priceRangesByShow(shows.stream()
+        Map<String, PriceBounds> priceBoundsByShow = priceBoundsByShow(shows.stream()
                 .map(ShowEntity::getId)
                 .toList());
         return shows.stream()
-                .map(show -> toShowResponse(show, priceRangeByShow.get(show.getId())))
+                .map(show -> toShowResponse(show, priceBoundsByShow.get(show.getId())))
                 .toList();
     }
 
@@ -124,7 +124,7 @@ public class ShowService {
                 .filter(schedule -> "ON_SALE".equals(schedule.getStatus()))
                 .collect(Collectors.groupingBy(ShowSchedule::getShowId, Collectors.counting()));
         Map<String, Long> availableTicketsByShow = calculateAvailableTicketsByShow(schedules);
-        Map<String, String> priceRangeByShow = collectPriceRangesByShow(schedules);
+        Map<String, PriceBounds> priceBoundsByShow = collectPriceBoundsByShow(schedules);
 
         List<String> scheduleIds = schedules.stream()
                 .map(ShowSchedule::getId)
@@ -159,10 +159,12 @@ public class ShowService {
                 ? List.of()
                 : ticketItemMapper.selectList(new LambdaQueryWrapper<TicketItem>()
                         .in(TicketItem::getOrderId, paidOrderIds)
-                        .in(TicketItem::getStatus, List.of("UNUSED", "CHECKED_IN")))
+                        .in(TicketItem::getStatus, List.of("UNUSED", "CHECKED_IN", "PENDING_REFUND")))
                         .stream()
                         .filter(ticket -> paidOrderById.containsKey(ticket.getOrderId()))
-                        .filter(ticket -> "UNUSED".equals(ticket.getStatus()) || "CHECKED_IN".equals(ticket.getStatus()))
+                        .filter(ticket -> "UNUSED".equals(ticket.getStatus())
+                                || "CHECKED_IN".equals(ticket.getStatus())
+                                || "PENDING_REFUND".equals(ticket.getStatus()))
                         .toList();
 
         Map<String, Long> ticketsByShow = new HashMap<>();
@@ -186,7 +188,7 @@ public class ShowService {
                         availableSchedulesByShow.getOrDefault(rankedShows.get(index).getId(), 0L),
                         availableTicketsByShow.getOrDefault(rankedShows.get(index).getId(), 0L),
                         revenueByShow.getOrDefault(rankedShows.get(index).getId(), BigDecimal.ZERO),
-                        priceRangeByShow.get(rankedShows.get(index).getId())
+                        priceBoundsByShow.get(rankedShows.get(index).getId())
                 ))
                 .toList();
     }
@@ -196,7 +198,7 @@ public class ShowService {
         if (show == null || !"PUBLISHED".equals(show.getStatus())) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "演出不存在或未发布");
         }
-        return toShowResponse(show, priceRangesByShow(List.of(id)).get(id));
+        return toShowResponse(show, priceBoundsByShow(List.of(id)).get(id));
     }
 
     public List<ScheduleResponse> listSchedules(String showId) {
@@ -210,7 +212,7 @@ public class ShowService {
                 .toList();
     }
 
-    private ShowResponse toShowResponse(ShowEntity show, String priceRange) {
+    private ShowResponse toShowResponse(ShowEntity show, PriceBounds priceBounds) {
         return new ShowResponse(
                 show.getId(),
                 show.getTitle(),
@@ -224,7 +226,9 @@ public class ShowService {
                 show.getDuration(),
                 show.getCategory(),
                 show.getTags(),
-                priceRange
+                displayPriceRange(priceBounds),
+                minPrice(priceBounds),
+                maxPrice(priceBounds)
         );
     }
 
@@ -284,7 +288,7 @@ public class ShowService {
             long availableScheduleCount,
             long availableTicketCount,
             BigDecimal revenue,
-            String priceRange
+            PriceBounds priceBounds
     ) {
         BigDecimal hotScore = BigDecimal.valueOf(ticketsSold)
                 .multiply(BigDecimal.valueOf(100))
@@ -303,7 +307,9 @@ public class ShowService {
                 show.getDuration(),
                 show.getCategory(),
                 show.getTags(),
-                priceRange,
+                displayPriceRange(priceBounds),
+                minPrice(priceBounds),
+                maxPrice(priceBounds),
                 rank,
                 ticketsSold,
                 availableScheduleCount,
@@ -323,7 +329,7 @@ public class ShowService {
         return availableTicketsByShow;
     }
 
-    private Map<String, String> priceRangesByShow(List<String> showIds) {
+    private Map<String, PriceBounds> priceBoundsByShow(List<String> showIds) {
         if (showIds == null || showIds.isEmpty()) {
             return Map.of();
         }
@@ -332,45 +338,109 @@ public class ShowService {
                 .stream()
                 .filter(this::isPublicSchedule)
                 .toList();
-        return collectPriceRangesByShow(schedules);
+        return collectPriceBoundsByShow(schedules);
     }
 
-    private Map<String, String> collectPriceRangesByShow(List<ShowSchedule> schedules) {
-        Map<String, ShowSchedule> lowestByShow = new HashMap<>();
+    private Map<String, PriceBounds> collectPriceBoundsByShow(List<ShowSchedule> schedules) {
+        Map<String, PriceBounds> boundsByShow = new HashMap<>();
         for (ShowSchedule schedule : schedules) {
             if (!hasDisplayablePrice(schedule)) {
                 continue;
             }
-            lowestByShow.merge(schedule.getShowId(), schedule, this::lowerPricedSchedule);
+            boundsByShow.merge(schedule.getShowId(), priceBoundsForSchedule(schedule), PriceBounds::merge);
         }
-        return lowestByShow.entrySet().stream()
-                .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().getPriceRange()));
+        return boundsByShow;
     }
 
     private boolean hasDisplayablePrice(ShowSchedule schedule) {
-        if (!StringUtils.hasText(schedule.getPriceRange())) {
-            return false;
-        }
         return !"CANCELLED".equals(schedule.getStatus()) && !"ENDED".equals(schedule.getStatus());
     }
 
-    private ShowSchedule lowerPricedSchedule(ShowSchedule left, ShowSchedule right) {
-        int priceCompare = firstPriceValue(left.getPriceRange()).compareTo(firstPriceValue(right.getPriceRange()));
-        if (priceCompare != 0) {
-            return priceCompare <= 0 ? left : right;
+    private PriceBounds priceBoundsForSchedule(ShowSchedule schedule) {
+        PriceBounds bounds = new PriceBounds(null, null, schedule.getPriceRange());
+        String mode = schedule.getTicketMode() == null ? "SEATED" : schedule.getTicketMode();
+        if (!"ZONED".equals(mode)) {
+            bounds = bounds.merge(seatPriceBounds(schedule.getId(), Set.of()));
         }
-        if (left.getStartTime() == null) {
-            return right;
+        if ("ZONED".equals(mode) || "MIXED".equals(mode)) {
+            bounds = bounds.merge(inventoryPriceBounds(schedule.getId()));
         }
-        if (right.getStartTime() == null) {
-            return left;
+        if (bounds.hasPrice()) {
+            return bounds;
         }
-        return left.getStartTime().isAfter(right.getStartTime()) ? right : left;
+        return fallbackPriceBounds(schedule.getPriceRange());
     }
 
-    private BigDecimal firstPriceValue(String priceRange) {
+    private PriceBounds seatPriceBounds(String scheduleId, Set<String> areaIds) {
+        LambdaQueryWrapper<ScheduleSeat> wrapper = new LambdaQueryWrapper<ScheduleSeat>()
+                .eq(ScheduleSeat::getScheduleId, scheduleId)
+                .ne(ScheduleSeat::getStatus, "DISABLED");
+        if (areaIds != null && !areaIds.isEmpty()) {
+            wrapper.in(ScheduleSeat::getAreaId, areaIds);
+        }
+        List<ScheduleSeat> seats = scheduleSeatMapper.selectList(wrapper);
+        PriceBounds bounds = new PriceBounds(null, null, null);
+        if (seats == null) {
+            return bounds;
+        }
+        for (ScheduleSeat seat : seats) {
+            if ("DISABLED".equals(seat.getStatus())) {
+                continue;
+            }
+            bounds = bounds.include(seat.getPrice());
+        }
+        return bounds;
+    }
+
+    private PriceBounds inventoryPriceBounds(String scheduleId) {
+        PriceBounds bounds = new PriceBounds(null, null, null);
+        for (ScheduleAreaInventory inventory : listInventories(scheduleId)) {
+            if (inventory.getTotalCount() != null && inventory.getTotalCount() <= 0) {
+                continue;
+            }
+            if ("DISABLED".equals(inventory.getStatus()) || "CANCELLED".equals(inventory.getStatus())) {
+                continue;
+            }
+            bounds = bounds.include(inventory.getPrice());
+        }
+        return bounds;
+    }
+
+    private PriceBounds fallbackPriceBounds(String priceRange) {
+        PriceBounds bounds = new PriceBounds(null, null, priceRange);
         Matcher matcher = PRICE_NUMBER_PATTERN.matcher(priceRange == null ? "" : priceRange.replace(",", ""));
-        return matcher.find() ? new BigDecimal(matcher.group()) : BigDecimal.valueOf(Long.MAX_VALUE);
+        while (matcher.find()) {
+            bounds = bounds.include(new BigDecimal(matcher.group()));
+        }
+        return bounds;
+    }
+
+    private String displayPriceRange(PriceBounds bounds) {
+        if (bounds == null) {
+            return null;
+        }
+        if (!bounds.hasPrice()) {
+            return bounds.fallbackRange();
+        }
+        if (bounds.max() == null || bounds.min().compareTo(bounds.max()) == 0) {
+            return normalizePrice(bounds.min());
+        }
+        return "%s - %s".formatted(normalizePrice(bounds.min()), normalizePrice(bounds.max()));
+    }
+
+    private BigDecimal minPrice(PriceBounds bounds) {
+        return bounds == null ? null : bounds.min();
+    }
+
+    private BigDecimal maxPrice(PriceBounds bounds) {
+        return bounds == null ? null : bounds.max();
+    }
+
+    private String normalizePrice(BigDecimal value) {
+        if (value == null) {
+            return "";
+        }
+        return value.stripTrailingZeros().toPlainString();
     }
 
     private long countAvailableTickets(ShowSchedule schedule) {
@@ -445,6 +515,7 @@ public class ShowService {
     private ScheduleResponse toScheduleResponse(ShowSchedule schedule) {
         ShowEntity show = showMapper.selectById(schedule.getShowId());
         String category = show != null ? show.getCategory() : null;
+        PriceBounds priceBounds = priceBoundsForSchedule(schedule);
         return new ScheduleResponse(
                 schedule.getId(),
                 schedule.getShowId(),
@@ -455,9 +526,33 @@ public class ShowService {
                 schedule.getSaleEndTime(),
                 schedule.getStatus(),
                 schedule.getPublishStatus() == null ? "PUBLISHED" : schedule.getPublishStatus(),
-                schedule.getPriceRange(),
+                displayPriceRange(priceBounds),
+                minPrice(priceBounds),
+                maxPrice(priceBounds),
                 schedule.getTicketMode(),
                 category
         );
+    }
+
+    private record PriceBounds(BigDecimal min, BigDecimal max, String fallbackRange) {
+        boolean hasPrice() {
+            return min != null;
+        }
+
+        PriceBounds include(BigDecimal price) {
+            if (price == null || price.compareTo(BigDecimal.ZERO) <= 0) {
+                return this;
+            }
+            BigDecimal nextMin = min == null || price.compareTo(min) < 0 ? price : min;
+            BigDecimal nextMax = max == null || price.compareTo(max) > 0 ? price : max;
+            return new PriceBounds(nextMin, nextMax, fallbackRange);
+        }
+
+        PriceBounds merge(PriceBounds other) {
+            if (other == null || !other.hasPrice()) {
+                return this;
+            }
+            return include(other.min()).include(other.max());
+        }
     }
 }

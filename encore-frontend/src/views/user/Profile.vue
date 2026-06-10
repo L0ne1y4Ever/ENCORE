@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useAuthStore } from '../../stores/auth'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -25,6 +25,12 @@ const orders = ref<Order[]>([])
 const orderLoading = ref(false)
 const orderError = ref('')
 const operatingOrderId = ref('')
+const refundDialogVisible = ref(false)
+const refundSubmitting = ref(false)
+const refundReason = ref('')
+const refundTargetOrder = ref<Order | null>(null)
+const refundTargetTicketIds = ref<string[] | undefined>(undefined)
+const refundReasonInput = ref<HTMLTextAreaElement | null>(null)
 
 interface TicketView {
   id: string
@@ -33,13 +39,17 @@ interface TicketView {
   date: string
   venue: string
   seat: string
+  holder: string
   status: TicketItem['status']
+  isGroupHeld: boolean
+  canRefund: boolean
 }
 
 const displayName = computed(() => {
   const user = authStore.currentUser
   return user?.nickname || user?.displayName || user?.username || 'ENCORE'
 })
+const currentUserId = computed(() => authStore.currentUser?.id || '')
 
 const syncTabFromRoute = () => {
   const tab = typeof route.query.tab === 'string' ? route.query.tab : ''
@@ -99,6 +109,24 @@ const loadOrders = async () => {
 
 onMounted(loadOrders)
 
+watch(() => route.query.tab, (nextTab, previousTab) => {
+  if (nextTab === 'tickets' && previousTab !== undefined && nextTab !== previousTab) {
+    void loadOrders()
+  }
+})
+
+watch(refundDialogVisible, async visible => {
+  document.body.classList.toggle('refund-modal-open', visible)
+  if (visible) {
+    await nextTick()
+    refundReasonInput.value?.focus()
+  }
+})
+
+onUnmounted(() => {
+  document.body.classList.remove('refund-modal-open')
+})
+
 const tickets = computed<TicketView[]>(() => {
   return orders.value
     .filter(order => order.status === 'PAID')
@@ -113,11 +141,16 @@ const tickets = computed<TicketView[]>(() => {
         seat: ticket.rowNo != null && ticket.colNo != null
           ? t('seat.info', { row: ticket.rowNo, col: ticket.colNo })
           : (ticket.seatLabel || ticket.seatId || t('ticket.unassigned')),
-        status: ticket.status
+        holder: ticket.holderDisplayName || '',
+        status: ticket.status,
+        isGroupHeld: order.userId !== currentUserId.value,
+        canRefund: order.status === 'PAID' && ticket.status === 'UNUSED'
       })))
 })
 
-const pendingReservations = computed(() => orders.value.filter(order => order.status === 'PENDING_PAYMENT'))
+const isOwnedOrder = (order: Order) => order.userId === currentUserId.value
+
+const pendingReservations = computed(() => orders.value.filter(order => order.status === 'PENDING_PAYMENT' && isOwnedOrder(order)))
 const totalSpend = computed(() => {
   return orders.value
     .filter(order => order.status === 'PAID' || order.status === 'PENDING_REFUND')
@@ -156,8 +189,42 @@ const statusTone = (status: Order['status'] | TicketItem['status']) => status.to
 
 const canRefundOrder = (order: Order) => {
   if (order.status !== 'PAID') return false
-  if ((order.tickets || []).some(ticket => ticket.status === 'CHECKED_IN')) return false
-  return true
+  return refundableTickets(order).length > 0
+}
+
+const refundDialogTicketCount = computed(() => {
+  const order = refundTargetOrder.value
+  if (!order) return 0
+  return refundTargetTicketIds.value?.length || refundableTickets(order).length
+})
+
+const refundDialogMessage = computed(() => {
+  const order = refundTargetOrder.value
+  if (!order) return ''
+  return t(refundTargetTicketIds.value?.length ? 'profile.ticketRefundConfirm' : 'profile.refundConfirm', {
+    id: order.id,
+    count: refundDialogTicketCount.value
+  })
+})
+
+const refundReasonError = computed(() => {
+  return refundReason.value.length > 500 ? t('profile.refundReasonTooLong') : ''
+})
+
+const orderById = (orderId: string) => orders.value.find(order => order.id === orderId) || null
+
+const refundableTickets = (order: Order) => {
+  return (order.tickets || []).filter(ticket => {
+    if (ticket.status !== 'UNUSED') return false
+    if (isOwnedOrder(order)) return true
+    return ticket.holderUserId === currentUserId.value
+  })
+}
+
+const requestTicketRefund = (ticket: TicketView) => {
+  const order = orderById(ticket.orderId)
+  if (!order) return
+  void requestRefund(order, [ticket.id])
 }
 
 const replaceOrder = (updated: Order) => {
@@ -193,34 +260,50 @@ const cancelReservation = async (order: Order) => {
   }
 }
 
-const requestRefund = async (order: Order) => {
+const requestRefund = (order: Order, ticketIds?: string[]) => {
+  const targets = ticketIds?.length ? ticketIds : (isOwnedOrder(order) ? undefined : refundableTickets(order).map(ticket => ticket.id))
+  const targetCount = targets?.length || refundableTickets(order).length
+  if (order.status !== 'PAID' || targetCount < 1) {
+    ElMessage.warning(t('profile.refundFailed'))
+    return
+  }
+
+  refundTargetOrder.value = order
+  refundTargetTicketIds.value = targets
+  refundReason.value = ''
+  refundDialogVisible.value = true
+}
+
+const closeRefundDialog = () => {
+  if (refundSubmitting.value) return
+  refundDialogVisible.value = false
+  refundTargetOrder.value = null
+  refundTargetTicketIds.value = undefined
+  refundReason.value = ''
+}
+
+const submitRefund = async () => {
+  const order = refundTargetOrder.value
+  if (!order || refundReasonError.value || refundSubmitting.value) return
+  const targets = refundTargetTicketIds.value
   try {
-    const { value } = await ElMessageBox.prompt(
-      t('profile.refundConfirm', { id: order.id }),
-      t('profile.requestRefund'),
-      {
-        confirmButtonText: t('common.confirm'),
-        cancelButtonText: t('common.cancel'),
-        inputType: 'textarea',
-        inputPlaceholder: t('profile.refundReasonPlaceholder'),
-        inputValidator: (value: string) => !value || value.length <= 500 || t('profile.refundReasonTooLong'),
-        type: 'warning',
-        customClass: 'encore-dark-box'
-      }
-    )
+    refundSubmitting.value = true
     operatingOrderId.value = order.id
-    const updated = await refundOrder(order.id, value)
+    const updated = await refundOrder(order.id, refundReason.value.trim(), targets)
     replaceOrder(updated)
+    refundDialogVisible.value = false
+    refundTargetOrder.value = null
+    refundTargetTicketIds.value = undefined
+    refundReason.value = ''
     ElMessage.success(
       updated.status === 'REFUNDED'
         ? t('profile.refundCompleted')
         : t('profile.refundSubmitted')
     )
   } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error(error instanceof Error ? error.message : t('profile.refundFailed'))
-    }
+    ElMessage.error(error instanceof Error ? error.message : t('profile.refundFailed'))
   } finally {
+    refundSubmitting.value = false
     operatingOrderId.value = ''
   }
 }
@@ -291,19 +374,46 @@ const requestRefund = async (order: Order) => {
                 <Tickets />
               </div>
               <div class="ticket-main">
-                <h3>{{ tkt.showTitle }}</h3>
-                <p>{{ formatDateTime(tkt.date) }} · {{ tkt.venue }} · {{ t('ticket.seat') }} {{ tkt.seat }}</p>
+                <div class="ticket-title-line">
+                  <h3>{{ tkt.showTitle }}</h3>
+                  <span v-if="tkt.isGroupHeld" class="group-ticket-tag">{{ t('profile.groupTicket') }}</span>
+                </div>
+                <p>{{ formatDateTime(tkt.date) }} · {{ tkt.venue }} · {{ t('ticket.seat') }} {{ tkt.seat }}<template v-if="tkt.holder"> · {{ t('ticket.holder') }} {{ tkt.holder }}</template></p>
+                <small v-if="tkt.isGroupHeld" class="ticket-scope-note">{{ t('profile.ownTicketOnly') }}</small>
               </div>
               <div class="row-side">
                 <span class="card-kicker" :class="statusTone(tkt.status)">{{ ticketStatusLabel(tkt.status) }}</span>
-                <button class="icon-action primary-link" type="button" :aria-label="t('profile.viewTicket')" @click="viewTicket(tkt.orderId)">
+                <button
+                  v-if="tkt.status !== 'PENDING_REFUND'"
+                  class="icon-action primary-link"
+                  type="button"
+                  :aria-label="t('profile.viewTicket')"
+                  @click="viewTicket(tkt.orderId)"
+                >
                   <View />
                   <span>{{ t('profile.viewTicket') }}</span>
+                </button>
+                <button
+                  v-if="tkt.canRefund"
+                  class="icon-action danger-link"
+                  :disabled="operatingOrderId === tkt.orderId"
+                  type="button"
+                  :aria-label="t('profile.requestRefund')"
+                  @click="requestTicketRefund(tkt)"
+                >
+                  <Close />
+                  <span>{{ t('profile.requestRefund') }}</span>
                 </button>
               </div>
             </article>
           </div>
-          <div v-else class="state-card">{{ t('profile.noTickets') }}</div>
+          <div v-else class="state-card ticket-empty">
+            <span>{{ t('profile.noTickets') }}</span>
+            <small>{{ t('profile.ticketRefreshHint') }}</small>
+            <button class="icon-action primary-link" type="button" :disabled="orderLoading" @click="loadOrders">
+              {{ t('profile.refresh') }}
+            </button>
+          </div>
         </section>
 
         <section v-else-if="activeTab === 'orders'" key="orders" class="panel-section">
@@ -341,7 +451,7 @@ const requestRefund = async (order: Order) => {
                 <strong class="card-kicker" :class="statusTone(ord.status)">{{ orderStatusLabel(ord.status) }}</strong>
                 <strong class="amount">{{ formatAmount(ord.totalAmount) }}</strong>
                 <button
-                  v-if="ord.status === 'PENDING_PAYMENT'"
+                  v-if="ord.status === 'PENDING_PAYMENT' && isOwnedOrder(ord)"
                   class="icon-action primary-link"
                   :disabled="operatingOrderId === ord.id"
                   type="button"
@@ -352,7 +462,7 @@ const requestRefund = async (order: Order) => {
                   <span>{{ t('profile.continuePayment') }}</span>
                 </button>
                 <button
-                  v-if="ord.status === 'PENDING_PAYMENT'"
+                  v-if="ord.status === 'PENDING_PAYMENT' && isOwnedOrder(ord)"
                   class="icon-action danger-link"
                   :disabled="operatingOrderId === ord.id"
                   type="button"
@@ -367,7 +477,7 @@ const requestRefund = async (order: Order) => {
                   <span>{{ t('profile.viewTicket') }}</span>
                 </button>
                 <button
-                  v-if="ord.status === 'PAID'"
+                  v-if="ord.status === 'PAID' && canRefundOrder(ord)"
                   class="icon-action danger-link"
                   :disabled="!canRefundOrder(ord) || operatingOrderId === ord.id"
                   type="button"
@@ -444,6 +554,65 @@ const requestRefund = async (order: Order) => {
         </section>
       </transition>
     </main>
+
+    <transition name="refund-pop" appear>
+      <div
+        v-if="refundDialogVisible"
+        class="refund-modal-overlay"
+        role="presentation"
+        tabindex="-1"
+        @click.self="closeRefundDialog"
+        @keydown.esc.stop.prevent="closeRefundDialog"
+      >
+        <section class="refund-modal" role="dialog" aria-modal="true" :aria-label="t('profile.requestRefund')">
+          <header class="refund-modal-header">
+            <div class="refund-modal-title">
+              <span class="refund-modal-mark" aria-hidden="true">
+                <Tickets />
+              </span>
+              <div>
+                <h2>{{ t('profile.requestRefund') }}</h2>
+              </div>
+            </div>
+            <button class="refund-modal-close" type="button" :disabled="refundSubmitting" :aria-label="t('common.cancel')" @click="closeRefundDialog">
+              <Close />
+            </button>
+          </header>
+          <div class="refund-dialog-body">
+            <div class="refund-dialog-message">
+              <p>{{ refundDialogMessage }}</p>
+            </div>
+            <label class="refund-reason-field">
+              <span class="refund-reason-label">{{ t('profile.refundReason') }}</span>
+              <textarea
+                ref="refundReasonInput"
+                v-model="refundReason"
+                :maxlength="500"
+                :placeholder="t('profile.refundReasonPlaceholder')"
+                :disabled="refundSubmitting"
+              />
+            </label>
+            <div class="refund-reason-meta">
+              <p v-if="refundReasonError" class="refund-reason-error">{{ refundReasonError }}</p>
+              <span>{{ refundReason.length }} / 500</span>
+            </div>
+          </div>
+          <footer class="refund-modal-footer">
+            <button class="refund-dialog-btn secondary" type="button" :disabled="refundSubmitting" @click="closeRefundDialog">
+              {{ t('common.cancel') }}
+            </button>
+            <button
+              class="refund-dialog-btn danger"
+              type="button"
+              :disabled="refundSubmitting || !!refundReasonError"
+              @click="submitRefund"
+            >
+              {{ refundSubmitting ? t('common.processing') : t('common.confirm') }}
+            </button>
+          </footer>
+        </section>
+      </div>
+    </transition>
   </div>
 </template>
 
@@ -1206,6 +1375,34 @@ const requestRefund = async (order: Order) => {
   line-height: 1.45;
 }
 
+.ticket-title-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.group-ticket-tag {
+  border: 1px solid rgba(229, 9, 20, 0.28);
+  border-radius: 4px;
+  background: rgba(229, 9, 20, 0.08);
+  color: rgba(255, 190, 196, 0.92);
+  font-family: var(--font-family-sans);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 5px 7px;
+}
+
+.ticket-scope-note {
+  display: inline-flex;
+  margin-top: 6px;
+  color: rgba(255, 255, 255, 0.45);
+  font-family: var(--font-family-sans);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .order-body {
   padding: 0;
 }
@@ -1403,6 +1600,27 @@ const requestRefund = async (order: Order) => {
   }
 }
 
+.ticket-empty {
+  gap: 10px;
+
+  span {
+    color: rgba(255, 255, 255, 0.62);
+    font-weight: 600;
+  }
+
+  small {
+    max-width: 420px;
+    color: rgba(255, 255, 255, 0.42);
+    font-family: var(--font-family-sans);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .primary-link {
+    margin-top: 4px;
+  }
+}
+
 /* Media Query Responsive Adjustments */
 @media (max-width: 768px) {
   .profile-page {
@@ -1468,6 +1686,283 @@ const requestRefund = async (order: Order) => {
   }
 }
 
+.refund-modal-overlay {
+  position: fixed !important;
+  inset: 0;
+  z-index: 2100 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+:global(body.refund-modal-open) {
+  overflow: hidden;
+}
+
+.refund-modal {
+  position: fixed !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  width: min(500px, calc(100vw - 32px)) !important;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 40px);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.012)),
+    #111113;
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.78), 0 0 0 1px rgba(229, 9, 20, 0.055);
+  color: rgba(255, 255, 255, 0.92);
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 2px;
+    background: linear-gradient(90deg, rgba(229, 9, 20, 0.76), rgba(229, 9, 20, 0.18), transparent 72%);
+    pointer-events: none;
+  }
+}
+
+.refund-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 24px 28px 12px;
+}
+
+.refund-modal-title {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.refund-modal-mark {
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(229, 9, 20, 0.22);
+  border-radius: 7px;
+  background: rgba(229, 9, 20, 0.09);
+  color: rgba(255, 132, 140, 0.92);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+
+  svg {
+    width: 19px;
+    height: 19px;
+  }
+}
+
+.refund-modal-title h2 {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.96);
+  font-size: 24px;
+  font-weight: 850;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.refund-modal-close {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.58);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: background-color 180ms ease, color 180ms ease;
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  &:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.07);
+    color: rgba(255, 255, 255, 0.88);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.52;
+  }
+}
+
+.refund-dialog-body {
+  display: grid;
+  gap: 16px;
+  padding: 8px 28px 4px;
+}
+
+.refund-dialog-message {
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.032);
+  padding: 12px 14px;
+
+  p {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 14px;
+    font-weight: 620;
+    line-height: 1.7;
+  }
+}
+
+.refund-reason-field {
+  display: grid;
+  gap: 9px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.refund-reason-label {
+  color: rgba(255, 255, 255, 0.78);
+  line-height: 1.2;
+}
+
+.refund-reason-field textarea {
+  width: 100%;
+  min-height: 118px;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.26);
+  box-shadow: none;
+  color: rgba(255, 255, 255, 0.9);
+  font: inherit;
+  font-weight: 500;
+  line-height: 1.55;
+  outline: none;
+  padding: 11px 12px;
+  resize: none;
+  transition: border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
+
+  &::placeholder {
+    color: rgba(255, 255, 255, 0.36);
+  }
+
+  &:focus {
+    border-color: rgba(229, 9, 20, 0.5);
+    background: rgba(0, 0, 0, 0.34);
+    box-shadow: 0 0 0 3px rgba(229, 9, 20, 0.1);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.68;
+  }
+}
+
+.refund-reason-meta {
+  min-height: 18px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.38);
+  font-size: 12px;
+}
+
+.refund-reason-error {
+  margin: 0;
+  color: rgba(255, 120, 128, 0.95);
+  font-size: 12px;
+}
+
+.refund-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.065);
+  margin-top: 18px;
+  padding: 18px 28px 24px;
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.refund-dialog-btn {
+  min-width: 86px;
+  min-height: 38px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  transition: border-color 180ms ease, background-color 180ms ease, color 180ms ease, transform 180ms ease, opacity 180ms ease;
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.58;
+  }
+
+  &:not(:disabled):active {
+    transform: translateY(1px);
+  }
+}
+
+.refund-dialog-btn.secondary {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(255, 255, 255, 0.82);
+
+  &:hover:not(:disabled) {
+    border-color: rgba(255, 255, 255, 0.22);
+    background: rgba(255, 255, 255, 0.095);
+  }
+}
+
+.refund-dialog-btn.danger {
+  border: 1px solid rgba(229, 9, 20, 0.48);
+  background: #9f1019;
+  color: rgba(255, 255, 255, 0.96);
+
+  &:hover:not(:disabled) {
+    border-color: rgba(246, 18, 29, 0.58);
+    background: #b41420;
+    box-shadow: 0 10px 22px rgba(229, 9, 20, 0.2);
+  }
+}
+
+.refund-pop-enter-active,
+.refund-pop-leave-active {
+  transition: opacity 180ms ease;
+}
+
+.refund-pop-enter-active .refund-modal,
+.refund-pop-leave-active .refund-modal {
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.refund-pop-enter-from,
+.refund-pop-leave-to {
+  opacity: 0;
+}
+
+.refund-pop-enter-from .refund-modal,
+.refund-pop-leave-to .refund-modal {
+  opacity: 0;
+  transform: translate(-50%, calc(-50% + 8px)) scale(0.985) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .refund-pop-enter-active,
+  .refund-pop-leave-active,
+  .refund-pop-enter-active .refund-modal,
+  .refund-pop-leave-active .refund-modal {
+    transition: none;
+  }
+}
+
 /* Element Plus MessageBox Dark Theme Customization */
 :global(.encore-dark-box) {
   --el-bg-color-overlay: #181818 !important;
@@ -1518,6 +2013,87 @@ const requestRefund = async (order: Order) => {
       &:hover {
         background: #f6121d !important;
         box-shadow: none !important;
+      }
+    }
+  }
+}
+
+:global(.encore-dark-box.encore-refund-box) {
+  --el-bg-color-overlay: rgba(12, 12, 14, 0.96) !important;
+  --el-border-color-lighter: rgba(229, 9, 20, 0.18) !important;
+  width: min(440px, calc(100vw - 32px)) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.014)),
+    rgba(10, 10, 12, 0.96) !important;
+  box-shadow: 0 24px 58px rgba(0, 0, 0, 0.74), 0 0 0 1px rgba(229, 9, 20, 0.08) !important;
+
+  .el-message-box__header {
+    padding-bottom: 6px !important;
+  }
+
+  .el-message-box__status {
+    display: none !important;
+  }
+
+  .el-message-box__title {
+    color: rgba(255, 255, 255, 0.96) !important;
+    font-size: 18px !important;
+    letter-spacing: 0 !important;
+  }
+
+  .el-message-box__message {
+    color: rgba(255, 255, 255, 0.68) !important;
+    line-height: 1.6 !important;
+  }
+
+  .el-message-box__input {
+    padding-top: 12px !important;
+  }
+
+  .el-textarea__inner {
+    min-height: 96px !important;
+    border-color: rgba(255, 255, 255, 0.11) !important;
+    border-radius: 6px !important;
+    background: rgba(0, 0, 0, 0.32) !important;
+    box-shadow: none !important;
+    color: rgba(255, 255, 255, 0.92) !important;
+    resize: vertical !important;
+
+    &::placeholder {
+      color: rgba(255, 255, 255, 0.34) !important;
+    }
+
+    &:focus {
+      border-color: rgba(229, 9, 20, 0.52) !important;
+      box-shadow: 0 0 0 2px rgba(229, 9, 20, 0.12) !important;
+    }
+  }
+
+  .el-message-box__btns {
+    gap: 10px !important;
+    padding-top: 14px !important;
+
+    .el-button--default {
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      background: rgba(255, 255, 255, 0.055) !important;
+      color: rgba(255, 255, 255, 0.82) !important;
+
+      &:hover {
+        border-color: rgba(255, 255, 255, 0.22) !important;
+        background: rgba(255, 255, 255, 0.095) !important;
+      }
+    }
+
+    .el-button--primary {
+      border: 1px solid rgba(229, 9, 20, 0.42) !important;
+      background: rgba(229, 9, 20, 0.92) !important;
+      color: rgba(255, 255, 255, 0.96) !important;
+
+      &:hover {
+        border-color: rgba(246, 18, 29, 0.62) !important;
+        background: rgba(246, 18, 29, 0.96) !important;
+        box-shadow: 0 10px 24px rgba(229, 9, 20, 0.22) !important;
       }
     }
   }

@@ -175,9 +175,14 @@ export interface RefundRequestSummary {
   id: string
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | string
   source: 'USER_AUTO' | 'USER_REVIEW' | 'ADMIN_DIRECT' | string
+  scope?: 'ORDER' | 'TICKET' | string | null
   reason?: string | null
   reviewNote?: string | null
   reviewerUsername?: string | null
+  refundAmount?: number | string | null
+  ticketCount?: number | null
+  ticketIds?: string[] | null
+  requesterId?: string | null
   requestedAt?: string | null
   reviewedAt?: string | null
 }

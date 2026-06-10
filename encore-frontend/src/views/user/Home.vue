@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ArrowDown, ArrowLeft, ArrowRight, Calendar, PriceTag, Search } from '@element-plus/icons-vue'
@@ -11,9 +11,13 @@ import { handlePosterError, lowestPriceLabel, posterImageSrc } from '../../utils
 import { formatMoney } from '../../utils/money'
 
 const router = useRouter()
+defineOptions({ name: 'UserHome' })
+
 const shows = ref<Show[]>([])
 const recommendedShows = ref<RecommendedShow[]>([])
+const homeLoading = ref(true)
 const { t, locale } = useI18n()
+const HOME_CACHE_KEY = 'encore.home.cache.v1'
 
 type DateFilter = 'all' | 'onSale' | 'comingSoon'
 
@@ -26,20 +30,70 @@ const activeHeroIndex = ref(0)
 const heroTimer = ref<ReturnType<typeof window.setInterval> | null>(null)
 const openDropdown = ref<'category' | 'date' | ''>('')
 const HERO_INTERVAL_MS = 4200
+let homeActive = false
+let homeListenersAttached = false
+
+const attachHomeListeners = () => {
+  if (homeListenersAttached) return
+  document.addEventListener('pointerdown', handleGlobalPointerDown)
+  window.addEventListener('keydown', handleGlobalKeydown)
+  homeListenersAttached = true
+}
+
+const detachHomeListeners = () => {
+  if (!homeListenersAttached) return
+  document.removeEventListener('pointerdown', handleGlobalPointerDown)
+  window.removeEventListener('keydown', handleGlobalKeydown)
+  homeListenersAttached = false
+}
 
 type PriceSource = {
   id?: string
   priceRange?: string | number | null
   price_range?: string | number | null
-  lowestPrice?: string | number | null
-  lowest_price?: string | number | null
   minPrice?: string | number | null
   min_price?: string | number | null
+  maxPrice?: string | number | null
+  max_price?: string | number | null
+  lowestPrice?: string | number | null
+  lowest_price?: string | number | null
   minimumPrice?: string | number | null
   minimum_price?: string | number | null
   basePrice?: string | number | null
   base_price?: string | number | null
   price?: string | number | null
+}
+
+type HomeCache = {
+  shows: Show[]
+  recommendedShows: RecommendedShow[]
+}
+
+const readHomeCache = (): HomeCache | null => {
+  try {
+    const raw = sessionStorage.getItem(HOME_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<HomeCache>
+    if (!Array.isArray(parsed.shows) || !Array.isArray(parsed.recommendedShows)) return null
+    return {
+      shows: parsed.shows,
+      recommendedShows: parsed.recommendedShows
+    }
+  } catch {
+    sessionStorage.removeItem(HOME_CACHE_KEY)
+    return null
+  }
+}
+
+const writeHomeCache = (nextShows: Show[], nextRecommendedShows: RecommendedShow[]) => {
+  try {
+    sessionStorage.setItem(HOME_CACHE_KEY, JSON.stringify({
+      shows: nextShows,
+      recommendedShows: nextRecommendedShows
+    }))
+  } catch {
+    // Cache is only a UX optimization; ignore quota or private-mode failures.
+  }
 }
 
 const formatNumericPrice = (value: string | number) => {
@@ -61,17 +115,17 @@ const priceCandidateLabel = (value: string | number | null | undefined) => {
 const rawPriceFromSource = (source?: PriceSource | null) => {
   if (!source) return ''
   const candidates = [
-    source.priceRange,
-    source.price_range,
-    source.lowestPrice,
-    source.lowest_price,
     source.minPrice,
     source.min_price,
+    source.lowestPrice,
+    source.lowest_price,
     source.minimumPrice,
     source.minimum_price,
     source.basePrice,
     source.base_price,
-    source.price
+    source.price,
+    source.priceRange,
+    source.price_range
   ]
   for (const candidate of candidates) {
     if (candidate == null) continue
@@ -84,17 +138,17 @@ const rawPriceFromSource = (source?: PriceSource | null) => {
 const priceLabelFromSource = (source?: PriceSource | null) => {
   if (!source) return ''
   const candidates = [
-    source.priceRange,
-    source.price_range,
-    source.lowestPrice,
-    source.lowest_price,
     source.minPrice,
     source.min_price,
+    source.lowestPrice,
+    source.lowest_price,
     source.minimumPrice,
     source.minimum_price,
     source.basePrice,
     source.base_price,
-    source.price
+    source.price,
+    source.priceRange,
+    source.price_range
   ]
   for (const candidate of candidates) {
     const label = priceCandidateLabel(candidate)
@@ -118,15 +172,23 @@ const hydrateMissingPrices = async <T extends Show>(source: T[]) => {
   const missing = source.filter(show => !priceLabelFromSource(show))
   if (!missing.length) return source
 
-  const priceByShow = new Map<string, string>()
+  const priceByShow = new Map<string, Pick<PriceSource, 'minPrice' | 'priceRange'>>()
   await Promise.all(missing.map(async show => {
     try {
       const schedules = await getShowSchedules(show.id)
-      const price = (schedules || [])
-        .map(schedule => rawPriceFromSource(schedule as unknown as PriceSource))
-        .find(Boolean)
-      if (price) {
-        priceByShow.set(show.id, price)
+      const schedulePrices = (schedules || [])
+        .map(schedule => schedule as unknown as PriceSource)
+        .filter(schedule => priceLabelFromSource(schedule))
+      const numericMinimums = schedulePrices
+        .map(schedule => Number(schedule.minPrice ?? schedule.min_price))
+        .filter(value => Number.isFinite(value) && value > 0)
+      if (numericMinimums.length) {
+        priceByShow.set(show.id, { minPrice: Math.min(...numericMinimums) })
+        return
+      }
+      const priceRange = schedulePrices.map(rawPriceFromSource).find(Boolean)
+      if (priceRange) {
+        priceByShow.set(show.id, { priceRange })
       }
     } catch {
       // Keep the show visible even if schedule hydration fails.
@@ -135,7 +197,7 @@ const hydrateMissingPrices = async <T extends Show>(source: T[]) => {
 
   if (!priceByShow.size) return source
   return source.map(show => priceByShow.has(show.id)
-    ? { ...show, priceRange: priceByShow.get(show.id) }
+    ? { ...show, ...priceByShow.get(show.id) }
     : show)
 }
 
@@ -143,8 +205,9 @@ const withListPriceFallback = <T extends Show>(source: T[], list: Show[]) => {
   return source.map(show => {
     if (priceLabelFromSource(show)) return show
     const match = list.find(item => item.id === show.id)
+    if (!match) return show
     const price = rawPriceFromSource(match)
-    return price ? { ...show, priceRange: price } : show
+    return price ? { ...show, minPrice: match.minPrice, priceRange: price } : show
   })
 }
 
@@ -160,23 +223,45 @@ const toFallbackRecommendations = (source: Show[]): RecommendedShow[] => {
 }
 
 onMounted(async () => {
-  document.addEventListener('pointerdown', handleGlobalPointerDown)
-  window.addEventListener('keydown', handleGlobalKeydown)
+  homeActive = true
+  attachHomeListeners()
+
+  const cached = readHomeCache()
+  if (cached && cached.shows.length) {
+    shows.value = cached.shows
+    recommendedShows.value = cached.recommendedShows.length
+      ? cached.recommendedShows
+      : toFallbackRecommendations(cached.shows)
+    homeLoading.value = false
+  } else {
+    homeLoading.value = true
+  }
 
   let resolvedShows: Show[] = []
+  let nextRecommendedShows: RecommendedShow[] = []
+
+  const showListRequest = getShowList().catch(() => null)
+  const recommendationRequest = getTopRecommendedShows().catch(() => null)
 
   try {
-    const data = await getShowList()
+    const data = await showListRequest
     resolvedShows = data && data.length > 0 ? normalizeShows(data) : mockShows
   } catch {
     resolvedShows = mockShows
   }
 
-  resolvedShows = await hydrateMissingPrices(resolvedShows)
   shows.value = resolvedShows
+  window.setTimeout(() => {
+    void hydrateMissingPrices(resolvedShows).then(hydrated => {
+      if (homeActive) {
+        shows.value = hydrated
+        writeHomeCache(hydrated, recommendedShows.value)
+      }
+    })
+  }, 0)
 
   try {
-    const data = await getTopRecommendedShows()
+    const data = await recommendationRequest
     if (data && data.length > 0) {
       const normalizedRecommendations = withListPriceFallback(normalizeShows(data), resolvedShows).map((show, index) => ({
         ...show,
@@ -186,21 +271,55 @@ onMounted(async () => {
         availableTicketCount: show.availableTicketCount || 0,
         hotScore: show.hotScore || 0
       }))
-      recommendedShows.value = await hydrateMissingPrices(normalizedRecommendations)
+      nextRecommendedShows = normalizedRecommendations
+      recommendedShows.value = nextRecommendedShows
+      window.setTimeout(() => {
+        void hydrateMissingPrices(nextRecommendedShows).then(hydrated => {
+          if (homeActive) {
+            recommendedShows.value = hydrated
+            writeHomeCache(shows.value, hydrated)
+          }
+        })
+      }, 0)
     } else {
-      recommendedShows.value = toFallbackRecommendations(resolvedShows)
+      nextRecommendedShows = toFallbackRecommendations(resolvedShows)
+      recommendedShows.value = nextRecommendedShows
     }
   } catch {
-    recommendedShows.value = toFallbackRecommendations(resolvedShows)
+    nextRecommendedShows = toFallbackRecommendations(resolvedShows)
+    recommendedShows.value = nextRecommendedShows
+  } finally {
+    if (homeActive) {
+      writeHomeCache(shows.value, recommendedShows.value)
+      homeLoading.value = false
+    }
   }
 
-  startHeroAutoplay()
+  if (homeActive) {
+    startHeroAutoplay()
+  }
 })
 
 onUnmounted(() => {
+  homeActive = false
   stopHeroAutoplay()
-  document.removeEventListener('pointerdown', handleGlobalPointerDown)
-  window.removeEventListener('keydown', handleGlobalKeydown)
+  detachHomeListeners()
+})
+
+onActivated(() => {
+  homeActive = true
+  attachHomeListeners()
+  if (shows.value.length) {
+    homeLoading.value = false
+  }
+  startHeroAutoplay()
+})
+
+onDeactivated(() => {
+  homeActive = false
+  openDropdown.value = ''
+  stopHeroAutoplay()
+  detachHomeListeners()
 })
 
 const categories = ['All', 'Movie', 'Musical', 'Play', 'Concert', 'Ballet']
@@ -551,6 +670,10 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
         </button>
       </div>
 
+      <div v-else-if="homeLoading" class="home-loading-state recommendation-loading" aria-live="polite">
+        <span>{{ t('common.loading') }}</span>
+      </div>
+
       <div v-else class="empty-state">
         {{ t('home.recommendationsEmpty') }}
       </div>
@@ -562,7 +685,8 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
           <span class="section-kicker">{{ t('home.discover') }}</span>
           <h2>{{ t('home.nowShowing') }}</h2>
         </div>
-        <span class="section-count">{{ filteredShows.length }}</span>
+        <span v-if="!homeLoading" class="section-count">{{ filteredShows.length }}</span>
+        <span v-else class="section-count loading-count" aria-hidden="true">...</span>
       </div>
 
       <div v-if="filteredShows.length > 0" class="show-grid">
@@ -597,6 +721,10 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
             </div>
           </div>
         </button>
+      </div>
+
+      <div v-else-if="homeLoading" class="home-loading-state shows-loading" aria-live="polite">
+        <span>{{ t('common.loading') }}</span>
       </div>
 
       <div v-else class="empty-state">
@@ -1222,6 +1350,43 @@ const handleGlobalKeydown = (event: KeyboardEvent) => {
   font-family: var(--font-family-sans);
   padding: var(--spacing-6);
   text-align: center;
+}
+
+.home-loading-state {
+  min-height: 120px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.035), transparent),
+    rgba(255, 255, 255, 0.012);
+  background-size: 220% 100%, 100% 100%;
+  color: rgba(255, 255, 255, 0.42);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-family-sans);
+  font-size: 14px;
+  font-weight: 650;
+  animation: home-loading-sheen 1.25s ease-in-out infinite;
+}
+
+.loading-count {
+  color: rgba(255, 255, 255, 0.38);
+}
+
+@keyframes home-loading-sheen {
+  from {
+    background-position: 180% 0, 0 0;
+  }
+
+  to {
+    background-position: -60% 0, 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-loading-state {
+    animation: none;
+  }
 }
 
 @media (max-width: 860px) {

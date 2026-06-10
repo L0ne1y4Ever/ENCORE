@@ -2,6 +2,7 @@ package com.encore.service;
 
 import com.encore.dto.ShowRecommendationResponse;
 import com.encore.dto.ShowResponse;
+import com.encore.entity.ScheduleAreaInventory;
 import com.encore.entity.ScheduleSeat;
 import com.encore.entity.ShowEntity;
 import com.encore.entity.ShowSchedule;
@@ -185,7 +186,7 @@ class ShowServiceTest {
     }
 
     @Test
-    void listShowsExposeLowestPublicPriceRange() {
+    void listShowsExposePublicPriceBoundsFromRanges() {
         ShowService service = createService();
         ShowEntity show = show("s-price", "PUBLISHED", 10, 1);
         ShowSchedule hiddenLowerPrice = schedule("sch-hidden", "s-price", "ON_SALE", "$40 - $90");
@@ -202,11 +203,13 @@ class ShowServiceTest {
         List<ShowResponse> shows = service.listShows(null, null);
 
         assertThat(shows).hasSize(1);
-        assertThat(shows.get(0).priceRange()).isEqualTo("$88 - $188");
+        assertThat(shows.get(0).priceRange()).isEqualTo("88 - 280");
+        assertThat(shows.get(0).minPrice()).isEqualByComparingTo("88");
+        assertThat(shows.get(0).maxPrice()).isEqualByComparingTo("280");
     }
 
     @Test
-    void recommendationsExposeLowestPublicPriceRange() {
+    void recommendationsExposePublicPriceBoundsFromRanges() {
         ShowService service = createService();
         ShowSchedule hiddenLowerPrice = schedule("sch-hidden", "s-price", "ON_SALE", "$40 - $90");
         hiddenLowerPrice.setPublishStatus("DRAFT");
@@ -223,7 +226,58 @@ class ShowServiceTest {
         List<ShowRecommendationResponse> recommendations = service.listTopRecommendations();
 
         assertThat(recommendations).hasSize(1);
-        assertThat(recommendations.get(0).priceRange()).isEqualTo("$88 - $188");
+        assertThat(recommendations.get(0).priceRange()).isEqualTo("88 - 280");
+        assertThat(recommendations.get(0).minPrice()).isEqualByComparingTo("88");
+        assertThat(recommendations.get(0).maxPrice()).isEqualByComparingTo("280");
+    }
+
+    @Test
+    void listShowsPreferActualSeatPricesOverManualPriceRange() {
+        ShowService service = createService();
+        ShowEntity show = show("s-seat-price", "PUBLISHED", 10, 1);
+        ShowSchedule schedule = schedule("sch-seat-price", "s-seat-price", "ON_SALE", "$999 - $1299");
+
+        when(showMapper.selectList(any())).thenReturn(List.of(show));
+        when(showScheduleMapper.selectList(any())).thenReturn(List.of(schedule));
+        when(scheduleSeatMapper.selectList(any())).thenReturn(List.of(
+                pricedSeat("sch-seat-price", "seat-1-1", "AVAILABLE", 120),
+                pricedSeat("sch-seat-price", "seat-1-2", "SOLD", 180),
+                pricedSeat("sch-seat-price", "seat-1-3", "DISABLED", 40)
+        ));
+
+        List<ShowResponse> shows = service.listShows(null, null);
+
+        assertThat(shows).hasSize(1);
+        assertThat(shows.get(0).priceRange()).isEqualTo("120 - 180");
+        assertThat(shows.get(0).minPrice()).isEqualByComparingTo("120");
+        assertThat(shows.get(0).maxPrice()).isEqualByComparingTo("180");
+    }
+
+    @Test
+    void recommendationsMergeSeatAndAreaPricesForMixedSchedules() {
+        ShowService service = createService();
+        ShowSchedule schedule = schedule("sch-mixed-price", "s-mixed-price", "ON_SALE", "$999 - $1299");
+        schedule.setTicketMode("MIXED");
+
+        when(showMapper.selectList(any())).thenReturn(List.of(show("s-mixed-price", "PUBLISHED", 10, 1)));
+        when(showScheduleMapper.selectList(any())).thenReturn(List.of(schedule));
+        when(scheduleSeatMapper.selectList(any())).thenReturn(List.of(
+                pricedSeat("sch-mixed-price", "seat-a-1", "AVAILABLE", 260),
+                pricedSeat("sch-mixed-price", "seat-a-2", "SOLD", 320)
+        ));
+        when(scheduleAreaInventoryMapper.selectList(any())).thenReturn(List.of(
+                inventory("sch-mixed-price", 88, 100, "AVAILABLE"),
+                inventory("sch-mixed-price", 500, 0, "AVAILABLE"),
+                inventory("sch-mixed-price", 60, 50, "DISABLED")
+        ));
+        when(ticketOrderMapper.selectList(any())).thenReturn(List.of());
+
+        List<ShowRecommendationResponse> recommendations = service.listTopRecommendations();
+
+        assertThat(recommendations).hasSize(1);
+        assertThat(recommendations.get(0).priceRange()).isEqualTo("88 - 320");
+        assertThat(recommendations.get(0).minPrice()).isEqualByComparingTo("88");
+        assertThat(recommendations.get(0).maxPrice()).isEqualByComparingTo("320");
     }
 
     @Test
@@ -333,5 +387,24 @@ class ShowServiceTest {
         seat.setSeatCode(seatCode);
         seat.setStatus("AVAILABLE");
         return seat;
+    }
+
+    private ScheduleSeat pricedSeat(String scheduleId, String seatCode, String status, int price) {
+        ScheduleSeat seat = new ScheduleSeat();
+        seat.setScheduleId(scheduleId);
+        seat.setSeatCode(seatCode);
+        seat.setStatus(status);
+        seat.setPrice(BigDecimal.valueOf(price));
+        return seat;
+    }
+
+    private ScheduleAreaInventory inventory(String scheduleId, int price, int totalCount, String status) {
+        ScheduleAreaInventory inventory = new ScheduleAreaInventory();
+        inventory.setScheduleId(scheduleId);
+        inventory.setPrice(BigDecimal.valueOf(price));
+        inventory.setTotalCount(totalCount);
+        inventory.setAvailableCount(totalCount);
+        inventory.setStatus(status);
+        return inventory;
     }
 }

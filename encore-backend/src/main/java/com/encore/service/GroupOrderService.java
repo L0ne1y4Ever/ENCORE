@@ -31,6 +31,8 @@ import java.util.stream.Collectors;
 @Service
 public class GroupOrderService {
     private static final Duration GROUP_TTL = Duration.ofMinutes(15);
+    private static final Duration CHECKED_OUT_TTL = Duration.ofMinutes(15);
+    private static final Duration PAID_TTL = Duration.ofMinutes(15);
     private static final Duration CLOSED_TTL = Duration.ofMinutes(1);
     private static final int MAX_SEATS = 6;
 
@@ -174,17 +176,17 @@ public class GroupOrderService {
             return session.getOrderId();
         }
         ensureOpen(session);
-        Duration ttl = remainingTtl(inviteCode);
         List<String> seatIds = allSeatIds(session);
         if (seatIds.isEmpty()) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "拼座暂无座位");
         }
         String owner = groupOwner(inviteCode);
         seatService.ensureLocksOwnedBy(session.getScheduleId(), seatIds, owner);
-        String orderId = orderService.createGroupOrder(session.getScheduleId(), seatIds, owner);
+        String orderId = orderService.createGroupOrder(session.getScheduleId(), groupSeatHolders(session), owner);
         session.setStatus("CHECKED_OUT");
         session.setOrderId(orderId);
-        saveSession(session, ttl);
+        orderService.repairGroupTicketHolders(orderId, groupSeatHolders(session));
+        saveSession(session, CHECKED_OUT_TTL);
         return orderId;
     }
 
@@ -236,6 +238,10 @@ public class GroupOrderService {
     }
 
     private GroupOrderResponse toResponse(GroupOrderSession session) {
+        List<OrderService.GroupSeatHolder> groupSeatHolders = groupSeatHolders(session);
+        if (session.getOrderId() != null) {
+            orderService.repairGroupTicketHolders(session.getOrderId(), groupSeatHolders);
+        }
         List<String> seatIds = allSeatIds(session);
         Map<String, ScheduleSeat> seatById = seatIds.isEmpty()
                 ? Map.of()
@@ -253,17 +259,39 @@ public class GroupOrderService {
         BigDecimal totalAmount = members.stream()
                 .map(GroupOrderMemberResponse::amount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+        String orderStatus = session.getOrderId() == null ? null : orderService.getOrderStatus(session.getOrderId());
+        String responseStatus = responseStatus(session, orderStatus);
+        if ("PAID".equals(responseStatus) && !"PAID".equals(session.getStatus())) {
+            session.setStatus("PAID");
+            session.setExpiresAt(LocalDateTime.now().plus(PAID_TTL));
+            saveSession(session, PAID_TTL);
+        }
         return new GroupOrderResponse(
                 session.getInviteCode(),
                 session.getScheduleId(),
                 session.getHostUserId(),
                 session.getHostDisplayName(),
-                session.getStatus(),
+                responseStatus,
                 session.getExpiresAt(),
                 session.getMaxSeats(),
                 totalAmount,
+                session.getOrderId(),
+                orderStatus,
                 members
         );
+    }
+
+    private String responseStatus(GroupOrderSession session, String orderStatus) {
+        if ("PAID".equals(orderStatus)) {
+            return "PAID";
+        }
+        if ("EXPIRED".equals(orderStatus)) {
+            return "EXPIRED";
+        }
+        if ("CANCELLED".equals(orderStatus)) {
+            return "CANCELLED";
+        }
+        return session.getStatus();
     }
 
     private BigDecimal amountOf(List<String> seatIds, Map<String, ScheduleSeat> seatById) {
@@ -308,6 +336,19 @@ public class GroupOrderService {
         return session.getMembers().stream()
                 .flatMap(member -> member.getSeatIds().stream())
                 .filter(uniqueSeatIds::add)
+                .toList();
+    }
+
+    private List<OrderService.GroupSeatHolder> groupSeatHolders(GroupOrderSession session) {
+        Set<String> uniqueSeatIds = new HashSet<>();
+        return session.getMembers().stream()
+                .flatMap(member -> member.getSeatIds().stream()
+                        .filter(uniqueSeatIds::add)
+                        .map(seatId -> new OrderService.GroupSeatHolder(
+                                seatId,
+                                member.getUserId(),
+                                member.getDisplayName()
+                        )))
                 .toList();
     }
 

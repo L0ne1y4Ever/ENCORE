@@ -23,7 +23,7 @@ import TicketModeBadge from '../../components/TicketModeBadge.vue'
 import { useAuthStore } from '../../stores/auth'
 import { getScheduleDetail } from '../../api/show'
 import type { Schedule } from '../../mock/shows'
-import { createOrder } from '../../api/order'
+import { createOrder, getOrderDetail } from '../../api/order'
 import { formatMoney } from '../../utils/money'
 
 const route = useRoute()
@@ -47,10 +47,14 @@ const groupLoading = ref(false)
 const groupError = ref('')
 const groupCopied = ref(false)
 const groupOrder = ref<GroupOrder | null>(null)
+const groupTicketReady = ref(false)
+const groupTicketSyncing = ref(false)
 const inviteInputRef = ref<HTMLInputElement | null>(null)
 const now = ref(Date.now())
 const realtimeState = ref<SeatRealtimeConnectionState>('connecting')
 const realtimeNotice = ref<string | null>(null)
+const maxSelect = 6
+const hasUnsavedSelection = ref(false)
 let disconnectRealtime: (() => void) | undefined
 let realtimeNoticeTimer: ReturnType<typeof setTimeout> | undefined
 let groupPollTimer: ReturnType<typeof setInterval> | undefined
@@ -67,6 +71,28 @@ const currentMember = computed(() => {
 })
 const isGroupHost = computed(() => {
   return Boolean(groupOrder.value && groupOrder.value.hostUserId === currentUserId.value)
+})
+const groupClaimedCount = computed(() => {
+  return groupOrder.value?.members.reduce((sum, member) => sum + member.seatIds.length, 0) || 0
+})
+const groupPaid = computed(() => {
+  return groupOrder.value?.status === 'PAID' || groupOrder.value?.orderStatus === 'PAID'
+})
+const groupCheckedOut = computed(() => {
+  return groupOrder.value?.status === 'CHECKED_OUT'
+          || (Boolean(groupOrder.value?.orderId) && groupOrder.value?.orderStatus === 'PENDING_PAYMENT')
+})
+const groupClosed = computed(() => {
+  return groupOrder.value?.status === 'CANCELLED' || groupOrder.value?.status === 'EXPIRED'
+})
+const groupCanEdit = computed(() => {
+  return !isGroupMode.value || groupOrder.value?.status === 'OPEN'
+})
+const selectedCountText = computed(() => {
+  if (isGroupMode.value && groupOrder.value) {
+    return `${groupClaimedCount.value}/${groupOrder.value.maxSeats || maxSelect}`
+  }
+  return `${selectedSeatIds.value.size}/${maxSelect}`
 })
 const groupInviteUrl = computed(() => {
   if (!groupInviteCode.value) return ''
@@ -87,6 +113,46 @@ const groupExpiresIn = computed(() => {
   const diff = Math.max(0, Math.floor((new Date(groupOrder.value.expiresAt).getTime() - now.value) / 1000))
   return formatTime(diff)
 })
+const groupStatusLabel = computed(() => {
+  if (groupPaid.value && !groupTicketReady.value) return t('seat.group.ticketSyncingShort')
+  if (groupPaid.value) return t('seat.group.paymentCompletedShort')
+  if (groupCheckedOut.value) return t('seat.group.checkoutPendingShort')
+  if (groupClosed.value) return t('seat.group.closedShort')
+  return groupExpiresIn.value
+})
+const currentMemberSeatLabel = computed(() => {
+  return currentMember.value ? memberSeatLabel(currentMember.value) : t('seat.group.notJoined')
+})
+const currentMemberAmount = computed(() => currentMember.value?.amount || 0)
+const currentMemberSeatCount = computed(() => currentMember.value?.seatIds.length || 0)
+const groupPersonalStatus = computed(() => {
+  if (groupPaid.value && !groupTicketReady.value) return t('seat.group.myStatusSyncing')
+  if (groupPaid.value) return t('seat.group.myStatusIssued')
+  if (groupCheckedOut.value) return t('seat.group.myStatusLocked')
+  if (groupClosed.value) return t('seat.group.myStatusClosed')
+  if (currentMember.value) return t('seat.group.myStatusEditable')
+  return t('seat.group.myStatusPendingJoin')
+})
+const groupProgressSteps = computed(() => [
+  {
+    key: 'selecting',
+    label: t('seat.group.stageSelecting'),
+    active: Boolean(groupOrder.value),
+    current: Boolean(groupOrder.value) && !groupCheckedOut.value && !groupPaid.value && !groupClosed.value
+  },
+  {
+    key: 'checkout',
+    label: t('seat.group.stageCheckout'),
+    active: groupCheckedOut.value || groupPaid.value,
+    current: groupCheckedOut.value
+  },
+  {
+    key: 'issued',
+    label: t('seat.group.stageIssued'),
+    active: groupPaid.value,
+    current: groupPaid.value && groupTicketReady.value
+  }
+])
 
 const refreshSeatMap = async (showLoading = false) => {
   if (showLoading) {
@@ -279,11 +345,12 @@ onBeforeUnmount(() => {
   }
 })
 
-const maxSelect = 6
-
 const toggleSeat = (seat: Seat) => {
+  if (!groupCanEdit.value) return
+
   if (selectedSeatIds.value.has(seat.id)) {
     selectedSeatIds.value.delete(seat.id)
+    hasUnsavedSelection.value = true
     return
   }
 
@@ -291,6 +358,7 @@ const toggleSeat = (seat: Seat) => {
 
   if (selectedSeatIds.value.size < maxSelect) {
     selectedSeatIds.value.add(seat.id)
+    hasUnsavedSelection.value = true
   }
 }
 
@@ -300,6 +368,8 @@ watch(groupInviteCode, async (nextCode, previousCode) => {
   groupOrder.value = null
   groupError.value = ''
   groupCopied.value = false
+  groupTicketReady.value = false
+  groupTicketSyncing.value = false
   selectedSeatIds.value.clear()
   if (nextCode) {
     await loadGroupOrder(true)
@@ -310,21 +380,76 @@ watch(groupInviteCode, async (nextCode, previousCode) => {
 const syncSelectionFromGroup = (order: GroupOrder | null) => {
   const member = order?.members.find(item => item.userId === currentUserId.value)
   selectedSeatIds.value = new Set(member?.seatIds || [])
+  hasUnsavedSelection.value = false
+}
+
+// 轮询回写仅在"本地没有未提交改动"时进行，避免 5 秒一次的轮询把成员
+// 刚点选、还没提交"加入/更新座位"的座位悄悄重置回已认领集合。
+const shouldSyncSelectionFromGroup = (order: GroupOrder | null, force: boolean) => {
+  if (force) return true
+  if (!order) return false
+  const isMember = order.members.some(member => member.userId === currentUserId.value)
+  if (!isMember) return false
+  if (order.status === 'OPEN' && hasUnsavedSelection.value) return false
+  return true
+}
+
+const confirmGroupTicketsVisible = async (order: GroupOrder) => {
+  if (!order.orderId) {
+    groupTicketReady.value = false
+    return false
+  }
+  groupTicketSyncing.value = true
+  try {
+    const detail = await getOrderDetail(order.orderId)
+    const visibleTickets = detail.tickets || []
+    const hasVisibleTicket = visibleTickets.some(ticket => ticket.status !== 'VOID')
+    groupTicketReady.value = hasVisibleTicket
+    return hasVisibleTicket
+  } catch {
+    groupTicketReady.value = false
+    return false
+  } finally {
+    groupTicketSyncing.value = false
+  }
 }
 
 const loadGroupOrder = async (syncSelection = false) => {
   if (!groupInviteCode.value) return
   groupLoading.value = true
   try {
+    const previousStatus = groupOrder.value?.status
+    const previousOrderStatus = groupOrder.value?.orderStatus
     const data = await getGroupOrder(groupInviteCode.value)
     groupOrder.value = data
     groupError.value = ''
-    if (syncSelection) {
+    if (shouldSyncSelectionFromGroup(data, syncSelection)) {
       syncSelectionFromGroup(data)
+    }
+    if ((previousStatus !== data.status || previousOrderStatus !== data.orderStatus) && data.status !== 'OPEN') {
+      await refreshSeatMap()
+    }
+    const isPaid = data.status === 'PAID' || data.orderStatus === 'PAID'
+    if (isPaid) {
+      const ticketsReady = await confirmGroupTicketsVisible(data)
+      if (ticketsReady) {
+        stopGroupPolling()
+      }
+    } else {
+      groupTicketReady.value = false
+      groupTicketSyncing.value = false
+    }
+    if (['CANCELLED', 'EXPIRED'].includes(data.status)) {
+      stopGroupPolling()
     }
   } catch (error) {
     groupOrder.value = null
-    groupError.value = error instanceof Error ? error.message : t('seat.group.loadFailed')
+    if (isGroupUnavailableError(error)) {
+      stopGroupPolling()
+      groupError.value = t('seat.group.closed')
+    } else {
+      groupError.value = error instanceof Error ? error.message : t('seat.group.loadFailed')
+    }
   } finally {
     groupLoading.value = false
   }
@@ -334,7 +459,7 @@ const startGroupPolling = () => {
   stopGroupPolling()
   groupPollTimer = setInterval(() => {
     void loadGroupOrder(false)
-  }, 5000)
+  }, 3000)
 }
 
 const stopGroupPolling = () => {
@@ -351,6 +476,8 @@ const startGroupOrder = async () => {
   try {
     const data = await createGroupOrder(scheduleId, Array.from(selectedSeatIds.value))
     groupOrder.value = data
+    groupTicketReady.value = false
+    groupTicketSyncing.value = false
     syncSelectionFromGroup(data)
     await router.replace({ path: route.path, query: { ...route.query, group: data.inviteCode } })
     startGroupPolling()
@@ -369,6 +496,8 @@ const joinCurrentGroup = async () => {
   try {
     const data = await joinGroupOrder(groupInviteCode.value, Array.from(selectedSeatIds.value))
     groupOrder.value = data
+    groupTicketReady.value = false
+    groupTicketSyncing.value = false
     syncSelectionFromGroup(data)
     await refreshSeatMap()
   } catch (error) {
@@ -379,18 +508,36 @@ const joinCurrentGroup = async () => {
   }
 }
 
+const isGroupUnavailableError = (error: unknown) => {
+  const message = error instanceof Error ? error.message.toLowerCase() : ''
+  return message.includes('不存在或已过期') || message.includes('expired') || message.includes('not found')
+}
+
+const exitGroupMode = async () => {
+  groupOrder.value = null
+  selectedSeatIds.value.clear()
+  hasUnsavedSelection.value = false
+  groupTicketReady.value = false
+  groupTicketSyncing.value = false
+  stopGroupPolling()
+  await router.replace({ path: route.path, query: { ...route.query, group: undefined } })
+  await refreshSeatMap()
+}
+
 const leaveCurrentGroup = async () => {
   if (!groupInviteCode.value) return
   groupBusy.value = true
   groupError.value = ''
   try {
-    await leaveGroupOrder(groupInviteCode.value)
-    groupOrder.value = null
-    selectedSeatIds.value.clear()
-    stopGroupPolling()
-    await router.replace({ path: route.path, query: { ...route.query, group: undefined } })
-    await refreshSeatMap()
+    if (groupOrder.value?.status === 'OPEN' && currentMember.value) {
+      await leaveGroupOrder(groupInviteCode.value)
+    }
+    await exitGroupMode()
   } catch (error) {
+    if (isGroupUnavailableError(error)) {
+      await exitGroupMode()
+      return
+    }
     groupError.value = error instanceof Error ? error.message : t('seat.group.actionFailed')
   } finally {
     groupBusy.value = false
@@ -402,13 +549,15 @@ const cancelCurrentGroup = async () => {
   groupBusy.value = true
   groupError.value = ''
   try {
-    await cancelGroupOrder(groupInviteCode.value)
-    groupOrder.value = null
-    selectedSeatIds.value.clear()
-    stopGroupPolling()
-    await router.replace({ path: route.path, query: { ...route.query, group: undefined } })
-    await refreshSeatMap()
+    if (groupOrder.value && groupOrder.value.status !== 'CHECKED_OUT') {
+      await cancelGroupOrder(groupInviteCode.value)
+    }
+    await exitGroupMode()
   } catch (error) {
+    if (isGroupUnavailableError(error)) {
+      await exitGroupMode()
+      return
+    }
     groupError.value = error instanceof Error ? error.message : t('seat.group.actionFailed')
   } finally {
     groupBusy.value = false
@@ -427,6 +576,18 @@ const checkoutCurrentGroup = async () => {
   } finally {
     groupBusy.value = false
   }
+}
+
+const viewGroupOrderTicket = () => {
+  if (groupOrder.value?.orderId) {
+    router.push(`/ticket/${groupOrder.value.orderId}`)
+    return
+  }
+  viewMyTickets()
+}
+
+const viewMyTickets = () => {
+  router.push({ path: '/profile', query: { tab: 'tickets' } })
 }
 
 const selectGroupInvite = () => {
@@ -501,14 +662,61 @@ const selectedSeats = computed(() => {
 })
 
 const totalAmount = computed(() => {
+  if (isGroupMode.value && groupOrder.value) {
+    return Number(groupOrder.value.totalAmount || 0)
+  }
   return selectedSeats.value.reduce((sum, seat) => sum + seat.price, 0)
 })
 
 const money = (value: number | string | undefined | null) => formatMoney(value, locale.value)
 
+const columnNumbers = computed(() => {
+  return Array.from(new Set(seats.value.map(seat => seat.col)))
+    .filter(col => Number.isFinite(col))
+    .sort((a, b) => a - b)
+})
+
+const priceTierColors = [
+  { className: 'tier-premium', color: '#d8a66c' },
+  { className: 'tier-standard', color: '#8aa6c1' },
+  { className: 'tier-value', color: '#72b89b' },
+  { className: 'tier-extra', color: '#b0a8d6' }
+]
+
+const priceTiers = computed(() => {
+  const prices = Array.from(new Set(seats.value
+    .filter(seat => seat.status !== 'DISABLED' && Number.isFinite(Number(seat.price)) && Number(seat.price) > 0)
+    .map(seat => Number(seat.price))))
+    .sort((a, b) => b - a)
+
+  return prices.map((price, index) => {
+    const color = priceTierColors[index % priceTierColors.length]
+    return {
+      price,
+      label: money(price),
+      className: color.className,
+      color: color.color
+    }
+  })
+})
+
+const priceTierByPrice = computed(() => {
+  const map = new Map<number, { className: string; color: string }>()
+  priceTiers.value.forEach(tier => {
+    map.set(tier.price, tier)
+  })
+  return map
+})
+
+const seatPriceTier = (seat: Seat) => {
+  if (seat.status === 'DISABLED') return ''
+  return priceTierByPrice.value.get(Number(seat.price))?.className || ''
+}
+
 const seatTitle = (seat: Seat) => {
   if (seat.status === 'DISABLED') return ''
-  return `${t('seat.info', { row: seat.row, col: seat.col })} - ${money(seat.price)}`
+  const status = t(`seat.${seat.status.toLowerCase()}`)
+  return `${t('seat.info', { row: seat.row, col: seat.col })} · ${seat.section} · ${money(seat.price)} · ${status}`
 }
 
 const submitLock = async () => {
@@ -533,6 +741,9 @@ const submitLock = async () => {
 }
 
 const activeView = ref<'2d' | '3d'>('2d')
+const expandsGroupSidePanel = computed(() => {
+  return isGroupMode.value && activeView.value === '2d' && !isZonedOrMixedOverview.value
+})
 
 const rowsGrouped = computed(() => {
   const map = new Map<number, Seat[]>()
@@ -545,9 +756,10 @@ const rowsGrouped = computed(() => {
   const sortedRows = Array.from(map.keys()).sort((a, b) => a - b)
   return sortedRows.map(rowNum => {
     const rowSeats = map.get(rowNum)!.sort((a, b) => a.col - b.col)
+    const seatByColumn = new Map(rowSeats.map(seat => [seat.col, seat]))
     return {
       rowNum,
-      seats: rowSeats
+      seats: columnNumbers.value.map(col => seatByColumn.get(col) || null)
     }
   })
 })
@@ -567,7 +779,7 @@ const stageDisplayLabel = computed(() => {
 </script>
 
 <template>
-  <div class="seat-selection">
+  <div class="seat-selection" :class="{ 'group-wide-2d': expandsGroupSidePanel }">
     <div class="main-area">
       <!-- Loading Indicator -->
       <div class="view-loading" v-if="loading">
@@ -604,29 +816,45 @@ const stageDisplayLabel = computed(() => {
 
           <div class="seat-grid-container">
             <div class="seat-map">
+              <div class="column-label-row" v-if="columnNumbers.length">
+                <span class="row-label spacer" aria-hidden="true"></span>
+                <div class="column-labels">
+                  <span v-for="col in columnNumbers" :key="`mixed-top-${col}`">{{ col }}</span>
+                </div>
+                <span class="row-label spacer" aria-hidden="true"></span>
+              </div>
               <div v-for="row in rowsGrouped" :key="row.rowNum" class="seat-row">
                 <span class="row-label">{{ row.rowNum }}</span>
                 <div class="seats-container">
                   <button
-                    v-for="seat in row.seats"
-                    :key="seat.id"
+                    v-for="(seat, index) in row.seats"
+                    :key="seat?.id || `mixed-empty-${row.rowNum}-${index}`"
                     type="button"
                     class="seat-item btn-interactive"
                     :class="{
-                      'status-available': seat.status === 'AVAILABLE',
-                      'status-locked': seat.status === 'LOCKED',
-                      'status-sold': seat.status === 'SOLD',
-                      'status-disabled': seat.status === 'DISABLED',
-                      'selected': selectedSeatIds.has(seat.id)
+                      'status-available': seat?.status === 'AVAILABLE',
+                      'status-locked': seat?.status === 'LOCKED',
+                      'status-sold': seat?.status === 'SOLD',
+                      'status-disabled': !seat || seat.status === 'DISABLED',
+                      'selected': seat ? selectedSeatIds.has(seat.id) : false,
+                      [seat ? seatPriceTier(seat) : '']: true
                     }"
-                    :disabled="seat.status !== 'AVAILABLE' && !selectedSeatIds.has(seat.id)"
-                    :title="seatTitle(seat)"
-                    @click="toggleSeat(seat)"
+                    :style="{ '--seat-tier-color': seat ? priceTierByPrice.get(Number(seat.price))?.color || 'rgba(255,255,255,0.34)' : 'rgba(255,255,255,0.34)' }"
+                    :disabled="!seat || !groupCanEdit || (seat.status !== 'AVAILABLE' && !selectedSeatIds.has(seat.id))"
+                    :title="seat ? seatTitle(seat) : ''"
+                    @click="seat && toggleSeat(seat)"
                   >
-                    <span class="seat-dot" v-if="selectedSeatIds.has(seat.id)"></span>
+                    <span class="seat-dot" v-if="seat && selectedSeatIds.has(seat.id)"></span>
                   </button>
                 </div>
                 <span class="row-label">{{ row.rowNum }}</span>
+              </div>
+              <div class="column-label-row bottom" v-if="columnNumbers.length">
+                <span class="row-label spacer" aria-hidden="true"></span>
+                <div class="column-labels">
+                  <span v-for="col in columnNumbers" :key="`mixed-bottom-${col}`">{{ col }}</span>
+                </div>
+                <span class="row-label spacer" aria-hidden="true"></span>
               </div>
             </div>
           </div>
@@ -673,29 +901,45 @@ const stageDisplayLabel = computed(() => {
 
             <div class="seat-grid-container">
               <div class="seat-map">
+                <div class="column-label-row" v-if="columnNumbers.length">
+                  <span class="row-label spacer" aria-hidden="true"></span>
+                  <div class="column-labels">
+                    <span v-for="col in columnNumbers" :key="`top-${col}`">{{ col }}</span>
+                  </div>
+                  <span class="row-label spacer" aria-hidden="true"></span>
+                </div>
                 <div v-for="row in rowsGrouped" :key="row.rowNum" class="seat-row">
                   <span class="row-label">{{ row.rowNum }}</span>
                   <div class="seats-container">
                     <button
-                      v-for="seat in row.seats"
-                      :key="seat.id"
+                    v-for="(seat, index) in row.seats"
+                      :key="seat?.id || `empty-${row.rowNum}-${index}`"
                       type="button"
                       class="seat-item btn-interactive"
                       :class="{
-                        'status-available': seat.status === 'AVAILABLE',
-                        'status-locked': seat.status === 'LOCKED',
-                        'status-sold': seat.status === 'SOLD',
-                        'status-disabled': seat.status === 'DISABLED',
-                        'selected': selectedSeatIds.has(seat.id)
+                        'status-available': seat?.status === 'AVAILABLE',
+                        'status-locked': seat?.status === 'LOCKED',
+                        'status-sold': seat?.status === 'SOLD',
+                        'status-disabled': !seat || seat.status === 'DISABLED',
+                        'selected': seat ? selectedSeatIds.has(seat.id) : false,
+                        [seat ? seatPriceTier(seat) : '']: true
                       }"
-                      :disabled="seat.status !== 'AVAILABLE' && !selectedSeatIds.has(seat.id)"
-                      :title="seatTitle(seat)"
-                      @click="toggleSeat(seat)"
+                      :style="{ '--seat-tier-color': seat ? priceTierByPrice.get(Number(seat.price))?.color || 'rgba(255,255,255,0.34)' : 'rgba(255,255,255,0.34)' }"
+                      :disabled="!seat || !groupCanEdit || (seat.status !== 'AVAILABLE' && !selectedSeatIds.has(seat.id))"
+                      :title="seat ? seatTitle(seat) : ''"
+                      @click="seat && toggleSeat(seat)"
                     >
-                      <span class="seat-dot" v-if="selectedSeatIds.has(seat.id)"></span>
+                      <span class="seat-dot" v-if="seat && selectedSeatIds.has(seat.id)"></span>
                     </button>
                   </div>
                   <span class="row-label">{{ row.rowNum }}</span>
+                </div>
+                <div class="column-label-row bottom" v-if="columnNumbers.length">
+                  <span class="row-label spacer" aria-hidden="true"></span>
+                  <div class="column-labels">
+                    <span v-for="col in columnNumbers" :key="`bottom-${col}`">{{ col }}</span>
+                  </div>
+                  <span class="row-label spacer" aria-hidden="true"></span>
                 </div>
               </div>
             </div>
@@ -765,7 +1009,7 @@ const stageDisplayLabel = computed(() => {
               <p class="group-kicker">{{ t('seat.group.kicker') }}</p>
               <h3>{{ t('seat.group.title') }}</h3>
             </div>
-            <span class="group-timer">{{ groupExpiresIn }}</span>
+            <span class="group-timer" :class="{ settled: groupCheckedOut || groupPaid || groupClosed }">{{ groupStatusLabel }}</span>
           </div>
 
           <div class="group-loading" v-if="groupLoading">{{ t('common.loading') }}</div>
@@ -794,8 +1038,64 @@ const stageDisplayLabel = computed(() => {
 
             <div class="group-meta">
               <span>{{ t('seat.group.host') }} {{ groupOrder.hostDisplayName }}</span>
-              <span>{{ t('seat.group.totalSeats') }} {{ groupOrder.members.reduce((sum, member) => sum + member.seatIds.length, 0) }}/{{ groupOrder.maxSeats }}</span>
+              <span>{{ t('seat.group.totalSeats') }} {{ groupClaimedCount }}/{{ groupOrder.maxSeats }}</span>
               <span>{{ t('seat.group.groupTotal') }} {{ money(groupOrder.totalAmount) }}</span>
+            </div>
+
+            <div class="group-progress" aria-label="group order progress">
+              <div
+                v-for="step in groupProgressSteps"
+                :key="step.key"
+                class="group-progress-step"
+                :class="{ active: step.active, current: step.current }"
+              >
+                <span></span>
+                <strong>{{ step.label }}</strong>
+              </div>
+            </div>
+
+            <div class="my-group-summary">
+              <div>
+                <span>{{ t('seat.group.myGroup') }}</span>
+                <strong>{{ currentMemberSeatCount }} {{ t('order.tickets') }}</strong>
+              </div>
+              <p>{{ currentMemberSeatLabel }}</p>
+              <div class="my-group-footer">
+                <small>{{ groupPersonalStatus }}</small>
+                <strong>{{ money(currentMemberAmount) }}</strong>
+              </div>
+            </div>
+
+            <div class="group-status-card pending" v-if="groupCheckedOut">
+              <strong>{{ t('seat.group.checkoutPending') }}</strong>
+              <p>{{ t('seat.group.checkoutPendingHint') }}</p>
+            </div>
+
+            <div class="group-status-card paid" v-else-if="groupPaid">
+              <strong>{{ groupTicketReady ? t('seat.group.paymentCompleted') : t('seat.group.ticketSyncing') }}</strong>
+              <p>{{ groupTicketReady ? t('seat.group.paymentCompletedHint') : t('seat.group.ticketSyncingHint') }}</p>
+              <div class="group-sync-line" v-if="!groupTicketReady">
+                <span class="sync-dot" :class="{ spinning: groupTicketSyncing }"></span>
+                <small>{{ t('seat.group.ticketSyncingHint') }}</small>
+              </div>
+              <div class="group-ticket-actions" v-else>
+                <button
+                  class="btn-small primary"
+                  type="button"
+                  :disabled="!groupOrder.orderId || !groupTicketReady"
+                  @click="viewGroupOrderTicket"
+                >
+                  {{ t('seat.group.openMyTicket') }}
+                </button>
+                <button class="btn-small" type="button" @click="viewMyTickets">
+                  {{ t('seat.group.viewMyTickets') }}
+                </button>
+              </div>
+            </div>
+
+            <div class="group-status-card closed" v-else-if="groupClosed">
+              <strong>{{ t('seat.group.closed') }}</strong>
+              <p>{{ t('seat.group.closedHint') }}</p>
             </div>
 
             <div class="member-list">
@@ -813,7 +1113,7 @@ const stageDisplayLabel = computed(() => {
         <div class="summary-meta">
           <div>
             <span>{{ t('seat.selectedCount') }}</span>
-            <strong>{{ selectedSeatIds.size }}/{{ maxSelect }}</strong>
+            <strong>{{ selectedCountText }}</strong>
           </div>
           <div>
             <span>{{ t('seat.orderExpires') }}</span>
@@ -832,8 +1132,14 @@ const stageDisplayLabel = computed(() => {
             <div v-for="s in selectedSeats" :key="s.id" class="ticket-item">
               <div class="ticket-details">
                 <div class="ticket-header">
-                  <span class="ticket-badge">{{ s.section }}</span>
-                  <button class="ticket-close btn-interactive" type="button" @click="toggleSeat(s)" :title="t('common.cancel')">
+                    <span class="ticket-badge">{{ s.section }}</span>
+                  <button
+                    class="ticket-close btn-interactive"
+                    type="button"
+                    :disabled="!groupCanEdit"
+                    @click="toggleSeat(s)"
+                    :title="t('common.cancel')"
+                  >
                     <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                       <line x1="18" y1="6" x2="6" y2="18"></line>
                       <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -854,6 +1160,15 @@ const stageDisplayLabel = computed(() => {
           <div class="legend-item"><div class="box status-locked"></div> {{ t('seat.locked') }}</div>
           <div class="legend-item"><div class="box status-sold"></div> {{ t('seat.sold') }}</div>
           <div class="legend-item"><div class="box selected"></div> {{ t('seat.yourSelection') }}</div>
+          <div class="legend-divider" v-if="priceTiers.length > 1">{{ t('seat.priceTier') }}</div>
+          <div
+            v-for="tier in priceTiers"
+            :key="tier.price"
+            class="legend-item price-tier-item"
+          >
+            <div class="box price-tier-box" :style="{ '--seat-tier-color': tier.color }"></div>
+            {{ tier.label }}
+          </div>
         </div>
 
         <div class="checkout-dock">
@@ -884,7 +1199,7 @@ const stageDisplayLabel = computed(() => {
         <div class="group-actions" v-if="isGroupMode">
           <button
             class="btn-checkout"
-            :disabled="selectedSeatIds.size === 0 || groupBusy || groupOrder?.status !== 'OPEN'"
+            :disabled="selectedSeatIds.size === 0 || groupBusy || !groupCanEdit"
             @click="joinCurrentGroup"
           >
             {{ groupBusy ? t('common.processing') : t('seat.group.joinOrUpdate') }}
@@ -892,23 +1207,31 @@ const stageDisplayLabel = computed(() => {
           <button
             v-if="isGroupHost"
             class="btn-checkout"
-            :disabled="groupBusy || !groupOrder || groupOrder.status !== 'OPEN'"
+            :disabled="groupBusy || !groupOrder || !groupCanEdit"
             @click="checkoutCurrentGroup"
           >
             {{ t('seat.group.hostCheckout') }}
           </button>
           <button
-            v-if="isGroupHost"
+            v-if="isGroupHost && groupCanEdit"
             class="btn-secondary danger"
-            :disabled="groupBusy || !groupOrder || groupOrder.status !== 'OPEN'"
+            :disabled="groupBusy || !groupOrder || !groupCanEdit"
             @click="cancelCurrentGroup"
           >
             {{ t('seat.group.cancel') }}
           </button>
           <button
-            v-else
+            v-if="isGroupHost && !groupCanEdit"
             class="btn-secondary"
-            :disabled="groupBusy || !currentMember || groupOrder?.status !== 'OPEN'"
+            :disabled="groupBusy"
+            @click="exitGroupMode"
+          >
+            {{ t('seat.group.leave') }}
+          </button>
+          <button
+            v-if="!isGroupHost"
+            class="btn-secondary"
+            :disabled="groupBusy || (!currentMember && groupOrder?.status === 'OPEN')"
             @click="leaveCurrentGroup"
           >
             {{ t('seat.group.leave') }}
@@ -921,12 +1244,21 @@ const stageDisplayLabel = computed(() => {
 
 <style scoped lang="scss">
 .seat-selection {
+  --selection-side-width: 420px;
+  --selection-map-shift: 0px;
   display: flex;
   min-height: calc(100vh - 76px);
   height: calc(100vh - 76px);
   width: 100%;
 
+  &.group-wide-2d {
+    --selection-side-width: clamp(500px, 36vw, 580px);
+    --selection-map-shift: -18px;
+  }
+
   @media (max-width: 900px) {
+    --selection-side-width: 100%;
+    --selection-map-shift: 0px;
     flex-direction: column;
     height: auto;
   }
@@ -1221,6 +1553,8 @@ const stageDisplayLabel = computed(() => {
   gap: var(--spacing-5);
   position: relative;
   width: 100%;
+  transform: translate3d(var(--selection-map-shift), 0, 0);
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .stage-container {
@@ -1275,6 +1609,42 @@ const stageDisplayLabel = computed(() => {
   align-items: center;
   gap: var(--spacing-2);
 
+  .column-label-row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-4);
+    padding-bottom: 2px;
+
+    &.bottom {
+      padding-top: 2px;
+      padding-bottom: 0;
+    }
+
+    .row-label.spacer {
+      width: 24px;
+      visibility: hidden;
+    }
+
+    .column-labels {
+      display: flex;
+      gap: 6px;
+
+      span {
+        width: 24px;
+        height: 14px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: rgba(255, 255, 255, 0.38);
+        font-family: var(--font-family-sans);
+        font-size: 10px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+      }
+    }
+  }
+
   .seat-row {
     display: flex;
     align-items: center;
@@ -1320,6 +1690,28 @@ const stageDisplayLabel = computed(() => {
   &.status-available {
     background-color: rgba(255, 255, 255, 0.045);
     border-color: rgba(255, 255, 255, 0.34);
+
+    &.tier-premium,
+    &.tier-standard,
+    &.tier-value,
+    &.tier-extra {
+      border-color: color-mix(in srgb, var(--seat-tier-color) 76%, rgba(255, 255, 255, 0.2));
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.025)),
+        color-mix(in srgb, var(--seat-tier-color) 16%, transparent);
+
+      &::before {
+        content: '';
+        position: absolute;
+        left: 5px;
+        right: 5px;
+        bottom: 4px;
+        height: 2px;
+        border-radius: 999px;
+        background: var(--seat-tier-color);
+        opacity: 0.9;
+      }
+    }
   }
 
   &.status-locked {
@@ -1361,6 +1753,10 @@ const stageDisplayLabel = computed(() => {
     border-color: var(--color-accent) !important;
     box-shadow: 0 0 10px rgba(200, 149, 90, 0.42);
 
+    &::before {
+      opacity: 0;
+    }
+
     .seat-dot {
       width: 6px;
       height: 6px;
@@ -1372,10 +1768,29 @@ const stageDisplayLabel = computed(() => {
 
 .box {
   cursor: default;
+
+  &.price-tier-box {
+    border-color: color-mix(in srgb, var(--seat-tier-color) 72%, rgba(255, 255, 255, 0.24));
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
+      color-mix(in srgb, var(--seat-tier-color) 22%, transparent);
+
+    &::before {
+      content: '';
+      position: absolute;
+      left: 5px;
+      right: 5px;
+      bottom: 4px;
+      height: 2px;
+      border-radius: 999px;
+      background: var(--seat-tier-color);
+    }
+  }
 }
 
 .side-panel {
-  width: 420px;
+  width: var(--selection-side-width);
+  flex-basis: var(--selection-side-width);
   height: calc(100vh - 76px);
   flex-shrink: 0;
   position: sticky;
@@ -1387,6 +1802,9 @@ const stageDisplayLabel = computed(() => {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-4);
+  transition:
+    width 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    flex-basis 260ms cubic-bezier(0.22, 1, 0.36, 1);
 
   &::-webkit-scrollbar {
     width: 6px;
@@ -1403,6 +1821,7 @@ const stageDisplayLabel = computed(() => {
 
   @media (max-width: 900px) {
     width: 100%;
+    flex-basis: auto;
     height: auto;
     position: static;
     overflow: visible;
@@ -1538,6 +1957,7 @@ const stageDisplayLabel = computed(() => {
     padding: var(--spacing-4);
     background: var(--color-bg-base);
     font-family: var(--font-family-sans);
+    contain: layout paint;
   }
 
   .group-header {
@@ -1566,12 +1986,20 @@ const stageDisplayLabel = computed(() => {
 
   .group-timer {
     flex: 0 0 auto;
+    min-width: 82px;
     border: 1px solid rgba(212, 175, 55, 0.35);
     border-radius: 6px;
     color: var(--color-accent);
     font-weight: 700;
+    font-variant-numeric: tabular-nums;
     line-height: 1;
     padding: 8px 10px;
+    text-align: center;
+
+    &.settled {
+      border-color: rgba(255, 255, 255, 0.18);
+      color: var(--color-text-primary);
+    }
   }
 
   .group-loading,
@@ -1588,6 +2016,7 @@ const stageDisplayLabel = computed(() => {
     display: grid;
     gap: var(--spacing-2);
     margin-bottom: var(--spacing-3);
+    min-height: 86px;
   }
 
   .invite-field {
@@ -1649,20 +2078,205 @@ const stageDisplayLabel = computed(() => {
       border-color: var(--color-accent);
       color: var(--color-accent);
     }
+
+    &:disabled {
+      opacity: 0.48;
+      cursor: not-allowed;
+    }
+
+    &.primary {
+      background: var(--color-accent);
+      border-color: var(--color-accent);
+      color: #080808;
+
+      &:hover:not(:disabled) {
+        color: #080808;
+        filter: brightness(1.05);
+      }
+    }
   }
 
   .group-meta {
     display: grid;
-    gap: 6px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
     margin-bottom: var(--spacing-3);
     color: var(--color-text-secondary);
     font-size: 12px;
     line-height: 1.35;
+
+    span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+  }
+
+  .group-progress {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: var(--spacing-3);
+  }
+
+  .group-progress-step {
+    min-width: 0;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.025);
+    color: var(--color-text-secondary);
+    display: grid;
+    gap: 6px;
+    padding: 9px 8px;
+
+    span {
+      width: 18px;
+      height: 2px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.22);
+    }
+
+    strong {
+      overflow: hidden;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.25;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    &.active {
+      border-color: rgba(212, 175, 55, 0.26);
+      color: var(--color-text-primary);
+
+      span {
+        background: var(--color-accent);
+      }
+    }
+
+    &.current {
+      background: rgba(212, 175, 55, 0.06);
+    }
+  }
+
+  .my-group-summary {
+    display: grid;
+    gap: 9px;
+    margin-bottom: var(--spacing-3);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018)),
+      rgba(8, 8, 8, 0.38);
+    padding: var(--spacing-3);
+
+    > div:first-child,
+    .my-group-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--spacing-2);
+    }
+
+    span,
+    small {
+      color: var(--color-text-secondary);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+
+    strong {
+      color: var(--color-text-primary);
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.25;
+    }
+
+    p {
+      margin: 0;
+      color: var(--color-text-primary);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .my-group-footer strong {
+      color: var(--color-accent);
+      font-variant-numeric: tabular-nums;
+    }
+  }
+
+  .group-status-card {
+    display: grid;
+    gap: 8px;
+    margin-bottom: var(--spacing-3);
+    min-height: 94px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: var(--spacing-3);
+    background: rgba(255, 255, 255, 0.04);
+
+    strong {
+      color: var(--color-text-primary);
+      font-size: 13px;
+    }
+
+    p {
+      margin: 0;
+      color: var(--color-text-secondary);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    &.pending {
+      border-color: rgba(212, 175, 55, 0.35);
+      background: rgba(212, 175, 55, 0.06);
+    }
+
+    &.paid {
+      border-color: rgba(93, 214, 143, 0.35);
+      background: rgba(93, 214, 143, 0.06);
+    }
+
+    &.closed {
+      border-color: rgba(255, 255, 255, 0.16);
+      background: rgba(255, 255, 255, 0.035);
+    }
+  }
+
+  .group-ticket-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .group-sync-line {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .sync-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: var(--color-accent);
+    box-shadow: 0 0 0 4px rgba(212, 175, 55, 0.08);
+
+    &.spinning {
+      animation: pulse-sync 900ms ease-in-out infinite;
+    }
   }
 
   .member-list {
     display: grid;
     gap: var(--spacing-2);
+    min-height: 54px;
   }
 
   .member-row {
@@ -1689,6 +2303,7 @@ const stageDisplayLabel = computed(() => {
       flex: 0 0 auto;
       color: var(--color-accent);
       font-weight: 700;
+      font-variant-numeric: tabular-nums;
     }
   }
 
@@ -1703,6 +2318,24 @@ const stageDisplayLabel = computed(() => {
       display: flex;
       align-items: center;
       gap: var(--spacing-2);
+    }
+
+    .legend-divider {
+      grid-column: 1 / -1;
+      margin-top: 2px;
+      padding-top: var(--spacing-2);
+      border-top: 1px solid var(--color-border);
+      color: rgba(255, 255, 255, 0.52);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .price-tier-item {
+      min-width: 0;
+      font-variant-numeric: tabular-nums;
+      color: rgba(240, 237, 232, 0.76);
     }
   }
 
@@ -1816,5 +2449,16 @@ const stageDisplayLabel = computed(() => {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+@keyframes pulse-sync {
+  0%, 100% {
+    opacity: 0.45;
+    transform: scale(0.86);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
 }
 </style>

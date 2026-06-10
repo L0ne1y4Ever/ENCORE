@@ -33,7 +33,8 @@ export function cancelOrder(orderId: string): Promise<Order> {
   return requestData<Order>(apiClient.post(`/api/orders/${orderId}/cancel`))
 }
 
-export function refundOrder(orderId: string, reason?: string): Promise<Order> {
+export function refundOrder(orderId: string, reason?: string, ticketIds?: string[]): Promise<Order> {
   const payload = reason?.trim() ? { reason: reason.trim() } : {}
-  return requestData<Order>(apiClient.post(`/api/orders/${orderId}/refund`, payload))
+  const body = ticketIds?.length ? { ...payload, ticketIds } : payload
+  return requestData<Order>(apiClient.post(`/api/orders/${orderId}/refund`, body))
 }

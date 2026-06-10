@@ -29,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.verify;
@@ -165,9 +166,21 @@ class GroupOrderServiceTest {
         session.getMembers().add(member("u-101", "普通用户", List.of("seat-1-1")));
         session.getMembers().add(member("u-102", "拼座好友", List.of("seat-1-2")));
         when(valueOperations.get("encore:group-order:g-test")).thenReturn(objectMapper.writeValueAsString(session));
-        when(redisTemplate.getExpire("encore:group-order:g-test", TimeUnit.SECONDS)).thenReturn(600L);
         when(userAccountMapper.selectById("u-101")).thenReturn(user("u-101", "普通用户"));
-        when(orderService.createGroupOrder("sch-1", List.of("seat-1-1", "seat-1-2"), "group:g-test")).thenReturn("ord-1");
+        when(orderService.createGroupOrder(
+                eq("sch-1"),
+                argThat(holders -> holders != null
+                        && holders.size() == 2
+                        && holders.stream().anyMatch(holder ->
+                        "seat-1-1".equals(holder.seatId())
+                                && "u-101".equals(holder.userId())
+                                && "普通用户".equals(holder.displayName()))
+                        && holders.stream().anyMatch(holder ->
+                        "seat-1-2".equals(holder.seatId())
+                                && "u-102".equals(holder.userId())
+                                && "拼座好友".equals(holder.displayName()))),
+                eq("group:g-test")
+        )).thenReturn("ord-1");
 
         String orderId;
         try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
@@ -177,9 +190,57 @@ class GroupOrderServiceTest {
 
         assertThat(orderId).isEqualTo("ord-1");
         verify(seatService).ensureLocksOwnedBy("sch-1", List.of("seat-1-1", "seat-1-2"), "group:g-test");
+        verify(orderService).repairGroupTicketHolders(
+                eq("ord-1"),
+                argThat(holders -> holders != null
+                        && holders.size() == 2
+                        && holders.stream().anyMatch(holder ->
+                        "seat-1-1".equals(holder.seatId())
+                                && "u-101".equals(holder.userId())
+                                && "普通用户".equals(holder.displayName()))
+                        && holders.stream().anyMatch(holder ->
+                        "seat-1-2".equals(holder.seatId())
+                                && "u-102".equals(holder.userId())
+                                && "拼座好友".equals(holder.displayName())))
+        );
         ArgumentCaptor<String> savedSession = ArgumentCaptor.forClass(String.class);
-        verify(valueOperations).set(eq("encore:group-order:g-test"), savedSession.capture(), eq(Duration.ofSeconds(600)));
+        verify(valueOperations).set(eq("encore:group-order:g-test"), savedSession.capture(), eq(Duration.ofMinutes(15)));
         assertThat(objectMapper.readValue(savedSession.getValue(), GroupOrderSession.class).getStatus()).isEqualTo("CHECKED_OUT");
+    }
+
+    @Test
+    void paidGroupResponseRepairsHoldersAndPersistsPaidStatus() throws Exception {
+        GroupOrderSession session = session("CHECKED_OUT");
+        session.setOrderId("ord-1");
+        session.getMembers().add(member("u-101", "普通用户", List.of("seat-1-1")));
+        session.getMembers().add(member("u-102", "拼座好友", List.of("seat-1-2")));
+        when(valueOperations.get("encore:group-order:g-test")).thenReturn(objectMapper.writeValueAsString(session));
+        when(seatService.findSeats("sch-1", List.of("seat-1-1", "seat-1-2")))
+                .thenReturn(List.of(seat("seat-1-1", 150), seat("seat-1-2", 100)));
+        when(orderService.getOrderStatus("ord-1")).thenReturn("PAID");
+
+        GroupOrderResponse response;
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-102");
+            response = service.get("g-test");
+        }
+
+        assertThat(response.status()).isEqualTo("PAID");
+        assertThat(response.orderStatus()).isEqualTo("PAID");
+        verify(orderService).repairGroupTicketHolders(
+                eq("ord-1"),
+                argThat(holders -> holders != null
+                        && holders.size() == 2
+                        && holders.stream().anyMatch(holder ->
+                        "seat-1-2".equals(holder.seatId())
+                                && "u-102".equals(holder.userId())
+                                && "拼座好友".equals(holder.displayName())))
+        );
+        ArgumentCaptor<String> savedSession = ArgumentCaptor.forClass(String.class);
+        verify(valueOperations).set(eq("encore:group-order:g-test"), savedSession.capture(), eq(Duration.ofMinutes(15)));
+        GroupOrderSession saved = objectMapper.readValue(savedSession.getValue(), GroupOrderSession.class);
+        assertThat(saved.getStatus()).isEqualTo("PAID");
+        assertThat(saved.getExpiresAt()).isAfter(LocalDateTime.now());
     }
 
     private GroupOrderSession session(String status) {

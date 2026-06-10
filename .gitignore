@@ -30,6 +30,8 @@ application-local.yaml
 # Local assistant/tooling state
 .claude/
 .codex/
+.sds_tmp/
+.srs_tmp/
 
 # IDE / OS
 .idea/

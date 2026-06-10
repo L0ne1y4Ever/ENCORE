@@ -13,10 +13,12 @@ export interface GroupOrder {
   scheduleId: string
   hostUserId: string
   hostDisplayName: string
-  status: 'OPEN' | 'CHECKED_OUT' | 'CANCELLED' | 'EXPIRED'
+  status: 'OPEN' | 'CHECKED_OUT' | 'PAID' | 'CANCELLED' | 'EXPIRED'
   expiresAt: string
   maxSeats: number
   totalAmount: number
+  orderId?: string | null
+  orderStatus?: string | null
   members: GroupOrderMember[]
 }
 

@@ -29,6 +29,7 @@ import com.encore.mapper.VenueHallMapper;
 import com.encore.mapper.VenueMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -376,6 +377,43 @@ class VenueManagementServiceTest {
         // 3 standing zones + 3 seated stands = 6 areas; stands generate 200 + 200 + 300 seats.
         verify(seatLayoutAreaMapper, times(6)).insert(any(SeatLayoutArea.class));
         verify(seatLayoutSeatMapper, times(700)).insert(any(SeatLayoutSeat.class));
+    }
+
+    @Test
+    void createSeatedLayoutPricesFrontCheapMiddlePremium() {
+        VenueManagementService service = createService();
+        when(userAccountMapper.selectById("u-admin")).thenReturn(user("u-admin", "admin"));
+        when(venueHallMapper.selectById("hall-1")).thenReturn(hall(30));
+        when(seatLayoutMapper.selectList(any())).thenReturn(List.of());
+        when(seatLayoutMapper.selectById(anyString())).thenReturn(layout("SEATED"));
+        when(seatLayoutAreaMapper.selectCount(any())).thenReturn(0L);
+        when(seatLayoutSeatMapper.selectCount(any())).thenReturn(0L);
+
+        CreateLayoutRequest request = new CreateLayoutRequest(
+                "hall-1", "Seated Layout", "SEATED", null, 10, 4,
+                BigDecimal.valueOf(150), BigDecimal.valueOf(100), BigDecimal.valueOf(50));
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-admin");
+            service.createLayout(request);
+        }
+
+        ArgumentCaptor<SeatLayoutSeat> captor = ArgumentCaptor.forClass(SeatLayoutSeat.class);
+        verify(seatLayoutSeatMapper, times(40)).insert(captor.capture());
+        List<SeatLayoutSeat> seats = captor.getAllValues();
+        // 10 行：前 2 排最便宜(B/50)，3-7 排视野最佳最贵(VIP/150)，8-10 排中等(A/100)
+        assertThat(seats.stream().filter(s -> s.getRowNo() <= 2)).allSatisfy(s -> {
+            assertThat(s.getSection()).isEqualTo("B");
+            assertThat(s.getPrice()).isEqualByComparingTo("50");
+        });
+        assertThat(seats.stream().filter(s -> s.getRowNo() >= 3 && s.getRowNo() <= 7)).allSatisfy(s -> {
+            assertThat(s.getSection()).isEqualTo("VIP");
+            assertThat(s.getPrice()).isEqualByComparingTo("150");
+        });
+        assertThat(seats.stream().filter(s -> s.getRowNo() >= 8)).allSatisfy(s -> {
+            assertThat(s.getSection()).isEqualTo("A");
+            assertThat(s.getPrice()).isEqualByComparingTo("100");
+        });
     }
 
     private VenueManagementService createService() {

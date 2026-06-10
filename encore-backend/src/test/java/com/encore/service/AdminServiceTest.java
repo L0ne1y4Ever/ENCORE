@@ -15,6 +15,7 @@ import com.encore.entity.UserAccount;
 import com.encore.mapper.ScheduleSeatMapper;
 import com.encore.mapper.ScheduleAreaInventoryMapper;
 import com.encore.mapper.RefundRequestMapper;
+import com.encore.mapper.RefundRequestTicketMapper;
 import com.encore.mapper.ShowMapper;
 import com.encore.mapper.ShowScheduleMapper;
 import com.encore.mapper.TicketItemMapper;
@@ -71,6 +72,8 @@ class AdminServiceTest {
     private SeatService seatService;
     @Mock
     private RefundRequestMapper refundRequestMapper;
+    @Mock
+    private RefundRequestTicketMapper refundRequestTicketMapper;
 
     @Test
     void refundOrderPublishesAvailableEvent() {
@@ -370,7 +373,8 @@ class AdminServiceTest {
                 scheduleAreaInventoryMapper,
                 venueManagementService,
                 seatService,
-                refundRequestMapper
+                refundRequestMapper,
+                refundRequestTicketMapper
         );
     }
 

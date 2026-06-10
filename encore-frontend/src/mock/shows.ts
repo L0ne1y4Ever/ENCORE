@@ -13,6 +13,8 @@ export interface Show {
   tags: string[]
   status?: 'ON_SALE' | 'COMING_SOON'
   priceRange?: string
+  minPrice?: number | string | null
+  maxPrice?: number | string | null
 }
 
 export interface Schedule {
@@ -23,6 +25,8 @@ export interface Schedule {
   endTime: string
   status: 'ON_SALE' | 'SOLD_OUT' | 'PREPARING' | 'COMING_SOON'
   priceRange: string
+  minPrice?: number | string | null
+  maxPrice?: number | string | null
   ticketMode?: 'SEATED' | 'ZONED' | 'MIXED'
   category?: 'Movie' | 'Musical' | 'Play' | 'Concert' | 'Ballet'
 }

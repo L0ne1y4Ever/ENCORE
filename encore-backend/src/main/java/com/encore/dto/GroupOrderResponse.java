@@ -13,6 +13,8 @@ public record GroupOrderResponse(
         LocalDateTime expiresAt,
         Integer maxSeats,
         BigDecimal totalAmount,
+        String orderId,
+        String orderStatus,
         List<GroupOrderMemberResponse> members
 ) {
 }
