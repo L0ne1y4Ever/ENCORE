@@ -84,6 +84,10 @@ If local dev servers are already using `8080` or `5173`, stop them first or over
 
 For server deployment, prefer serving the frontend and API from the same origin through Nginx. Build the frontend with `VITE_API_BASE_URL=/` or leave it unset in production; browser requests should go to `/api/...` on the server, not to `localhost:8080` on the visitor's machine.
 
+### HTTPS and Group Invite Copy
+
+For a formal public deployment, use a filed domain with HTTPS so browser clipboard APIs and WebSocket security rules work consistently. During course defense, if domain filing is not ready, the system can still be demonstrated over `http://IP:port`: group-seat invitation links remain visible in a selectable read-only field, and the copy button falls back to legacy selection-based copying when the modern Clipboard API is blocked. If automatic copy is still blocked by the browser, select the invite field and copy it manually.
+
 ## Demo Accounts
 
 | Username | Password | Role | Use |

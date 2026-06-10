@@ -180,6 +180,7 @@ export default {
       kicker: '多人拼座',
       title: '拼座邀请',
       start: '发起拼座',
+      inviteLink: '邀请链接',
       copyInvite: '复制邀请链接',
       copied: '已复制',
       joinOrUpdate: '加入/更新座位',
@@ -191,7 +192,8 @@ export default {
       groupTotal: '拼座合计',
       loadFailed: '拼座会话加载失败',
       actionFailed: '拼座操作失败',
-      copyFailed: '复制失败，请手动复制链接',
+      copyFailed: '浏览器限制复制，已选中链接，请手动复制',
+      httpCopyHint: '当前为非 HTTPS 访问，浏览器可能限制自动复制，可直接选中链接手动复制。',
       noMemberSeats: '暂未认领座位'
     }
   },

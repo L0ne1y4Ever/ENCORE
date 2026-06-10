@@ -181,6 +181,7 @@ export default {
       kicker: 'Group Seats',
       title: 'Group Invitation',
       start: 'Start Group Seats',
+      inviteLink: 'Invite Link',
       copyInvite: 'Copy Invite Link',
       copied: 'Copied',
       joinOrUpdate: 'Join / Update Seats',
@@ -192,7 +193,8 @@ export default {
       groupTotal: 'Group Total',
       loadFailed: 'Failed to load group session',
       actionFailed: 'Group action failed',
-      copyFailed: 'Copy failed. Please copy the link manually.',
+      copyFailed: 'Browser blocked copying. The link is selected for manual copy.',
+      httpCopyHint: 'This page is not using HTTPS. Some browsers may block automatic copy; select the link to copy it manually.',
       noMemberSeats: 'No seats claimed'
     }
   },

@@ -47,6 +47,7 @@ const groupLoading = ref(false)
 const groupError = ref('')
 const groupCopied = ref(false)
 const groupOrder = ref<GroupOrder | null>(null)
+const inviteInputRef = ref<HTMLInputElement | null>(null)
 const now = ref(Date.now())
 const realtimeState = ref<SeatRealtimeConnectionState>('connecting')
 const realtimeNotice = ref<string | null>(null)
@@ -54,6 +55,7 @@ let disconnectRealtime: (() => void) | undefined
 let realtimeNoticeTimer: ReturnType<typeof setTimeout> | undefined
 let groupPollTimer: ReturnType<typeof setInterval> | undefined
 let groupCountdownTimer: ReturnType<typeof setInterval> | undefined
+let groupCopiedTimer: ReturnType<typeof setTimeout> | undefined
 
 const groupInviteCode = computed(() => {
   return typeof route.query.group === 'string' ? route.query.group : ''
@@ -70,6 +72,11 @@ const groupInviteUrl = computed(() => {
   if (!groupInviteCode.value) return ''
   return `${window.location.origin}${route.path}?group=${groupInviteCode.value}`
 })
+const isLocalHost = computed(() => {
+  const host = window.location.hostname
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1'
+})
+const showGroupHttpsHint = computed(() => !window.isSecureContext && !isLocalHost.value)
 function formatTime(secs: number) {
   const minutes = Math.floor(secs / 60).toString().padStart(2, '0')
   const seconds = (secs % 60).toString().padStart(2, '0')
@@ -267,6 +274,9 @@ onBeforeUnmount(() => {
   if (groupCountdownTimer) {
     clearInterval(groupCountdownTimer)
   }
+  if (groupCopiedTimer) {
+    clearTimeout(groupCopiedTimer)
+  }
 })
 
 const maxSelect = 6
@@ -419,17 +429,62 @@ const checkoutCurrentGroup = async () => {
   }
 }
 
+const selectGroupInvite = () => {
+  inviteInputRef.value?.focus()
+  inviteInputRef.value?.select()
+}
+
+const copyWithLegacySelection = (text: string) => {
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', 'true')
+  textarea.style.position = 'fixed'
+  textarea.style.top = '-1000px'
+  textarea.style.left = '-1000px'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.focus()
+  textarea.select()
+  textarea.setSelectionRange(0, text.length)
+
+  try {
+    return document.execCommand('copy')
+  } catch {
+    return false
+  } finally {
+    document.body.removeChild(textarea)
+  }
+}
+
+const copyInviteText = async (text: string) => {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch {
+      // HTTP/IP 访问或移动端 WebView 可能会拒绝 Clipboard API，继续走传统选择复制兜底。
+    }
+  }
+  return copyWithLegacySelection(text)
+}
+
 const copyGroupInvite = async () => {
   if (!groupInviteUrl.value) return
-  try {
-    await navigator.clipboard.writeText(groupInviteUrl.value)
+  const copied = await copyInviteText(groupInviteUrl.value)
+  if (copied) {
+    groupError.value = ''
     groupCopied.value = true
-    setTimeout(() => {
+    if (groupCopiedTimer) {
+      clearTimeout(groupCopiedTimer)
+    }
+    groupCopiedTimer = setTimeout(() => {
       groupCopied.value = false
     }, 1600)
-  } catch {
-    groupError.value = t('seat.group.copyFailed')
+    return
   }
+
+  selectGroupInvite()
+  groupError.value = t('seat.group.copyFailed')
 }
 
 const memberSeatLabel = (member: GroupOrderMember) => {
@@ -718,10 +773,23 @@ const stageDisplayLabel = computed(() => {
 
           <template v-if="groupOrder">
             <div class="invite-box" v-if="groupInviteUrl">
-              <div class="invite-url">{{ groupInviteUrl }}</div>
-              <button class="btn-small" type="button" @click="copyGroupInvite">
-                {{ groupCopied ? t('seat.group.copied') : t('seat.group.copyInvite') }}
-              </button>
+              <label class="invite-field">
+                <span>{{ t('seat.group.inviteLink') }}</span>
+                <input
+                  ref="inviteInputRef"
+                  class="invite-url"
+                  :value="groupInviteUrl"
+                  readonly
+                  @focus="selectGroupInvite"
+                  @click="selectGroupInvite"
+                />
+              </label>
+              <div class="invite-actions">
+                <button class="btn-small" type="button" @click="copyGroupInvite">
+                  {{ groupCopied ? t('seat.group.copied') : t('seat.group.copyInvite') }}
+                </button>
+                <span class="invite-hint" v-if="showGroupHttpsHint">{{ t('seat.group.httpCopyHint') }}</span>
+              </div>
             </div>
 
             <div class="group-meta">
@@ -1522,15 +1590,47 @@ const stageDisplayLabel = computed(() => {
     margin-bottom: var(--spacing-3);
   }
 
+  .invite-field {
+    display: grid;
+    gap: 6px;
+
+    span {
+      color: var(--color-text-secondary);
+      font-size: 12px;
+      font-weight: 700;
+    }
+  }
+
   .invite-url {
-    overflow: hidden;
+    width: 100%;
     border: 1px solid var(--color-border);
     border-radius: 6px;
+    background: rgba(255, 255, 255, 0.04);
     color: var(--color-text-secondary);
+    cursor: text;
+    font-family: var(--font-family-sans);
     font-size: 12px;
+    line-height: 1.4;
+    outline: none;
     padding: 10px;
     text-overflow: ellipsis;
     white-space: nowrap;
+
+    &:focus {
+      border-color: rgba(212, 175, 55, 0.55);
+      color: var(--color-text-primary);
+    }
+  }
+
+  .invite-actions {
+    display: grid;
+    gap: 8px;
+  }
+
+  .invite-hint {
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    line-height: 1.45;
   }
 
   .btn-small {
