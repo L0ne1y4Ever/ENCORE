@@ -1,0 +1,104 @@
+@startuml
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 12
+skinparam class {
+  BackgroundColor #FFF8E7
+  BorderColor #5B0E0E
+}
+skinparam package {
+  BackgroundColor #FBF3DF
+  BorderColor #5B0E0E
+}
+title 退款审核与拼座分票数据关系
+
+class user_account {
+  +id: VARCHAR(32) <<PK>>
+  username: VARCHAR(64)
+  role: VARCHAR(32)
+  display_name: VARCHAR(64)
+}
+
+class ticket_order {
+  +id: VARCHAR(40) <<PK>>
+  user_id: VARCHAR(32) <<owner>>
+  schedule_id: VARCHAR(32)
+  total_amount: DECIMAL(10,2)
+  status: VARCHAR(32)
+}
+
+class ticket_item {
+  +id: VARCHAR(48) <<PK>>
+  order_id: VARCHAR(40)
+  schedule_id: VARCHAR(32)
+  seat_id: VARCHAR(32)
+  ticket_code: VARCHAR(64)
+  status: UNUSED/CHECKED_IN/PENDING_REFUND/VOID
+  area_inventory_id: VARCHAR(32)
+  holder_user_id: VARCHAR(32)
+  holder_display_name: VARCHAR(64)
+}
+
+class refund_request {
+  +id: VARCHAR(40) <<PK>>
+  order_id: VARCHAR(40)
+  user_id: VARCHAR(32) <<order owner>>
+  requester_id: VARCHAR(40)
+  status: PENDING/APPROVED/REJECTED
+  source: USER_AUTO/USER_REVIEW/ADMIN_DIRECT
+  scope: ORDER/TICKET
+  refund_amount: DECIMAL(10,2)
+  ticket_count: INT
+}
+
+class refund_request_ticket {
+  +id: VARCHAR(40) <<PK>>
+  refund_request_id: VARCHAR(40)
+  order_id: VARCHAR(40)
+  ticket_id: VARCHAR(48)
+  holder_user_id: VARCHAR(40)
+  amount: DECIMAL(10,2)
+}
+
+class show_schedule {
+  +id: VARCHAR(32) <<PK>>
+  show_id: VARCHAR(32)
+  start_time/end_time
+  price_range: VARCHAR(64)
+  ticket_mode: SEATED/ZONED/MIXED
+}
+
+class schedule_seat {
+  +id: VARCHAR(64) <<PK>>
+  schedule_id: VARCHAR(32)
+  seat_code: VARCHAR(32)
+  section: VARCHAR(32)
+  status: AVAILABLE/LOCKED/SOLD
+  price: DECIMAL(10,2)
+}
+
+class schedule_area_inventory {
+  +id: VARCHAR(32) <<PK>>
+  schedule_id: VARCHAR(32)
+  area_id: VARCHAR(32)
+  price: DECIMAL(10,2)
+  total/available/locked/sold
+}
+
+user_account "1" --> "0..*" ticket_order : owner
+ticket_order "1" --> "1..*" ticket_item
+user_account "1" --> "0..*" ticket_item : holder_user_id
+show_schedule "1" --> "0..*" ticket_order
+show_schedule "1" --> "0..*" schedule_seat
+show_schedule "1" --> "0..*" schedule_area_inventory
+ticket_item "0..*" --> "0..1" schedule_seat : seat_id=seat_code
+ticket_order "1" --> "0..*" refund_request
+refund_request "1" --> "0..*" refund_request_ticket
+refund_request_ticket "1" --> "1" ticket_item
+
+note right of ticket_item
+  拼座采用“单订单分票”：
+  order.user_id 是统一支付发起人；
+  holder_user_id 决定每张票的可见用户。
+end note
+@enduml

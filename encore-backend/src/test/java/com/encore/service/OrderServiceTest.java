@@ -2,11 +2,14 @@ package com.encore.service;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.encore.dto.OrderResponse;
+import com.encore.dto.RefundOrderRequest;
 import com.encore.entity.RefundRequest;
+import com.encore.entity.ScheduleAreaInventory;
 import com.encore.entity.ScheduleSeat;
 import com.encore.entity.ShowSchedule;
 import com.encore.entity.TicketItem;
 import com.encore.entity.TicketOrder;
+import com.encore.entity.VenueArea;
 import com.encore.exception.BusinessException;
 import com.encore.mapper.ScheduleSeatMapper;
 import com.encore.mapper.ScheduleAreaInventoryMapper;
@@ -75,12 +78,11 @@ class OrderServiceTest {
         OrderService service = createService();
         TicketOrder order = pendingOrder(LocalDateTime.now().plusMinutes(10));
         TicketItem ticket = ticket();
-        ScheduleSeat seat = availableSeat();
 
         when(ticketOrderMapper.selectById("ord-1")).thenReturn(order);
         when(ticketItemMapper.selectList(any())).thenReturn(List.of(ticket));
         when(seatService.isLockedByOrder("sch-1", "seat-1-1", "ord-1")).thenReturn(true);
-        when(scheduleSeatMapper.selectOne(any())).thenReturn(seat);
+        when(scheduleSeatMapper.sellSeats("sch-1", List.of("seat-1-1"))).thenReturn(1);
 
         boolean paid;
         try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
@@ -90,7 +92,7 @@ class OrderServiceTest {
 
         assertThat(paid).isTrue();
         assertThat(order.getStatus()).isEqualTo("PAID");
-        assertThat(seat.getStatus()).isEqualTo("SOLD");
+        verify(scheduleSeatMapper).sellSeats("sch-1", List.of("seat-1-1"));
         verify(seatService).releaseLocks("sch-1", List.of("seat-1-1"));
         verify(seatStatusPublisher).publishSeatStatus(
                 "sch-1",
@@ -99,6 +101,31 @@ class OrderServiceTest {
                 List.of("seat-1-1")
         );
         verify(dashboardRefreshPublisher).publish("ORDER_PAID", "ord-1");
+    }
+
+    @Test
+    void simulatePaymentRejectsWhenAtomicSeatSaleFails() {
+        OrderService service = createService();
+        TicketOrder order = pendingOrder(LocalDateTime.now().plusMinutes(10));
+        TicketItem ticket = ticket();
+
+        when(ticketOrderMapper.selectById("ord-1")).thenReturn(order);
+        when(ticketItemMapper.selectList(any())).thenReturn(List.of(ticket));
+        when(seatService.isLockedByOrder("sch-1", "seat-1-1", "ord-1")).thenReturn(true);
+        when(scheduleSeatMapper.sellSeats("sch-1", List.of("seat-1-1"))).thenReturn(0);
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-1");
+
+            assertThatThrownBy(() -> service.simulatePayment("ord-1"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("座位状态已变化，无法支付");
+        }
+
+        assertThat(ticket.getStatus()).isEqualTo("RESERVED");
+        verify(ticketItemMapper, never()).updateById(ticket);
+        verify(seatService, never()).releaseLocks("sch-1", List.of("seat-1-1"));
+        verify(dashboardRefreshPublisher, never()).publish("ORDER_PAID", "ord-1");
     }
 
     @Test
@@ -187,6 +214,47 @@ class OrderServiceTest {
                     assertThat(ticket.getHolderUserId()).isEqualTo("u-102");
                     assertThat(ticket.getHolderDisplayName()).isEqualTo("拼座好友");
                 });
+    }
+
+    @Test
+    void createPaidCounterSeatedSaleWritesOfflineOrderAndPublishesSoldEvent() {
+        OrderService service = createService();
+        ShowSchedule schedule = schedule(LocalDateTime.now().plusDays(1), LocalDateTime.now().plusDays(1).plusHours(2));
+        ScheduleSeat seat = seat("seat-1-1", 150);
+
+        when(scheduleSeatMapper.selectList(any())).thenReturn(List.of(seat));
+        when(seatService.lockSeatsForOwner(eq("sch-1"), eq(List.of("seat-1-1")), any(), any(), eq(true))).thenReturn(true);
+        when(seatService.isLockedByOrder(eq("sch-1"), eq("seat-1-1"), any())).thenReturn(true);
+        when(scheduleSeatMapper.sellSeats("sch-1", List.of("seat-1-1"))).thenReturn(1);
+
+        OrderService.CounterSaleResult result = service.createPaidCounterSale(
+                schedule,
+                "SEATED",
+                "u-buyer",
+                "Alice",
+                "u-admin",
+                List.of("seat-1-1"),
+                null,
+                null
+        );
+
+        assertThat(result.order().getStatus()).isEqualTo("PAID");
+        assertThat(result.order().getOrderChannel()).isEqualTo("OFFLINE");
+        assertThat(result.order().getPaymentMethod()).isEqualTo("COUNTER");
+        assertThat(result.order().getCashierUserId()).isEqualTo("u-admin");
+        assertThat(result.tickets()).hasSize(1);
+        assertThat(result.tickets().get(0).getStatus()).isEqualTo("UNUSED");
+        assertThat(result.tickets().get(0).getHolderDisplayName()).isEqualTo("Alice");
+        verify(ticketOrderMapper).insert(org.mockito.ArgumentMatchers.<TicketOrder>argThat(order ->
+                "OFFLINE".equals(order.getOrderChannel())
+                        && "COUNTER".equals(order.getPaymentMethod())
+                        && "u-admin".equals(order.getCashierUserId())
+                        && "PAID".equals(order.getStatus())
+        ));
+        verify(scheduleSeatMapper).sellSeats("sch-1", List.of("seat-1-1"));
+        verify(seatService).releaseLocks("sch-1", List.of("seat-1-1"));
+        verify(seatStatusPublisher).publishSeatStatus("sch-1", "OFFLINE_SOLD", "SOLD", List.of("seat-1-1"));
+        verify(dashboardRefreshPublisher).publish(eq("OFFLINE_SALE"), any());
     }
 
     @Test
@@ -427,6 +495,59 @@ class OrderServiceTest {
         ));
         verify(seatStatusPublisher, never()).publishSeatStatus(any(), any(), any(), any());
         verify(dashboardRefreshPublisher).publish("ORDER_REFUND_REQUESTED", "ord-1");
+    }
+
+    @Test
+    void ownerWholeOrderRefundIsRejectedWhenInviteeTicketIsPendingRefund() {
+        OrderService service = createService();
+        TicketOrder order = paidGroupOrder();
+        TicketItem hostTicket = heldTicket("tk-1", "seat-1-1", "u-101", "发起人");
+        TicketItem inviteeTicket = heldTicket("tk-2", "seat-1-2", "u-102", "拼座好友");
+        inviteeTicket.setStatus("PENDING_REFUND");
+        ShowSchedule schedule = schedule(LocalDateTime.now().plusMinutes(90), LocalDateTime.now().plusHours(3));
+
+        when(ticketOrderMapper.selectById("ord-1")).thenReturn(order);
+        when(showScheduleMapper.selectById("sch-1")).thenReturn(schedule);
+        when(ticketItemMapper.selectList(any())).thenReturn(List.of(hostTicket, inviteeTicket));
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-101");
+            assertThatThrownBy(() -> service.refundOrder("ord-1"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("票据正在退票审核中，请等待审核完成");
+        }
+
+        verify(refundRequestMapper, never()).insert(any(RefundRequest.class));
+        verify(ticketItemMapper, never()).updateById(hostTicket);
+        verify(dashboardRefreshPublisher, never()).publish(eq("ORDER_REFUNDED"), any());
+    }
+
+    @Test
+    void secondRefundRequestIsRejectedWhileAnyPendingRefundExists() {
+        OrderService service = createService();
+        TicketOrder order = paidGroupOrder();
+        TicketItem inviteeTicket = heldTicket("tk-2", "seat-1-2", "u-102", "拼座好友");
+        ShowSchedule schedule = schedule(LocalDateTime.now().plusMinutes(90), LocalDateTime.now().plusHours(3));
+        RefundRequest pendingRefund = new RefundRequest();
+        pendingRefund.setId("rr-pending");
+        pendingRefund.setOrderId("ord-1");
+        pendingRefund.setStatus("PENDING");
+        pendingRefund.setScope("TICKET");
+
+        when(ticketOrderMapper.selectById("ord-1")).thenReturn(order);
+        when(showScheduleMapper.selectById("sch-1")).thenReturn(schedule);
+        when(ticketItemMapper.selectList(any())).thenReturn(List.of(inviteeTicket));
+        when(refundRequestMapper.selectList(any())).thenReturn(List.of(pendingRefund));
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-102");
+            assertThatThrownBy(() -> service.refundOrder("ord-1", new RefundOrderRequest("想退票", List.of("tk-2"))))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("该订单已有待审核退票申请，请等待审核完成");
+        }
+
+        verify(refundRequestMapper, never()).insert(any(RefundRequest.class));
+        verify(ticketItemMapper, never()).updateById(inviteeTicket);
     }
 
     @Test

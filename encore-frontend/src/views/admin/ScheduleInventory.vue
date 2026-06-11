@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
+import AdminTableScroller from '../../components/AdminTableScroller.vue'
 import AdminSeatMapEditor from '../../components/AdminSeatMapEditor.vue'
 import { subscribeToSeatUpdates } from '../../api/seatRealtime'
 import {
@@ -19,6 +20,7 @@ import type {
 import { formatMoney } from '../../utils/money'
 
 const route = useRoute()
+const router = useRouter()
 const { t, locale } = useI18n()
 
 const scheduleId = computed(() => route.params.id as string)
@@ -76,6 +78,10 @@ onBeforeUnmount(() => {
 })
 
 const money = (value: number | string) => formatMoney(value, locale.value)
+
+const openOfflineSale = () => {
+  router.push({ path: '/admin/offline-sales', query: { scheduleId: scheduleId.value } })
+}
 
 const seatCanToggle = (seat: AdminScheduleInventorySeat) => {
   return seat.status === 'AVAILABLE' || seat.status === 'DISABLED'
@@ -143,7 +149,10 @@ const saveArea = async () => {
         <h1>{{ t('admin.scheduleInventory') }}</h1>
         <p v-if="inventory">{{ inventory.showTitle }} · {{ inventory.theaterName }} · {{ scheduleId }}</p>
       </div>
-      <el-button type="primary" plain :loading="loading" @click="loadInventory">{{ t('admin.refresh') }}</el-button>
+      <div class="header-actions">
+        <el-button plain @click="openOfflineSale">{{ t('admin.offlineSales') }}</el-button>
+        <el-button type="primary" plain :loading="loading" @click="loadInventory">{{ t('admin.refresh') }}</el-button>
+      </div>
     </div>
 
     <template v-if="inventory">
@@ -191,23 +200,25 @@ const saveArea = async () => {
           <div class="panel-head">
             <h2>{{ t('admin.areaInventory') }}</h2>
           </div>
-          <el-table :data="areas" :empty-text="t('admin.empty')" v-loading="loading">
-            <el-table-column prop="name" :label="t('admin.areaName')" min-width="130" />
-            <el-table-column prop="price" :label="t('admin.price')" width="90">
-              <template #default="{ row }">{{ money(row.price) }}</template>
-            </el-table-column>
-            <el-table-column prop="totalCount" :label="t('admin.totalSeats')" width="90" />
-            <el-table-column prop="availableCount" :label="t('admin.availableSeats')" width="90" />
-            <el-table-column prop="lockedCount" :label="t('admin.lockedSeats')" width="90" />
-            <el-table-column prop="soldCount" :label="t('admin.soldSeats')" width="80" />
-            <el-table-column :label="t('admin.action')" width="90">
-              <template #default="{ row }">
-                <el-button link type="primary" :disabled="operatingArea === row.id" @click="openAreaEdit(row)">
-                  {{ t('admin.edit') }}
-                </el-button>
-              </template>
-            </el-table-column>
-          </el-table>
+          <AdminTableScroller :label="t('admin.tableHorizontalScroll')">
+            <el-table :data="areas" :empty-text="t('admin.empty')" v-loading="loading">
+              <el-table-column prop="name" :label="t('admin.areaName')" min-width="130" />
+              <el-table-column prop="price" :label="t('admin.price')" width="90">
+                <template #default="{ row }">{{ money(row.price) }}</template>
+              </el-table-column>
+              <el-table-column prop="totalCount" :label="t('admin.totalSeats')" width="90" />
+              <el-table-column prop="availableCount" :label="t('admin.availableSeats')" width="90" />
+              <el-table-column prop="lockedCount" :label="t('admin.lockedSeats')" width="90" />
+              <el-table-column prop="soldCount" :label="t('admin.soldSeats')" width="80" />
+              <el-table-column :label="t('admin.action')" width="90" fixed="right">
+                <template #default="{ row }">
+                  <el-button link type="primary" :disabled="operatingArea === row.id" @click="openAreaEdit(row)">
+                    {{ t('admin.edit') }}
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </AdminTableScroller>
         </section>
       </div>
     </template>
@@ -256,6 +267,14 @@ const saveArea = async () => {
     margin-top: var(--spacing-2);
     color: var(--color-text-secondary);
   }
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .stats-strip {

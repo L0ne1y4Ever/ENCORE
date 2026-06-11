@@ -96,6 +96,84 @@ class VenueManagementServiceTest {
     }
 
     @Test
+    void deleteVenueRemovesEmptyVenue() {
+        VenueManagementService service = createService();
+        when(userAccountMapper.selectById("u-admin")).thenReturn(user("u-admin", "admin"));
+        when(venueMapper.selectById("ven-1")).thenReturn(venue());
+        when(venueHallMapper.selectCount(any())).thenReturn(0L);
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-admin");
+            service.deleteVenue("ven-1");
+        }
+
+        verify(venueMapper).deleteById("ven-1");
+    }
+
+    @Test
+    void deleteVenueRejectsVenueWithHalls() {
+        VenueManagementService service = createService();
+        when(userAccountMapper.selectById("u-admin")).thenReturn(user("u-admin", "admin"));
+        when(venueMapper.selectById("ven-1")).thenReturn(venue());
+        when(venueHallMapper.selectCount(any())).thenReturn(1L);
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-admin");
+            assertThrows(BusinessException.class, () -> service.deleteVenue("ven-1"));
+        }
+
+        verify(venueMapper, never()).deleteById(anyString());
+    }
+
+    @Test
+    void deleteHallRemovesEmptyHallAndMirroredAreas() {
+        VenueManagementService service = createService();
+        when(userAccountMapper.selectById("u-admin")).thenReturn(user("u-admin", "admin"));
+        when(venueHallMapper.selectById("hall-1")).thenReturn(hall(30));
+        when(seatLayoutMapper.selectCount(any())).thenReturn(0L);
+        when(showScheduleMapper.selectCount(any())).thenReturn(0L);
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-admin");
+            service.deleteHall("hall-1");
+        }
+
+        verify(venueAreaMapper).delete(any());
+        verify(venueHallMapper).deleteById("hall-1");
+    }
+
+    @Test
+    void deleteHallRejectsHallWithLayouts() {
+        VenueManagementService service = createService();
+        when(userAccountMapper.selectById("u-admin")).thenReturn(user("u-admin", "admin"));
+        when(venueHallMapper.selectById("hall-1")).thenReturn(hall(30));
+        when(seatLayoutMapper.selectCount(any())).thenReturn(1L);
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-admin");
+            assertThrows(BusinessException.class, () -> service.deleteHall("hall-1"));
+        }
+
+        verify(venueHallMapper, never()).deleteById(anyString());
+    }
+
+    @Test
+    void deleteHallRejectsHallWithSchedules() {
+        VenueManagementService service = createService();
+        when(userAccountMapper.selectById("u-admin")).thenReturn(user("u-admin", "admin"));
+        when(venueHallMapper.selectById("hall-1")).thenReturn(hall(30));
+        when(seatLayoutMapper.selectCount(any())).thenReturn(0L);
+        when(showScheduleMapper.selectCount(any())).thenReturn(1L);
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-admin");
+            assertThrows(BusinessException.class, () -> service.deleteHall("hall-1"));
+        }
+
+        verify(venueHallMapper, never()).deleteById(anyString());
+    }
+
+    @Test
     void updateScheduleSeatStatusRejectsSoldSeat() {
         VenueManagementService service = createService();
         when(userAccountMapper.selectById("u-admin")).thenReturn(user("u-admin", "admin"));
@@ -495,6 +573,14 @@ class VenueManagementServiceTest {
         hall.setName("Hall One");
         hall.setClearanceMinutes(clearanceMinutes);
         return hall;
+    }
+
+    private Venue venue() {
+        Venue venue = new Venue();
+        venue.setId("ven-1");
+        venue.setName("Venue One");
+        venue.setStatus("ACTIVE");
+        return venue;
     }
 
     private SeatLayout layout(String ticketMode) {

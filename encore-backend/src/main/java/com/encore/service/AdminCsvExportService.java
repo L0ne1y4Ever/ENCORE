@@ -43,7 +43,7 @@ public class AdminCsvExportService {
     public String exportOrdersCsv() {
         List<AdminOrderResponse> orders = adminService.listOrders();
         return csv(
-                List.of("订单号", "用户", "演出", "剧场", "金额", "状态", "票数", "已核销", "创建时间", "支付时间"),
+                List.of("订单号", "用户", "演出", "剧场", "金额", "状态", "来源", "收款方式", "收银员", "票数", "已核销", "创建时间", "支付时间"),
                 orders.stream()
                         .map(order -> List.of(
                                 value(order.id()),
@@ -52,6 +52,9 @@ public class AdminCsvExportService {
                                 value(order.theaterName()),
                                 money(order.totalAmount()),
                                 value(displayStatus(order)),
+                                value(order.orderChannel()),
+                                value(order.paymentMethod()),
+                                value(order.cashierUsername()),
                                 value(order.ticketCount()),
                                 value(order.checkedInCount()),
                                 dateTime(order.createdAt()),

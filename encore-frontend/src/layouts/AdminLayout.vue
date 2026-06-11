@@ -13,6 +13,7 @@ import {
   OfficeBuilding,
   Operation,
   SwitchButton,
+  Tickets,
   UserFilled
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
@@ -54,6 +55,7 @@ const menuItems = computed(() => {
     { path: '/admin/shows', label: t('admin.shows'), icon: Film },
     { path: '/admin/venues', label: t('admin.venueLayout'), icon: OfficeBuilding },
     { path: '/admin/schedules', label: t('admin.schedules'), icon: Calendar },
+    { path: '/admin/offline-sales', label: t('admin.offlineSales'), icon: Tickets },
     { path: '/admin/orders', label: t('admin.orders'), icon: List },
     { path: '/admin/finance', label: t('admin.finance'), icon: Money },
   ]

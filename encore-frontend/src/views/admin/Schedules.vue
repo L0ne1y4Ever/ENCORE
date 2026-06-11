@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Calendar, Edit, Plus, Refresh, Search } from '@element-plus/icons-vue'
+import { Calendar, Edit, Plus, Refresh, Search, Tickets } from '@element-plus/icons-vue'
 import {
   cancelAdminSchedule,
   createAdminSchedule,
@@ -26,6 +26,7 @@ import type {
   ScheduleStatus,
   UpdateAdminSchedulePayload
 } from '../../api/admin'
+import AdminTableScroller from '../../components/AdminTableScroller.vue'
 import { formatMoneyRange } from '../../utils/money'
 import { adminCategoryLabel, adminPublishStatusLabel } from '../../utils/adminLabels'
 import { formatLocaleDateTime, formatLocaleWeekday } from '../../utils/date'
@@ -529,6 +530,10 @@ const handleCancel = async (row: AdminSchedule) => {
 const openInventory = (row: AdminSchedule) => {
   router.push(`/admin/schedules/${row.id}/inventory`)
 }
+
+const openOfflineSale = (row: AdminSchedule) => {
+  router.push({ path: '/admin/offline-sales', query: { scheduleId: row.id } })
+}
 </script>
 
 <template>
@@ -672,14 +677,15 @@ const openInventory = (row: AdminSchedule) => {
       </div>
 
       <div v-else class="table-container schedule-table-wrap">
-        <el-table
-          class="schedule-table"
-          :data="filteredSchedules"
-          style="width: 100%; min-width: 1580px"
-          :fit="false"
-          :empty-text="t('admin.empty')"
-          v-loading="loading"
-        >
+        <AdminTableScroller :label="t('admin.tableHorizontalScroll')">
+          <el-table
+            class="schedule-table"
+            :data="filteredSchedules"
+            style="width: 100%; min-width: 1580px"
+            :fit="false"
+            :empty-text="t('admin.empty')"
+            v-loading="loading"
+          >
         <el-table-column :label="t('admin.showAndCategory')" width="260">
           <template #default="{ row }">
             <div class="schedule-show-cell">
@@ -740,9 +746,12 @@ const openInventory = (row: AdminSchedule) => {
             </div>
           </template>
         </el-table-column>
-        <el-table-column :label="t('admin.action')" width="220">
+        <el-table-column :label="t('admin.action')" width="300" fixed="right">
           <template #default="{ row }">
             <div class="schedule-actions">
+              <el-button link type="primary" :icon="Tickets" :disabled="operatingId === row.id" @click="openOfflineSale(row)">
+                {{ t('admin.offlineSales') }}
+              </el-button>
               <el-button link type="primary" :icon="Calendar" :disabled="operatingId === row.id" @click="openInventory(row)">
                 {{ t('admin.inventory') }}
               </el-button>
@@ -770,7 +779,8 @@ const openInventory = (row: AdminSchedule) => {
             </div>
           </template>
         </el-table-column>
-        </el-table>
+          </el-table>
+        </AdminTableScroller>
       </div>
     </div>
 
@@ -1140,23 +1150,7 @@ const openInventory = (row: AdminSchedule) => {
 }
 
 .schedule-table-wrap {
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(200, 149, 90, 0.45) rgba(255, 255, 255, 0.04);
-
-  &::-webkit-scrollbar {
-    height: 10px;
-  }
-
-  &::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.04);
-  }
-
-  &::-webkit-scrollbar-thumb {
-    border-radius: 4px;
-    background: rgba(200, 149, 90, 0.45);
-  }
+  overflow: visible;
 }
 
 .calendar-board {

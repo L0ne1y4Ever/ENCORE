@@ -20,8 +20,15 @@ export interface ScheduleAreaResponse {
 }
 
 export function getSeatMap(scheduleId: string, areaId?: string): Promise<Seat[]> {
-  const url = areaId ? `/api/schedules/${scheduleId}/seats?areaId=${areaId}` : `/api/schedules/${scheduleId}/seats`
-  return requestData<Seat[]>(apiClient.get(url))
+  const params = new URLSearchParams({ _ts: Date.now().toString() })
+  if (areaId) {
+    params.set('areaId', areaId)
+  }
+  return requestData<Seat[]>(
+    apiClient.get(`/api/schedules/${scheduleId}/seats?${params.toString()}`, {
+      headers: { 'Cache-Control': 'no-cache' }
+    })
+  )
 }
 
 export function lockSeats(scheduleId: string, seatIds: string[]): Promise<boolean> {
@@ -30,6 +37,31 @@ export function lockSeats(scheduleId: string, seatIds: string[]): Promise<boolea
   )
 }
 
+export interface SeatLockInfo {
+  seatId: string
+  expiresAt?: string | null
+}
+
+export interface SeatLocksResponse {
+  seats: SeatLockInfo[]
+}
+
+export function getMySeatLocks(scheduleId: string): Promise<SeatLocksResponse> {
+  return requestData<SeatLocksResponse>(
+    apiClient.get(`/api/schedules/${scheduleId}/seats/my-locks`)
+  )
+}
+
+export function unlockSeats(scheduleId: string, seatIds?: string[]): Promise<SeatLocksResponse> {
+  return requestData<SeatLocksResponse>(
+    apiClient.post(`/api/schedules/${scheduleId}/seats/unlock`, { seatIds: seatIds || [] })
+  )
+}
+
 export function getScheduleAreas(scheduleId: string): Promise<ScheduleAreaResponse[]> {
-  return requestData<ScheduleAreaResponse[]>(apiClient.get(`/api/schedules/${scheduleId}/areas`))
+  return requestData<ScheduleAreaResponse[]>(
+    apiClient.get(`/api/schedules/${scheduleId}/areas?_ts=${Date.now()}`, {
+      headers: { 'Cache-Control': 'no-cache' }
+    })
+  )
 }

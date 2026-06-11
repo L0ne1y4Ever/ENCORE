@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArrowRight, Clock, Tickets, Wallet } from '@element-plus/icons-vue'
 import { createOrder } from '../../api/order'
+import { unlockSeats } from '../../api/seat'
 import { useI18n } from 'vue-i18n'
 import { formatMoney } from '../../utils/money'
 
@@ -13,6 +14,7 @@ interface PendingOrder {
   scheduleId: string
   seatIds: string[]
   totalAmount: number | string
+  expiresAt?: string | null
 }
 
 const isPendingOrder = (value: unknown): value is PendingOrder => {
@@ -23,12 +25,21 @@ const isPendingOrder = (value: unknown): value is PendingOrder => {
     && order.seatIds.length > 0
     && order.seatIds.every(seatId => typeof seatId === 'string')
     && (typeof order.totalAmount === 'number' || typeof order.totalAmount === 'string')
+    && (order.expiresAt === undefined || order.expiresAt === null || typeof order.expiresAt === 'string')
 }
 
 const orderData = ref<PendingOrder | null>(null)
 const timeLeft = ref(15 * 60)
 const timer = ref<number | null>(null)
 const submitting = ref(false)
+const releasing = ref(false)
+
+const secondsUntil = (value?: string | null) => {
+  if (!value) return 15 * 60
+  const time = new Date(value).getTime()
+  if (!Number.isFinite(time)) return 15 * 60
+  return Math.max(0, Math.floor((time - Date.now()) / 1000))
+}
 
 onMounted(() => {
   const data = sessionStorage.getItem('tempOrder')
@@ -42,6 +53,7 @@ onMounted(() => {
       throw new Error('Invalid temp order')
     }
     orderData.value = parsed
+    timeLeft.value = secondsUntil(parsed.expiresAt)
   } catch {
     sessionStorage.removeItem('tempOrder')
     router.replace('/')
@@ -85,6 +97,21 @@ const doConfirm = async () => {
     submitting.value = false
   }
 }
+
+const releaseAndReturn = async () => {
+  if (releasing.value || !orderData.value) return
+  releasing.value = true
+  try {
+    await unlockSeats(orderData.value.scheduleId, orderData.value.seatIds)
+    const scheduleId = orderData.value.scheduleId
+    sessionStorage.removeItem('tempOrder')
+    router.replace(`/seat/${scheduleId}`)
+  } catch {
+    window.alert(t('seat.releaseLocksFailed'))
+  } finally {
+    releasing.value = false
+  }
+}
 </script>
 
 <template>
@@ -126,6 +153,9 @@ const doConfirm = async () => {
         <button class="btn-confirm" type="button" @click="doConfirm" :disabled="submitting">
           <span>{{ submitting ? t('common.processing') : t('order.proceedToPayment') }}</span>
           <ArrowRight v-if="!submitting" />
+        </button>
+        <button class="btn-release" type="button" @click="releaseAndReturn" :disabled="submitting || releasing">
+          {{ releasing ? t('common.processing') : t('seat.releaseLockedSeats') }}
         </button>
       </div>
     </div>
@@ -311,6 +341,30 @@ const doConfirm = async () => {
 
   &:hover:not(:disabled) {
     background: #f6121d;
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+}
+
+.btn-release {
+  width: 100%;
+  min-height: 44px;
+  margin-top: var(--spacing-2);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-family: var(--font-family-sans);
+  font-size: 14px;
+  font-weight: 800;
+
+  &:hover:not(:disabled) {
+    border-color: rgba(229, 9, 20, 0.55);
+    color: #fff;
   }
 
   &:disabled {

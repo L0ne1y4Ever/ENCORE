@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Check, CreditCard, Tickets, Wallet } from '@element-plus/icons-vue'
-import { getOrderDetail, simulatePayment } from '../../api/order'
+import { cancelOrder, getOrderDetail, simulatePayment } from '../../api/order'
 import type { Order } from '../../mock/orders'
 import { useI18n } from 'vue-i18n'
 import { formatMoney } from '../../utils/money'
@@ -15,7 +15,10 @@ const orderId = route.query.id as string
 const order = ref<Order | null>(null)
 const loading = ref(true)
 const paying = ref(false)
+const cancelling = ref(false)
 const displayAmount = computed(() => formatMoney(order.value?.totalAmount, locale.value))
+const canCancel = computed(() => order.value?.status === 'PENDING_PAYMENT')
+const paymentDeadline = computed(() => order.value?.expiresAt ? new Date(order.value.expiresAt).toLocaleString() : '-')
 
 onMounted(async () => {
   if (!orderId) {
@@ -39,6 +42,20 @@ const handlePay = async () => {
     window.alert(t('payment.failed'))
   } finally {
     paying.value = false
+  }
+}
+
+const handleCancel = async () => {
+  if (!order.value || cancelling.value) return
+  cancelling.value = true
+  try {
+    const scheduleId = order.value.scheduleId
+    await cancelOrder(order.value.id)
+    router.replace(`/seat/${scheduleId}`)
+  } catch {
+    window.alert(t('payment.cancelFailed'))
+  } finally {
+    cancelling.value = false
   }
 }
 </script>
@@ -68,11 +85,15 @@ const handlePay = async () => {
           <span>{{ t('order.totalAmount') }}</span>
           <strong>{{ displayAmount }}</strong>
           <small>{{ t('payment.gateway') }}</small>
+          <small v-if="canCancel">{{ t('payment.deadline', { deadline: paymentDeadline }) }}</small>
         </div>
 
         <button class="btn-pay" type="button" @click="handlePay" :disabled="paying">
           <CreditCard />
           <span>{{ paying ? t('common.processing') : t('payment.pay', { amount: displayAmount }) }}</span>
+        </button>
+        <button v-if="canCancel" class="btn-cancel-order" type="button" @click="handleCancel" :disabled="paying || cancelling">
+          {{ cancelling ? t('common.processing') : t('payment.cancelOrder') }}
         </button>
       </section>
     </div>
@@ -240,6 +261,30 @@ const handlePay = async () => {
   &:hover:not(:disabled) {
     background: #f6121d;
     filter: none;
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+}
+
+.btn-cancel-order {
+  width: 100%;
+  min-height: 44px;
+  margin-top: var(--spacing-2);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-family: var(--font-family-sans);
+  font-size: 14px;
+  font-weight: 800;
+
+  &:hover:not(:disabled) {
+    border-color: rgba(229, 9, 20, 0.55);
+    color: #fff;
   }
 
   &:disabled {

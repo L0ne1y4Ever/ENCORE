@@ -7,6 +7,8 @@ import com.encore.dto.AdminHallResponse;
 import com.encore.dto.AdminLayoutAreaResponse;
 import com.encore.dto.AdminLayoutResponse;
 import com.encore.dto.AdminLayoutSeatResponse;
+import com.encore.dto.AdminOfflineSaleRequest;
+import com.encore.dto.AdminOfflineSaleResponse;
 import com.encore.dto.AdminOperationLogResponse;
 import com.encore.dto.AdminOrderResponse;
 import com.encore.dto.AdminScheduleResponse;
@@ -151,6 +153,12 @@ public class AdminController {
         return ApiResponse.ok(venueManagementService.updateVenue(id, request));
     }
 
+    @DeleteMapping("/venues/{id}")
+    public ApiResponse<Void> deleteVenue(@PathVariable String id) {
+        venueManagementService.deleteVenue(id);
+        return ApiResponse.ok();
+    }
+
     @GetMapping("/halls")
     public ApiResponse<List<AdminHallResponse>> listHalls(@RequestParam(required = false) String venueId) {
         return ApiResponse.ok(venueManagementService.listHalls(venueId));
@@ -167,6 +175,12 @@ public class AdminController {
             @Valid @RequestBody UpdateHallRequest request
     ) {
         return ApiResponse.ok(venueManagementService.updateHall(id, request));
+    }
+
+    @DeleteMapping("/halls/{id}")
+    public ApiResponse<Void> deleteHall(@PathVariable String id) {
+        venueManagementService.deleteHall(id);
+        return ApiResponse.ok();
     }
 
     @GetMapping("/layouts")
@@ -350,6 +364,13 @@ public class AdminController {
     @GetMapping("/orders")
     public ApiResponse<List<AdminOrderResponse>> listOrders() {
         return ApiResponse.ok(adminService.listOrders());
+    }
+
+    @PostMapping("/offline-sales")
+    public ApiResponse<AdminOfflineSaleResponse> createOfflineSale(
+            @Valid @RequestBody AdminOfflineSaleRequest request
+    ) {
+        return ApiResponse.ok(adminService.createOfflineSale(request));
     }
 
     @GetMapping("/orders/export")

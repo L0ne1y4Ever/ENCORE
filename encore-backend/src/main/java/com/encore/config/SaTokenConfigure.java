@@ -36,6 +36,12 @@ public class SaTokenConfigure implements WebMvcConfigurer {
             SaRouter.match("/api/schedules/*/seats/lock")
                     .matchMethod("POST")
                     .check(r -> StpUtil.checkLogin());
+            SaRouter.match("/api/schedules/*/seats/my-locks")
+                    .matchMethod("GET")
+                    .check(r -> StpUtil.checkLogin());
+            SaRouter.match("/api/schedules/*/seats/unlock")
+                    .matchMethod("POST")
+                    .check(r -> StpUtil.checkLogin());
 
             // 需要角色
             SaRouter.match("/api/admin/**").check(r -> StpUtil.checkRoleOr("admin", "sysadmin"));

@@ -5,6 +5,9 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.encore.common.ErrorCode;
 import com.encore.dto.AdminBoxOfficeResponse;
 import com.encore.dto.AdminDashboardResponse;
+import com.encore.dto.AdminOfflineSaleRequest;
+import com.encore.dto.AdminOfflineSaleResponse;
+import com.encore.dto.AdminOfflineSaleTicketResponse;
 import com.encore.dto.AdminOrderResponse;
 import com.encore.dto.AdminScheduleResponse;
 import com.encore.dto.AdminShowCategoryOption;
@@ -39,6 +42,7 @@ import com.encore.mapper.TicketOrderMapper;
 import com.encore.mapper.UserAccountMapper;
 import com.encore.mapper.VenueAreaMapper;
 import com.encore.mapper.ScheduleAreaInventoryMapper;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -66,6 +70,9 @@ import java.util.stream.Collectors;
 public class AdminService {
     private static final int DEFAULT_SEAT_ROWS = 10;
     private static final int DEFAULT_SEAT_COLS = 15;
+    private static final String OFFLINE_GUEST_USER_ID = "u-offline-guest";
+    private static final String OFFLINE_GUEST_USERNAME = "__offline_guest__";
+    private static final String OFFLINE_GUEST_DISPLAY_NAME = "线下散客";
     private static final BigDecimal DEFAULT_VIP_PRICE = BigDecimal.valueOf(150);
     private static final BigDecimal DEFAULT_STANDARD_PRICE = BigDecimal.valueOf(100);
     private static final BigDecimal DEFAULT_ECONOMY_PRICE = BigDecimal.valueOf(50);
@@ -101,6 +108,7 @@ public class AdminService {
     private final ScheduleAreaInventoryMapper scheduleAreaInventoryMapper;
     private final VenueManagementService venueManagementService;
     private final SeatService seatService;
+    private final OrderService orderService;
     private final RefundRequestMapper refundRequestMapper;
     private final RefundRequestTicketMapper refundRequestTicketMapper;
 
@@ -118,6 +126,7 @@ public class AdminService {
             ScheduleAreaInventoryMapper scheduleAreaInventoryMapper,
             VenueManagementService venueManagementService,
             SeatService seatService,
+            OrderService orderService,
             RefundRequestMapper refundRequestMapper,
             RefundRequestTicketMapper refundRequestTicketMapper
     ) {
@@ -134,57 +143,45 @@ public class AdminService {
         this.scheduleAreaInventoryMapper = scheduleAreaInventoryMapper;
         this.venueManagementService = venueManagementService;
         this.seatService = seatService;
+        this.orderService = orderService;
         this.refundRequestMapper = refundRequestMapper;
         this.refundRequestTicketMapper = refundRequestTicketMapper;
     }
 
     public AdminDashboardResponse dashboard() {
         ensureAdminRole();
-        List<TicketOrder> paidOrders = ticketOrderMapper.selectList(new LambdaQueryWrapper<TicketOrder>()
-                .eq(TicketOrder::getStatus, "PAID"));
-        Set<String> paidOrderIds = paidOrders.stream()
-                .map(TicketOrder::getId)
-                .collect(Collectors.toSet());
-        List<TicketItem> tickets = ticketItemMapper.selectList(new LambdaQueryWrapper<>());
-        List<TicketItem> validTickets = tickets.stream()
-                .filter(ticket -> paidOrderIds.contains(ticket.getOrderId()))
-                .filter(ticket -> "UNUSED".equals(ticket.getStatus())
-                        || "CHECKED_IN".equals(ticket.getStatus())
-                        || "PENDING_REFUND".equals(ticket.getStatus()))
-                .toList();
-
-        BigDecimal totalRevenue = paidOrders.stream()
-                .map(TicketOrder::getTotalAmount)
-                .map(this::moneyOrZero)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        long checkedIn = validTickets.stream()
-                .filter(ticket -> "CHECKED_IN".equals(ticket.getStatus()))
-                .count();
-        long unused = validTickets.stream()
-                .filter(ticket -> "UNUSED".equals(ticket.getStatus()))
-                .count();
-        long voided = tickets.stream()
-                .filter(ticket -> "VOID".equals(ticket.getStatus()))
-                .count();
-        BigDecimal avgAttendance = validTickets.isEmpty()
-                ? BigDecimal.ZERO
-                : BigDecimal.valueOf(checkedIn)
-                .multiply(BigDecimal.valueOf(100))
-                .divide(BigDecimal.valueOf(validTickets.size()), 1, RoundingMode.HALF_UP);
+        AdminBoxOfficeResponse allBoxOffice = boxOffice("ALL", null, null, null, null);
+        AdminBoxOfficeResponse last7DaysBoxOffice = boxOffice("LAST_7_DAYS", null, null, null, null);
+        AdminBoxOfficeResponse.Summary financeSummary = allBoxOffice.globalSummary();
         long activeShows = showMapper.selectCount(new LambdaQueryWrapper<ShowEntity>()
                 .eq(ShowEntity::getStatus, "PUBLISHED"));
-
-        Map<String, TicketOrder> paidOrderById = paidOrders.stream()
-                .collect(Collectors.toMap(TicketOrder::getId, Function.identity()));
         return new AdminDashboardResponse(
-                totalRevenue,
-                validTickets.size(),
+                financeSummary.netRevenue(),
+                financeSummary.validTickets(),
                 activeShows,
-                avgAttendance,
-                buildSalesTrend(paidOrders, validTickets, paidOrderById),
-                buildTopShows(paidOrders, validTickets),
-                new AdminDashboardResponse.CheckInSummary(checkedIn, unused, voided),
-                boxOffice("LAST_7_DAYS", null, null, null, null).summary()
+                financeSummary.attendanceRate(),
+                last7DaysBoxOffice.trends().stream()
+                        .map(item -> new AdminDashboardResponse.SalesTrendItem(
+                                item.date(),
+                                item.netRevenue(),
+                                item.validTickets()
+                        ))
+                        .toList(),
+                allBoxOffice.shows().stream()
+                        .limit(5)
+                        .map(item -> new AdminDashboardResponse.TopShowItem(
+                                item.showId(),
+                                item.showTitle(),
+                                item.validTickets(),
+                                item.netRevenue()
+                        ))
+                        .toList(),
+                new AdminDashboardResponse.CheckInSummary(
+                        financeSummary.checkedInTickets(),
+                        Math.max(0, financeSummary.validTickets() - financeSummary.checkedInTickets()),
+                        financeSummary.refundedTickets()
+                ),
+                financeSummary
         );
     }
 
@@ -632,6 +629,29 @@ public class AdminService {
     }
 
     @Transactional
+    public AdminOfflineSaleResponse createOfflineSale(AdminOfflineSaleRequest request) {
+        UserAccount cashier = currentAdminUser();
+        ShowSchedule schedule = getSchedule(request.scheduleId());
+        ensureOfflineSaleSchedule(schedule);
+        UserAccount buyer = resolveOfflineSaleBuyer(request);
+        String holderDisplayName = resolveOfflineSaleHolderName(request, buyer);
+        String ticketMode = StringUtils.hasText(schedule.getTicketMode())
+                ? normalizeTicketMode(schedule.getTicketMode())
+                : "SEATED";
+        OrderService.CounterSaleResult result = orderService.createPaidCounterSale(
+                schedule,
+                ticketMode,
+                buyer.getId(),
+                holderDisplayName,
+                cashier.getId(),
+                request.seatIds(),
+                request.areaInventoryId(),
+                request.quantity()
+        );
+        return toOfflineSaleResponse(result.order(), result.tickets(), result.seats(), result.inventory(), result.area());
+    }
+
+    @Transactional
     public AdminOrderResponse refundOrder(String orderId) {
         UserAccount reviewer = currentAdminUser();
         TicketOrder order = getOrder(orderId);
@@ -643,13 +663,23 @@ public class AdminService {
         }
 
         List<TicketItem> tickets = listTickets(orderId);
-        boolean hasCheckedInTicket = tickets.stream().anyMatch(ticket -> "CHECKED_IN".equals(ticket.getStatus()));
+        if (findPendingRefundRequest(orderId) != null
+                || tickets.stream().anyMatch(ticket -> "PENDING_REFUND".equals(ticket.getStatus()))) {
+            throw new BusinessException(ErrorCode.CONFLICT, "该订单已有待审核退票申请，请先完成审核");
+        }
+        List<TicketItem> refundableTickets = tickets.stream()
+                .filter(ticket -> !"VOID".equals(ticket.getStatus()))
+                .toList();
+        if (refundableTickets.isEmpty()) {
+            throw new BusinessException(ErrorCode.CONFLICT, "该订单没有可退款票据");
+        }
+        boolean hasCheckedInTicket = refundableTickets.stream().anyMatch(ticket -> "CHECKED_IN".equals(ticket.getStatus()));
         if (hasCheckedInTicket) {
             throw new BusinessException(ErrorCode.CONFLICT, "已核销订单不可退款");
         }
 
-        createRefundRequest(order, "APPROVED", "ADMIN_DIRECT", "ORDER", null, null, reviewer, order.getUserId(), tickets);
-        finalizeRefund(order, tickets, "REFUNDED");
+        createRefundRequest(order, "APPROVED", "ADMIN_DIRECT", "ORDER", null, null, reviewer, order.getUserId(), refundableTickets);
+        finalizeRefund(order, refundableTickets, "REFUNDED");
         return toOrderResponse(getOrder(orderId));
     }
 
@@ -665,6 +695,9 @@ public class AdminService {
             throw new BusinessException(ErrorCode.CONFLICT, "未找到待审核退票申请");
         }
         List<TicketItem> tickets = ticketsForRefundRequest(refundRequest, order);
+        if (tickets.isEmpty()) {
+            throw new BusinessException(ErrorCode.CONFLICT, "退票申请没有可处理票据");
+        }
         if (tickets.stream().anyMatch(ticket -> "CHECKED_IN".equals(ticket.getStatus()))) {
             throw new BusinessException(ErrorCode.CONFLICT, "已核销订单不可退款");
         }
@@ -681,8 +714,9 @@ public class AdminService {
         if (refundRequest == null) {
             throw new BusinessException(ErrorCode.CONFLICT, "未找到待审核退票申请");
         }
+        List<TicketItem> tickets = ticketsForRefundRequest(refundRequest, order);
         reviewRefundRequest(refundRequest, "REJECTED", request, reviewer);
-        restoreRejectedRefundTickets(order, ticketsForRefundRequest(refundRequest, order));
+        restoreRejectedRefundTickets(order, tickets);
         dashboardRefreshPublisher.publish("ORDER_REFUND_REJECTED", orderId);
         return toOrderResponse(getOrder(orderId));
     }
@@ -706,6 +740,137 @@ public class AdminService {
         }
         dashboardRefreshPublisher.publish("ORDER_FORCE_CHECKED_IN", orderId);
         return toOrderResponse(getOrder(orderId));
+    }
+
+    private void ensureOfflineSaleSchedule(ShowSchedule schedule) {
+        if (!"ON_SALE".equals(schedule.getStatus())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "该场次暂不可线下售票");
+        }
+        if (StringUtils.hasText(schedule.getPublishStatus()) && !"PUBLISHED".equals(schedule.getPublishStatus())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "该场次暂未发布");
+        }
+        ShowEntity show = showMapper.selectById(schedule.getShowId());
+        if (show != null && isConcertCategory(show.getCategory())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "演唱会不支持线下售票");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        if (schedule.getSaleStartTime() != null && now.isBefore(schedule.getSaleStartTime())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "该场次尚未开售");
+        }
+        if (schedule.getSaleEndTime() != null && now.isAfter(schedule.getSaleEndTime())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "该场次已停止售票");
+        }
+        if (schedule.getEndTime() != null && now.isAfter(schedule.getEndTime())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "该场次已结束，无法线下售票");
+        }
+    }
+
+    private boolean isConcertCategory(String category) {
+        if (!StringUtils.hasText(category)) {
+            return false;
+        }
+        String normalized = category.trim().toLowerCase(Locale.ROOT);
+        return "concert".equals(normalized) || normalized.contains("演唱会");
+    }
+
+    private UserAccount resolveOfflineSaleBuyer(AdminOfflineSaleRequest request) {
+        if (StringUtils.hasText(request.buyerUsername())) {
+            UserAccount user = userAccountMapper.selectOne(new LambdaQueryWrapper<UserAccount>()
+                    .eq(UserAccount::getUsername, request.buyerUsername().trim())
+                    .last("limit 1"));
+            if (user == null || !"ACTIVE".equals(user.getStatus()) || !"user".equals(user.getRole())) {
+                throw new BusinessException(ErrorCode.NOT_FOUND, "购票用户不存在或不可用");
+            }
+            return user;
+        }
+        return ensureOfflineGuestUser();
+    }
+
+    private UserAccount ensureOfflineGuestUser() {
+        UserAccount existing = userAccountMapper.selectById(OFFLINE_GUEST_USER_ID);
+        if (existing != null) {
+            return existing;
+        }
+        existing = userAccountMapper.selectOne(new LambdaQueryWrapper<UserAccount>()
+                .eq(UserAccount::getUsername, OFFLINE_GUEST_USERNAME)
+                .last("limit 1"));
+        if (existing != null) {
+            return existing;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        UserAccount guest = new UserAccount();
+        guest.setId(OFFLINE_GUEST_USER_ID);
+        guest.setUsername(OFFLINE_GUEST_USERNAME);
+        guest.setPassword(UUID.randomUUID().toString().replace("-", "") + UUID.randomUUID().toString().replace("-", ""));
+        guest.setRole("user");
+        guest.setDisplayName(OFFLINE_GUEST_DISPLAY_NAME);
+        guest.setStatus("ACTIVE");
+        guest.setCreatedAt(now);
+        guest.setUpdatedAt(now);
+        try {
+            userAccountMapper.insert(guest);
+        } catch (DuplicateKeyException ignored) {
+            UserAccount created = userAccountMapper.selectById(OFFLINE_GUEST_USER_ID);
+            if (created == null) {
+                created = userAccountMapper.selectOne(new LambdaQueryWrapper<UserAccount>()
+                        .eq(UserAccount::getUsername, OFFLINE_GUEST_USERNAME)
+                        .last("limit 1"));
+            }
+            if (created != null) {
+                return created;
+            }
+            throw ignored;
+        }
+        return guest;
+    }
+
+    private String resolveOfflineSaleHolderName(AdminOfflineSaleRequest request, UserAccount buyer) {
+        if (OFFLINE_GUEST_USERNAME.equals(buyer.getUsername())) {
+            return StringUtils.hasText(request.buyerDisplayName())
+                    ? CredentialPolicy.normalizeDisplayName(request.buyerDisplayName())
+                    : OFFLINE_GUEST_DISPLAY_NAME;
+        }
+        return StringUtils.hasText(buyer.getDisplayName()) ? buyer.getDisplayName() : buyer.getUsername();
+    }
+
+    private AdminOfflineSaleResponse toOfflineSaleResponse(
+            TicketOrder order,
+            List<TicketItem> tickets,
+            List<ScheduleSeat> seats,
+            ScheduleAreaInventory inventory,
+            VenueArea area
+    ) {
+        Map<String, ScheduleSeat> seatsByCode = seats.stream()
+                .collect(Collectors.toMap(ScheduleSeat::getSeatCode, Function.identity(), (left, right) -> left, LinkedHashMap::new));
+        return new AdminOfflineSaleResponse(
+                toOrderResponse(order),
+                order.getTotalAmount(),
+                tickets.stream()
+                        .map(ticket -> {
+                            ScheduleSeat seat = StringUtils.hasText(ticket.getSeatId()) ? seatsByCode.get(ticket.getSeatId()) : null;
+                            BigDecimal price = seat != null ? seat.getPrice() : (inventory == null ? BigDecimal.ZERO : inventory.getPrice());
+                            String areaName = area == null ? null : area.getName();
+                            String areaType = area == null ? null : area.getAreaType();
+                            String seatLabel = seat == null
+                                    ? areaName
+                                    : "第%d排%d座".formatted(seat.getRowNo(), seat.getColNo());
+                            return new AdminOfflineSaleTicketResponse(
+                                    ticket.getId(),
+                                    ticket.getTicketCode(),
+                                    ticket.getSeatId(),
+                                    ticket.getAreaInventoryId(),
+                                    areaName,
+                                    areaType,
+                                    seatLabel,
+                                    price,
+                                    ticket.getStatus(),
+                                    ticket.getHolderUserId(),
+                                    ticket.getHolderDisplayName()
+                            );
+                        })
+                        .toList()
+        );
     }
 
     private void ensureAdminRole() {
@@ -851,6 +1016,9 @@ public class AdminService {
         List<RefundRequestTicket> rows = refundRequestTicketMapper.selectList(new LambdaQueryWrapper<RefundRequestTicket>()
                 .eq(RefundRequestTicket::getRefundRequestId, request.getId()));
         if (rows == null || rows.isEmpty()) {
+            if ("TICKET".equalsIgnoreCase(request.getScope())) {
+                throw new BusinessException(ErrorCode.CONFLICT, "票级退票申请缺少票据范围，无法审核");
+            }
             return listTickets(order.getId());
         }
         Set<String> ticketIds = rows.stream()
@@ -1597,10 +1765,13 @@ public class AdminService {
     }
 
     private BigDecimal approvedRefundAmount(String orderId) {
-        return refundRequestMapper.selectList(new LambdaQueryWrapper<RefundRequest>()
-                        .eq(RefundRequest::getOrderId, orderId)
-                        .eq(RefundRequest::getStatus, "APPROVED"))
-                .stream()
+        List<RefundRequest> approvedRequests = refundRequestMapper.selectList(new LambdaQueryWrapper<RefundRequest>()
+                .eq(RefundRequest::getOrderId, orderId)
+                .eq(RefundRequest::getStatus, "APPROVED"));
+        if (approvedRequests == null) {
+            return BigDecimal.ZERO;
+        }
+        return approvedRequests.stream()
                 .map(RefundRequest::getRefundAmount)
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -1906,11 +2077,17 @@ public class AdminService {
 
     private AdminOrderResponse toOrderResponse(TicketOrder order) {
         UserAccount user = userAccountMapper.selectById(order.getUserId());
+        UserAccount cashier = StringUtils.hasText(order.getCashierUserId())
+                ? userAccountMapper.selectById(order.getCashierUserId())
+                : null;
         ShowSchedule schedule = showScheduleMapper.selectById(order.getScheduleId());
         ShowEntity show = schedule == null ? null : showMapper.selectById(schedule.getShowId());
         List<TicketItem> tickets = listTickets(order.getId()).stream()
                 .sorted(Comparator.comparing(t -> t.getSeatId() == null ? "" : t.getSeatId()))
                 .toList();
+        int activeTicketCount = (int) tickets.stream()
+                .filter(ticket -> !"VOID".equals(ticket.getStatus()))
+                .count();
         int checkedInCount = (int) tickets.stream()
                 .filter(ticket -> "CHECKED_IN".equals(ticket.getStatus()))
                 .count();
@@ -1924,7 +2101,11 @@ public class AdminService {
                 schedule == null ? null : schedule.getStartTime(),
                 order.getTotalAmount(),
                 order.getStatus(),
-                tickets.size(),
+                StringUtils.hasText(order.getOrderChannel()) ? order.getOrderChannel() : "ONLINE",
+                StringUtils.hasText(order.getPaymentMethod()) ? order.getPaymentMethod() : "SIMULATED",
+                order.getCashierUserId(),
+                cashier == null ? null : cashier.getUsername(),
+                activeTicketCount,
                 checkedInCount,
                 order.getCreatedAt(),
                 order.getPaidAt(),

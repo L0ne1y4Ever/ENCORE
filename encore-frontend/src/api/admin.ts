@@ -473,11 +473,44 @@ export interface AdminOrder {
   startTime: string | null
   totalAmount: number | string
   status: AdminOrderStatus
+  orderChannel?: 'ONLINE' | 'OFFLINE' | string | null
+  paymentMethod?: 'SIMULATED' | 'COUNTER' | string | null
+  cashierUserId?: string | null
+  cashierUsername?: string | null
   ticketCount: number
   checkedInCount: number
   createdAt: string
   paidAt: string | null
   refundRequest?: RefundRequestSummary | null
+}
+
+export interface AdminOfflineSalePayload {
+  scheduleId: string
+  buyerUsername?: string | null
+  buyerDisplayName?: string | null
+  seatIds?: string[] | null
+  areaInventoryId?: string | null
+  quantity?: number | null
+}
+
+export interface AdminOfflineSaleTicket {
+  id: string
+  ticketCode: string
+  seatId?: string | null
+  areaInventoryId?: string | null
+  areaName?: string | null
+  areaType?: string | null
+  seatLabel?: string | null
+  price: number | string
+  status: string
+  holderUserId: string
+  holderDisplayName: string
+}
+
+export interface AdminOfflineSaleResponse {
+  order: AdminOrder
+  totalAmount: number | string
+  tickets: AdminOfflineSaleTicket[]
 }
 
 export interface ReviewRefundPayload {
@@ -591,6 +624,10 @@ export function updateAdminVenue(venueId: string, payload: AdminVenuePayload): P
   return requestData<AdminVenue>(apiClient.put(`/api/admin/venues/${venueId}`, payload))
 }
 
+export function deleteAdminVenue(venueId: string): Promise<void> {
+  return requestData<void>(apiClient.delete(`/api/admin/venues/${venueId}`))
+}
+
 export function getAdminHalls(venueId?: string): Promise<AdminHall[]> {
   return requestData<AdminHall[]>(apiClient.get('/api/admin/halls', { params: { venueId } }))
 }
@@ -601,6 +638,10 @@ export function createAdminHall(payload: AdminHallPayload): Promise<AdminHall> {
 
 export function updateAdminHall(hallId: string, payload: AdminHallPayload): Promise<AdminHall> {
   return requestData<AdminHall>(apiClient.put(`/api/admin/halls/${hallId}`, payload))
+}
+
+export function deleteAdminHall(hallId: string): Promise<void> {
+  return requestData<void>(apiClient.delete(`/api/admin/halls/${hallId}`))
 }
 
 export function getAdminLayouts(hallId?: string): Promise<AdminLayout[]> {
@@ -713,6 +754,10 @@ export function updateAdminScheduleAreaInventory(
 
 export function getAdminOrders(): Promise<AdminOrder[]> {
   return requestData<AdminOrder[]>(apiClient.get('/api/admin/orders'))
+}
+
+export function createAdminOfflineSale(payload: AdminOfflineSalePayload): Promise<AdminOfflineSaleResponse> {
+  return requestData<AdminOfflineSaleResponse>(apiClient.post('/api/admin/offline-sales', payload))
 }
 
 export function refundAdminOrder(orderId: string): Promise<AdminOrder> {

@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
+import AdminTableScroller from '../../components/AdminTableScroller.vue'
 import AdminSeatMapEditor from '../../components/AdminSeatMapEditor.vue'
 import {
   createAdminLayout,
@@ -334,50 +335,52 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
 
     <div class="layout-shell">
       <section class="panel layout-list">
-        <el-table :data="filteredLayouts" :empty-text="t('admin.empty')" v-loading="loading" row-key="id" @row-click="selectLayout">
-          <el-table-column prop="name" :label="t('admin.layoutName')" min-width="190" />
-          <el-table-column :label="t('admin.ticketMode')" width="105">
-            <template #default="{ row }">
-              <el-tag size="small" :type="modeTagType(row.ticketMode)">{{ t(`ticketMode.${row.ticketMode?.toLowerCase()}`) }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="version" :label="t('admin.version')" width="75" />
-          <el-table-column :label="t('admin.layoutStatus')" width="95">
-            <template #default="{ row }">
-              <el-tag size="small" :type="statusTagType(row.status)" effect="plain">{{ row.status }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column :label="t('admin.action')" width="190">
-            <template #default="{ row }">
-              <el-button
-                link
-                type="primary"
-                :disabled="operatingId === row.id"
-                @click.stop="openEdit(row)"
-              >
-                {{ t('admin.edit') }}
-              </el-button>
-              <el-button
-                v-if="row.status !== 'PUBLISHED'"
-                link
-                type="primary"
-                :loading="operatingId === row.id"
-                @click.stop="changeStatus(row, 'PUBLISHED')"
-              >
-                {{ t('admin.publish') }}
-              </el-button>
-              <el-button
-                v-if="row.status !== 'ARCHIVED'"
-                link
-                type="danger"
-                :loading="operatingId === row.id"
-                @click.stop="changeStatus(row, 'ARCHIVED')"
-              >
-                {{ t('admin.archive') }}
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <AdminTableScroller :label="t('admin.tableHorizontalScroll')">
+          <el-table :data="filteredLayouts" :empty-text="t('admin.empty')" v-loading="loading" row-key="id" @row-click="selectLayout">
+            <el-table-column prop="name" :label="t('admin.layoutName')" min-width="190" />
+            <el-table-column :label="t('admin.ticketMode')" width="105">
+              <template #default="{ row }">
+                <el-tag size="small" :type="modeTagType(row.ticketMode)">{{ t(`ticketMode.${row.ticketMode?.toLowerCase()}`) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="version" :label="t('admin.version')" width="75" />
+            <el-table-column :label="t('admin.layoutStatus')" width="95">
+              <template #default="{ row }">
+                <el-tag size="small" :type="statusTagType(row.status)" effect="plain">{{ row.status }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('admin.action')" width="190" fixed="right">
+              <template #default="{ row }">
+                <el-button
+                  link
+                  type="primary"
+                  :disabled="operatingId === row.id"
+                  @click.stop="openEdit(row)"
+                >
+                  {{ t('admin.edit') }}
+                </el-button>
+                <el-button
+                  v-if="row.status !== 'PUBLISHED'"
+                  link
+                  type="primary"
+                  :loading="operatingId === row.id"
+                  @click.stop="changeStatus(row, 'PUBLISHED')"
+                >
+                  {{ t('admin.publish') }}
+                </el-button>
+                <el-button
+                  v-if="row.status !== 'ARCHIVED'"
+                  link
+                  type="danger"
+                  :loading="operatingId === row.id"
+                  @click.stop="changeStatus(row, 'ARCHIVED')"
+                >
+                  {{ t('admin.archive') }}
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </AdminTableScroller>
       </section>
 
       <section class="panel detail-panel" v-loading="detailLoading">
@@ -444,35 +447,37 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
                 <template #default="{ row }">{{ money(row.basePrice) }}</template>
               </el-table-column>
             </el-table>
-            <el-table v-if="seats.length > 0" :data="seats" :empty-text="t('admin.empty')" size="small" max-height="320" class="seat-detail-table">
-              <el-table-column prop="seatCode" :label="t('admin.seatCode')" min-width="130" />
-              <el-table-column prop="rowNo" :label="t('admin.rowNo')" width="72" />
-              <el-table-column prop="colNo" :label="t('admin.colNo')" width="72" />
-              <el-table-column prop="section" :label="t('ticket.section')" width="90" />
-              <el-table-column prop="status" :label="t('common.status')" width="120">
-                <template #default="{ row }">
-                  <el-tag size="small" :type="row.status === 'DISABLED' ? 'danger' : 'success'" effect="plain">
-                    {{ row.status }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column :label="t('admin.price')" width="110">
-                <template #default="{ row }">{{ money(row.price) }}</template>
-              </el-table-column>
-              <el-table-column :label="t('admin.action')" width="120">
-                <template #default="{ row }">
-                  <el-button
-                    link
-                    type="primary"
-                    :disabled="!canToggleSeat(row) || operatingSeat === row.id"
-                    :loading="operatingSeat === row.id"
-                    @click="toggleSeatStatus(row)"
-                  >
-                    {{ row.status === 'AVAILABLE' ? t('admin.disableSeat') : t('admin.restoreSeat') }}
-                  </el-button>
-                </template>
-              </el-table-column>
-            </el-table>
+            <AdminTableScroller v-if="seats.length > 0" :label="t('admin.tableHorizontalScroll')">
+              <el-table :data="seats" :empty-text="t('admin.empty')" size="small" max-height="320" class="seat-detail-table">
+                <el-table-column prop="seatCode" :label="t('admin.seatCode')" min-width="130" />
+                <el-table-column prop="rowNo" :label="t('admin.rowNo')" width="72" />
+                <el-table-column prop="colNo" :label="t('admin.colNo')" width="72" />
+                <el-table-column prop="section" :label="t('ticket.section')" width="90" />
+                <el-table-column prop="status" :label="t('common.status')" width="120">
+                  <template #default="{ row }">
+                    <el-tag size="small" :type="row.status === 'DISABLED' ? 'danger' : 'success'" effect="plain">
+                      {{ row.status }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column :label="t('admin.price')" width="110">
+                  <template #default="{ row }">{{ money(row.price) }}</template>
+                </el-table-column>
+                <el-table-column :label="t('admin.action')" width="120" fixed="right">
+                  <template #default="{ row }">
+                    <el-button
+                      link
+                      type="primary"
+                      :disabled="!canToggleSeat(row) || operatingSeat === row.id"
+                      :loading="operatingSeat === row.id"
+                      @click="toggleSeatStatus(row)"
+                    >
+                      {{ row.status === 'AVAILABLE' ? t('admin.disableSeat') : t('admin.restoreSeat') }}
+                    </el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </AdminTableScroller>
           </div>
         </template>
         <el-empty v-else :description="t('admin.empty')" />

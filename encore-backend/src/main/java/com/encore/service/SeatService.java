@@ -4,16 +4,20 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.encore.common.ErrorCode;
 import com.encore.dto.AreaStatusChange;
+import com.encore.dto.SeatLockResponse;
+import com.encore.dto.SeatLocksResponse;
 import com.encore.dto.SeatResponse;
 import com.encore.dto.ScheduleAreaResponse;
 import com.encore.entity.ScheduleSeat;
-import com.encore.entity.ShowSchedule;
 import com.encore.entity.ScheduleAreaInventory;
+import com.encore.entity.ShowSchedule;
+import com.encore.entity.TicketItem;
 import com.encore.entity.VenueArea;
 import com.encore.exception.BusinessException;
 import com.encore.mapper.ScheduleSeatMapper;
-import com.encore.mapper.ShowScheduleMapper;
 import com.encore.mapper.ScheduleAreaInventoryMapper;
+import com.encore.mapper.ShowScheduleMapper;
+import com.encore.mapper.TicketItemMapper;
 import com.encore.mapper.VenueAreaMapper;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -22,8 +26,11 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 @Service
 public class SeatService {
@@ -37,6 +44,7 @@ public class SeatService {
     private final SeatStatusPublisher seatStatusPublisher;
     private final ScheduleAreaInventoryMapper scheduleAreaInventoryMapper;
     private final VenueAreaMapper venueAreaMapper;
+    private final TicketItemMapper ticketItemMapper;
 
     public SeatService(
             ScheduleSeatMapper scheduleSeatMapper,
@@ -44,7 +52,8 @@ public class SeatService {
             StringRedisTemplate redisTemplate,
             SeatStatusPublisher seatStatusPublisher,
             ScheduleAreaInventoryMapper scheduleAreaInventoryMapper,
-            VenueAreaMapper venueAreaMapper
+            VenueAreaMapper venueAreaMapper,
+            TicketItemMapper ticketItemMapper
     ) {
         this.scheduleSeatMapper = scheduleSeatMapper;
         this.showScheduleMapper = showScheduleMapper;
@@ -52,6 +61,7 @@ public class SeatService {
         this.seatStatusPublisher = seatStatusPublisher;
         this.scheduleAreaInventoryMapper = scheduleAreaInventoryMapper;
         this.venueAreaMapper = venueAreaMapper;
+        this.ticketItemMapper = ticketItemMapper;
     }
 
     public List<SeatResponse> listSeats(String scheduleId) {
@@ -65,11 +75,12 @@ public class SeatService {
         if (areaId != null && !areaId.isBlank()) {
             wrapper.eq(ScheduleSeat::getAreaId, areaId);
         }
-        return scheduleSeatMapper.selectList(wrapper
+        List<ScheduleSeat> seats = scheduleSeatMapper.selectList(wrapper
                         .orderByAsc(ScheduleSeat::getRowNo)
-                        .orderByAsc(ScheduleSeat::getColNo))
-                .stream()
-                .map(this::toSeatResponse)
+                        .orderByAsc(ScheduleSeat::getColNo));
+        Set<String> soldSeatCodes = activeSoldSeatCodes(scheduleId);
+        return seats.stream()
+                .map(seat -> toSeatResponse(seat, soldSeatCodes))
                 .toList();
     }
 
@@ -116,16 +127,49 @@ public class SeatService {
                 .toList();
     }
 
+    public SeatLocksResponse listMySeatLocks(String scheduleId) {
+        ensureScheduleExists(scheduleId);
+        String userId = StpUtil.getLoginIdAsString();
+        return new SeatLocksResponse(findOwnedPlainSeatLocks(scheduleId, userId));
+    }
+
+    public SeatLocksResponse unlockMySeatLocks(String scheduleId, List<String> seatIds) {
+        ensureScheduleExists(scheduleId);
+        String userId = StpUtil.getLoginIdAsString();
+        List<String> requestedSeatIds = seatIds == null || seatIds.stream().allMatch(seatId -> seatId == null || seatId.isBlank())
+                ? trackedSeatIds(scheduleId)
+                : normalizeSeatIds(seatIds);
+        List<String> releasedSeatIds = new ArrayList<>();
+
+        for (String seatId : requestedSeatIds) {
+            String key = lockKey(scheduleId, seatId);
+            if (!userId.equals(redisTemplate.opsForValue().get(key))) {
+                continue;
+            }
+            redisTemplate.delete(key);
+            untrackSeatLock(scheduleId, seatId);
+            if (isSeatAvailable(scheduleId, seatId)) {
+                releasedSeatIds.add(seatId);
+            }
+        }
+
+        if (!releasedSeatIds.isEmpty()) {
+            seatStatusPublisher.publishSeatStatus(scheduleId, "USER_RELEASED", "AVAILABLE", releasedSeatIds);
+        }
+        return new SeatLocksResponse(findOwnedPlainSeatLocks(scheduleId, userId));
+    }
+
     private int[] seatedAreaCounts(String scheduleId, String areaId) {
         List<ScheduleSeat> seats = scheduleSeatMapper.selectList(new LambdaQueryWrapper<ScheduleSeat>()
                 .eq(ScheduleSeat::getScheduleId, scheduleId)
                 .eq(ScheduleSeat::getAreaId, areaId));
+        Set<String> soldSeatCodes = activeSoldSeatCodes(scheduleId);
         int total = seats.size();
         int sold = 0;
         int locked = 0;
         int available = 0;
         for (ScheduleSeat seat : seats) {
-            if ("SOLD".equals(seat.getStatus())) {
+            if ("SOLD".equals(seat.getStatus()) || soldSeatCodes.contains(seat.getSeatCode())) {
                 sold++;
             } else if ("AVAILABLE".equals(seat.getStatus())) {
                 if (Boolean.TRUE.equals(redisTemplate.hasKey(lockKey(scheduleId, seat.getSeatCode())))) {
@@ -207,7 +251,7 @@ public class SeatService {
     }
 
     public void ensureSeatAvailableForOrder(String scheduleId, ScheduleSeat seat) {
-        if (!"AVAILABLE".equals(seat.getStatus())) {
+        if (!"AVAILABLE".equals(seat.getStatus()) || activeSoldSeatCodes(scheduleId).contains(seat.getSeatCode())) {
             throw new BusinessException(ErrorCode.CONFLICT, "座位不可售，请重新选择");
         }
     }
@@ -226,6 +270,10 @@ public class SeatService {
 
     public boolean isLockedByOrder(String scheduleId, String seatId, String orderId) {
         return orderId.equals(redisTemplate.opsForValue().get(lockKey(scheduleId, seatId)));
+    }
+
+    public boolean hasSeatLock(String scheduleId, String seatId) {
+        return Boolean.TRUE.equals(redisTemplate.hasKey(lockKey(scheduleId, seatId)));
     }
 
     public void releaseLocks(String scheduleId, List<String> seatIds) {
@@ -347,16 +395,43 @@ public class SeatService {
         return "%s:%s".formatted(SEAT_LOCK_INDEX_PREFIX, scheduleId);
     }
 
+    private List<String> trackedSeatIds(String scheduleId) {
+        Set<String> seatIds = redisTemplate.opsForSet().members(seatLockIndexKey(scheduleId));
+        if (seatIds == null || seatIds.isEmpty()) {
+            return List.of();
+        }
+        return seatIds.stream()
+                .filter(seatId -> seatId != null && !seatId.isBlank())
+                .sorted()
+                .toList();
+    }
+
+    private List<SeatLockResponse> findOwnedPlainSeatLocks(String scheduleId, String owner) {
+        LocalDateTime now = LocalDateTime.now();
+        return trackedSeatIds(scheduleId).stream()
+                .filter(seatId -> owner.equals(redisTemplate.opsForValue().get(lockKey(scheduleId, seatId))))
+                .filter(seatId -> isSeatAvailable(scheduleId, seatId))
+                .map(seatId -> {
+                    Long ttlSeconds = redisTemplate.getExpire(lockKey(scheduleId, seatId), TimeUnit.SECONDS);
+                    LocalDateTime expiresAt = ttlSeconds != null && ttlSeconds > 0
+                            ? now.plusSeconds(ttlSeconds)
+                            : null;
+                    return new SeatLockResponse(seatId, expiresAt);
+                })
+                .sorted(Comparator.comparing(SeatLockResponse::seatId))
+                .toList();
+    }
+
     private boolean isSeatAvailable(String scheduleId, String seatId) {
         ScheduleSeat seat = scheduleSeatMapper.selectOne(new LambdaQueryWrapper<ScheduleSeat>()
                 .eq(ScheduleSeat::getScheduleId, scheduleId)
                 .eq(ScheduleSeat::getSeatCode, seatId)
                 .last("limit 1"));
-        return seat != null && "AVAILABLE".equals(seat.getStatus());
+        return seat != null && "AVAILABLE".equals(seat.getStatus()) && !activeSoldSeatCodes(scheduleId).contains(seatId);
     }
 
     private void ensureSeatAvailableForLock(String scheduleId, ScheduleSeat seat, String owner) {
-        if (!"AVAILABLE".equals(seat.getStatus())) {
+        if (!"AVAILABLE".equals(seat.getStatus()) || activeSoldSeatCodes(scheduleId).contains(seat.getSeatCode())) {
             throw new BusinessException(ErrorCode.CONFLICT, "座位不可售，请重新选择");
         }
         String currentOwner = redisTemplate.opsForValue().get(lockKey(scheduleId, seat.getSeatCode()));
@@ -365,9 +440,11 @@ public class SeatService {
         }
     }
 
-    private SeatResponse toSeatResponse(ScheduleSeat seat) {
+    private SeatResponse toSeatResponse(ScheduleSeat seat, Set<String> soldSeatCodes) {
         String runtimeStatus = seat.getStatus();
-        if ("AVAILABLE".equals(runtimeStatus) && Boolean.TRUE.equals(redisTemplate.hasKey(lockKey(seat.getScheduleId(), seat.getSeatCode())))) {
+        if (!"DISABLED".equals(runtimeStatus) && soldSeatCodes.contains(seat.getSeatCode())) {
+            runtimeStatus = "SOLD";
+        } else if ("AVAILABLE".equals(runtimeStatus) && Boolean.TRUE.equals(redisTemplate.hasKey(lockKey(seat.getScheduleId(), seat.getSeatCode())))) {
             runtimeStatus = "LOCKED";
         }
         return new SeatResponse(
@@ -378,6 +455,20 @@ public class SeatService {
                 runtimeStatus,
                 seat.getPrice()
         );
+    }
+
+    private Set<String> activeSoldSeatCodes(String scheduleId) {
+        List<TicketItem> tickets = ticketItemMapper.selectList(new LambdaQueryWrapper<TicketItem>()
+                .eq(TicketItem::getScheduleId, scheduleId)
+                .isNotNull(TicketItem::getSeatId)
+                .in(TicketItem::getStatus, List.of("UNUSED", "CHECKED_IN", "PENDING_REFUND")));
+        if (tickets == null || tickets.isEmpty()) {
+            return Set.of();
+        }
+        return tickets.stream()
+                .map(TicketItem::getSeatId)
+                .filter(seatId -> seatId != null && !seatId.isBlank())
+                .collect(Collectors.toSet());
     }
 
     private List<String> normalizeSeatIds(List<String> seatIds) {

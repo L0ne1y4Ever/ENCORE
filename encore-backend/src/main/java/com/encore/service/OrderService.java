@@ -58,6 +58,15 @@ public class OrderService {
     public record GroupSeatHolder(String seatId, String userId, String displayName) {
     }
 
+    public record CounterSaleResult(
+            TicketOrder order,
+            List<TicketItem> tickets,
+            List<ScheduleSeat> seats,
+            ScheduleAreaInventory inventory,
+            VenueArea area
+    ) {
+    }
+
     private record RefundScope(String scope, List<TicketItem> tickets, boolean wholeOrder) {
     }
 
@@ -146,6 +155,8 @@ public class OrderService {
             order.setScheduleId(request.scheduleId());
             order.setTotalAmount(totalAmount);
             order.setStatus("PENDING_PAYMENT");
+            order.setOrderChannel("ONLINE");
+            order.setPaymentMethod("SIMULATED");
             order.setCreatedAt(now);
             order.setExpiresAt(expiresAt);
             ticketOrderMapper.insert(order);
@@ -199,6 +210,8 @@ public class OrderService {
         order.setScheduleId(request.scheduleId());
         order.setTotalAmount(totalAmount);
         order.setStatus("PENDING_PAYMENT");
+        order.setOrderChannel("ONLINE");
+        order.setPaymentMethod("SIMULATED");
         order.setCreatedAt(now);
         order.setExpiresAt(expiresAt);
         ticketOrderMapper.insert(order);
@@ -238,6 +251,8 @@ public class OrderService {
         order.setScheduleId(scheduleId);
         order.setTotalAmount(totalAmount);
         order.setStatus("PENDING_PAYMENT");
+        order.setOrderChannel("ONLINE");
+        order.setPaymentMethod("SIMULATED");
         order.setCreatedAt(now);
         order.setExpiresAt(expiresAt);
         ticketOrderMapper.insert(order);
@@ -253,6 +268,146 @@ public class OrderService {
         seatService.transferLocksOwner(scheduleId, seatIds, lockOwner, orderId, PAYMENT_TTL);
         revertGroupLocksOnRollback(scheduleId, seatIds, orderId, lockOwner);
         return orderId;
+    }
+
+    @Transactional
+    public CounterSaleResult createPaidCounterSale(
+            ShowSchedule schedule,
+            String ticketMode,
+            String buyerUserId,
+            String holderDisplayName,
+            String cashierUserId,
+            List<String> seatIds,
+            String areaInventoryId,
+            Integer quantity
+    ) {
+        boolean hasSeats = seatIds != null && seatIds.stream().anyMatch(StringUtils::hasText);
+        boolean hasArea = StringUtils.hasText(areaInventoryId);
+        if (hasSeats == hasArea) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "线下售票请选择座位或区域票其中一种");
+        }
+        return hasArea
+                ? createPaidCounterAreaSale(schedule, ticketMode, buyerUserId, holderDisplayName, cashierUserId, areaInventoryId, quantity)
+                : createPaidCounterSeatedSale(schedule, ticketMode, buyerUserId, holderDisplayName, cashierUserId, seatIds);
+    }
+
+    private CounterSaleResult createPaidCounterSeatedSale(
+            ShowSchedule schedule,
+            String ticketMode,
+            String buyerUserId,
+            String holderDisplayName,
+            String cashierUserId,
+            List<String> requestedSeatIds
+    ) {
+        if (!Set.of("SEATED", "MIXED").contains(ticketMode)) {
+            throw new BusinessException(ErrorCode.CONFLICT, "该场次不支持按座位线下售票");
+        }
+        List<String> seatIds = normalizeCounterSeatIds(requestedSeatIds);
+        String orderId = generateOrderId();
+        boolean locked = false;
+        try {
+            seatService.lockSeatsForOwner(schedule.getId(), seatIds, orderId, SeatService.SEAT_LOCK_TTL, true);
+            locked = true;
+
+            List<ScheduleSeat> seats = scheduleSeatMapper.selectList(new LambdaQueryWrapper<ScheduleSeat>()
+                    .eq(ScheduleSeat::getScheduleId, schedule.getId())
+                    .in(ScheduleSeat::getSeatCode, seatIds));
+            if (seats.size() != seatIds.size()) {
+                throw new BusinessException(ErrorCode.NOT_FOUND, "座位不存在");
+            }
+            Map<String, ScheduleSeat> seatsByCode = seats.stream()
+                    .collect(Collectors.toMap(ScheduleSeat::getSeatCode, seat -> seat, (left, right) -> left, LinkedHashMap::new));
+            List<ScheduleSeat> orderedSeats = seatIds.stream()
+                    .map(seatsByCode::get)
+                    .toList();
+            for (ScheduleSeat seat : orderedSeats) {
+                if (seat == null) {
+                    throw new BusinessException(ErrorCode.NOT_FOUND, "座位不存在");
+                }
+                seatService.ensureSeatAvailableForOrder(schedule.getId(), seat);
+                if (!seatService.isLockedByOrder(schedule.getId(), seat.getSeatCode(), orderId)) {
+                    throw new BusinessException(ErrorCode.CONFLICT, "座位锁定失败，请重新选择");
+                }
+            }
+
+            BigDecimal totalAmount = orderedSeats.stream()
+                    .map(ScheduleSeat::getPrice)
+                    .filter(price -> price != null)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            LocalDateTime now = LocalDateTime.now();
+            TicketOrder order = createPaidCounterOrder(orderId, schedule.getId(), buyerUserId, totalAmount, cashierUserId, now);
+            ticketOrderMapper.insert(order);
+
+            int soldCount = scheduleSeatMapper.sellSeats(schedule.getId(), seatIds);
+            if (soldCount != seatIds.size()) {
+                throw new BusinessException(ErrorCode.CONFLICT, "座位状态已变化，无法线下出票");
+            }
+
+            List<TicketItem> tickets = new ArrayList<>();
+            for (ScheduleSeat seat : orderedSeats) {
+                seat.setStatus("SOLD");
+                TicketItem ticket = createIssuedTicket(orderId, schedule.getId(), seat.getSeatCode(), null, buyerUserId, holderDisplayName, now);
+                ticketItemMapper.insert(ticket);
+                tickets.add(ticket);
+            }
+
+            seatService.releaseLocks(schedule.getId(), seatIds);
+            seatStatusPublisher.publishSeatStatus(schedule.getId(), "OFFLINE_SOLD", "SOLD", seatIds);
+            dashboardRefreshPublisher.publish("OFFLINE_SALE", orderId);
+            return new CounterSaleResult(order, tickets, orderedSeats, null, null);
+        } catch (RuntimeException exception) {
+            if (locked) {
+                seatService.releaseLocksOwnedBy(schedule.getId(), seatIds, orderId, false);
+                publishCurrentSeatStatuses(schedule.getId(), seatIds, "OFFLINE_SALE_RELEASED");
+            }
+            throw exception;
+        }
+    }
+
+    private CounterSaleResult createPaidCounterAreaSale(
+            ShowSchedule schedule,
+            String ticketMode,
+            String buyerUserId,
+            String holderDisplayName,
+            String cashierUserId,
+            String requestedAreaInventoryId,
+            Integer requestedQuantity
+    ) {
+        if (!Set.of("ZONED", "MIXED").contains(ticketMode)) {
+            throw new BusinessException(ErrorCode.CONFLICT, "该场次不支持区域票线下售票");
+        }
+        int quantity = normalizeCounterAreaQuantity(requestedQuantity);
+        String areaInventoryId = requestedAreaInventoryId.trim();
+        ScheduleAreaInventory inventory = scheduleAreaInventoryMapper.selectById(areaInventoryId);
+        if (inventory == null || !schedule.getId().equals(inventory.getScheduleId())) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "区域库存不存在");
+        }
+        VenueArea area = venueAreaMapper.selectById(inventory.getAreaId());
+        if (area != null && Boolean.TRUE.equals(area.getIsSeated())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "座位区请按座位出票");
+        }
+
+        int updated = scheduleAreaInventoryMapper.sellAvailableInventory(areaInventoryId, quantity);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.CONFLICT, "区域余票不足，无法线下出票");
+        }
+
+        BigDecimal totalAmount = moneyOrZero(inventory.getPrice()).multiply(BigDecimal.valueOf(quantity));
+        LocalDateTime now = LocalDateTime.now();
+        String orderId = generateOrderId();
+        TicketOrder order = createPaidCounterOrder(orderId, schedule.getId(), buyerUserId, totalAmount, cashierUserId, now);
+        ticketOrderMapper.insert(order);
+
+        List<TicketItem> tickets = new ArrayList<>();
+        for (int index = 0; index < quantity; index++) {
+            TicketItem ticket = createIssuedTicket(orderId, schedule.getId(), null, areaInventoryId, buyerUserId, holderDisplayName, now);
+            ticketItemMapper.insert(ticket);
+            tickets.add(ticket);
+        }
+        seatService.publishAreaInventory(schedule.getId(), "OFFLINE_AREA_SOLD", areaInventoryId);
+        dashboardRefreshPublisher.publish("OFFLINE_SALE", orderId);
+        ScheduleAreaInventory latestInventory = scheduleAreaInventoryMapper.selectById(areaInventoryId);
+        return new CounterSaleResult(order, tickets, List.of(), latestInventory == null ? inventory : latestInventory, area);
     }
 
     // Redis 锁不受数据库事务管控：下单事务回滚后，指向该订单的座位锁会变成孤儿锁。
@@ -415,17 +570,13 @@ public class OrderService {
                 }
             }
 
-            for (TicketItem ticket : tickets) {
-                ScheduleSeat seat = scheduleSeatMapper.selectOne(new LambdaQueryWrapper<ScheduleSeat>()
-                        .eq(ScheduleSeat::getScheduleId, order.getScheduleId())
-                        .eq(ScheduleSeat::getSeatCode, ticket.getSeatId())
-                        .last("limit 1"));
-                if (seat == null || !"AVAILABLE".equals(seat.getStatus())) {
-                    throw new BusinessException(ErrorCode.CONFLICT, "座位状态已变化，无法支付");
-                }
-                seat.setStatus("SOLD");
-                scheduleSeatMapper.updateById(seat);
+            List<String> seatIds = tickets.stream().map(TicketItem::getSeatId).toList();
+            int soldCount = scheduleSeatMapper.sellSeats(order.getScheduleId(), seatIds);
+            if (soldCount != seatIds.size()) {
+                throw new BusinessException(ErrorCode.CONFLICT, "座位状态已变化，无法支付");
+            }
 
+            for (TicketItem ticket : tickets) {
                 ticket.setStatus("UNUSED");
                 ticketItemMapper.updateById(ticket);
             }
@@ -493,8 +644,8 @@ public class OrderService {
         LocalDateTime refundDeadline = schedule.getStartTime().minus(SELF_SERVICE_REFUND_DEADLINE);
         List<TicketItem> tickets = listTickets(orderId);
         RefundScope refundScope = resolveRefundScope(order, tickets, request, currentUserId);
-        if (hasPendingRefundForTickets(order.getId(), refundScope.tickets())) {
-            return toOrderResponse(getOrder(orderId));
+        if (hasPendingRefundRequest(order.getId()) || hasPendingRefundForTickets(order.getId(), refundScope.tickets())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "该订单已有待审核退票申请，请等待审核完成");
         }
         String reason = cleanRefundText(request == null ? null : request.reason());
         if (now.isBefore(refundDeadline)) {
@@ -642,7 +793,7 @@ public class OrderService {
             throw new BusinessException(ErrorCode.CONFLICT, "已核销票据不可退票");
         }
         if (targetTickets.stream().anyMatch(ticket -> "PENDING_REFUND".equals(ticket.getStatus()))) {
-            return new RefundScope("TICKET", targetTickets, false);
+            throw new BusinessException(ErrorCode.CONFLICT, "票据正在退票审核中，请等待审核完成");
         }
         if (targetTickets.stream().anyMatch(ticket -> !"UNUSED".equals(ticket.getStatus()))) {
             throw new BusinessException(ErrorCode.CONFLICT, "仅未使用票据可申请退票");
@@ -655,6 +806,10 @@ public class OrderService {
             throw new BusinessException(ErrorCode.CONFLICT, "区域票暂不支持票级退票，请由订单发起人处理整单退票");
         }
         return new RefundScope(isTicketLevel ? "TICKET" : "ORDER", targetTickets, !isTicketLevel);
+    }
+
+    private boolean hasPendingRefundRequest(String orderId) {
+        return findPendingRefundRequest(orderId) != null;
     }
 
     private boolean hasPendingRefundForTickets(String orderId, List<TicketItem> tickets) {
@@ -892,6 +1047,82 @@ public class OrderService {
         return ticket;
     }
 
+    private TicketOrder createPaidCounterOrder(
+            String orderId,
+            String scheduleId,
+            String buyerUserId,
+            BigDecimal totalAmount,
+            String cashierUserId,
+            LocalDateTime now
+    ) {
+        TicketOrder order = new TicketOrder();
+        order.setId(orderId);
+        order.setUserId(buyerUserId);
+        order.setScheduleId(scheduleId);
+        order.setTotalAmount(totalAmount);
+        order.setStatus("PAID");
+        order.setOrderChannel("OFFLINE");
+        order.setPaymentMethod("COUNTER");
+        order.setCashierUserId(cashierUserId);
+        order.setCreatedAt(now);
+        order.setExpiresAt(now);
+        order.setPaidAt(now);
+        order.setUpdatedAt(now);
+        return order;
+    }
+
+    private TicketItem createIssuedTicket(
+            String orderId,
+            String scheduleId,
+            String seatId,
+            String areaInventoryId,
+            String holderUserId,
+            String holderDisplayName,
+            LocalDateTime now
+    ) {
+        TicketItem ticket = new TicketItem();
+        ticket.setId(generateTicketId());
+        ticket.setOrderId(orderId);
+        ticket.setScheduleId(scheduleId);
+        ticket.setSeatId(seatId);
+        ticket.setAreaInventoryId(areaInventoryId);
+        ticket.setTicketCode(generateTicketCode());
+        ticket.setStatus("UNUSED");
+        ticket.setHolderUserId(holderUserId);
+        ticket.setHolderDisplayName(holderDisplayName == null || holderDisplayName.isBlank() ? holderUserId : holderDisplayName);
+        ticket.setCreatedAt(now);
+        ticket.setUpdatedAt(now);
+        return ticket;
+    }
+
+    private void publishCurrentSeatStatuses(String scheduleId, List<String> seatIds, String reason) {
+        List<ScheduleSeat> seats = scheduleSeatMapper.selectList(new LambdaQueryWrapper<ScheduleSeat>()
+                .eq(ScheduleSeat::getScheduleId, scheduleId)
+                .in(ScheduleSeat::getSeatCode, seatIds));
+        Map<String, List<String>> seatIdsByStatus = new LinkedHashMap<>();
+        for (ScheduleSeat seat : seats == null ? List.<ScheduleSeat>of() : seats) {
+            String status = seat.getStatus();
+            if ("AVAILABLE".equals(status) && Boolean.TRUE.equals(seatService.hasSeatLock(scheduleId, seat.getSeatCode()))) {
+                status = "LOCKED";
+            }
+            seatIdsByStatus.computeIfAbsent(status, ignored -> new ArrayList<>()).add(seat.getSeatCode());
+        }
+        seatIdsByStatus.forEach((status, ids) -> seatStatusPublisher.publishSeatStatus(scheduleId, reason, status, ids));
+    }
+
+    private String generateOrderId() {
+        return "ord-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+    }
+
+    private String generateTicketId() {
+        return "tk-" + UUID.randomUUID().toString().replace("-", "").substring(0, 18);
+    }
+
+    private String generateTicketCode() {
+        return "T" + Long.toString(System.currentTimeMillis(), 36).toUpperCase()
+                + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase();
+    }
+
     private String findSamePendingOrder(String userId, String scheduleId, List<String> seatIds) {
         Set<String> requested = Set.copyOf(seatIds);
         List<TicketOrder> pendingOrders = ticketOrderMapper.selectList(new LambdaQueryWrapper<TicketOrder>()
@@ -1073,6 +1304,26 @@ public class OrderService {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "请选择 1 到 6 个座位");
         }
         return normalized;
+    }
+
+    private List<String> normalizeCounterSeatIds(List<String> seatIds) {
+        List<String> normalized = seatIds == null ? List.of() : seatIds.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .distinct()
+                .toList();
+        if (normalized.isEmpty() || normalized.size() > 6) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "线下座位票一次可出票 1 到 6 张");
+        }
+        return normalized;
+    }
+
+    private int normalizeCounterAreaQuantity(Integer quantity) {
+        int value = quantity == null ? 0 : quantity;
+        if (value < 1 || value > 4) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "线下区域票一次可出票 1 到 4 张");
+        }
+        return value;
     }
 
     private List<GroupSeatHolder> normalizeGroupSeatHolders(List<GroupSeatHolder> seatHolders) {

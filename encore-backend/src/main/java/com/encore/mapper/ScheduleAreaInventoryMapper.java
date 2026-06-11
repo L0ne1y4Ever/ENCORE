@@ -36,6 +36,12 @@ public interface ScheduleAreaInventoryMapper extends BaseMapper<ScheduleAreaInve
     int sellInventory(@Param("id") String id, @Param("quantity") int quantity);
 
     @Update("UPDATE schedule_area_inventory SET " +
+            "available_count = available_count - #{quantity}, " +
+            "sold_count = sold_count + #{quantity} " +
+            "WHERE id = #{id} AND status = 'AVAILABLE' AND available_count >= #{quantity}")
+    int sellAvailableInventory(@Param("id") String id, @Param("quantity") int quantity);
+
+    @Update("UPDATE schedule_area_inventory SET " +
             "locked_count = locked_count - #{quantity}, " +
             "available_count = available_count + #{quantity} " +
             "WHERE id = #{id} AND locked_count >= #{quantity}")

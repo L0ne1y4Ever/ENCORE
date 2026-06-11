@@ -16,6 +16,9 @@ public class TicketOrder {
     private String scheduleId;
     private BigDecimal totalAmount;
     private String status;
+    private String orderChannel;
+    private String paymentMethod;
+    private String cashierUserId;
     private LocalDateTime createdAt;
     private LocalDateTime expiresAt;
     private LocalDateTime paidAt;

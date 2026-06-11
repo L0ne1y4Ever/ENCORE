@@ -152,6 +152,18 @@ public class VenueManagementService {
         return toVenueResponse(venueMapper.selectById(id));
     }
 
+    @Transactional
+    public void deleteVenue(String id) {
+        ensureAdminRole();
+        getVenue(id);
+        Long hallCount = venueHallMapper.selectCount(new LambdaQueryWrapper<VenueHall>()
+                .eq(VenueHall::getVenueId, id));
+        if (hallCount != null && hallCount > 0) {
+            throw new BusinessException(ErrorCode.CONFLICT, "场馆下存在厅，请先删除或迁移厅");
+        }
+        venueMapper.deleteById(id);
+    }
+
     public List<AdminHallResponse> listHalls(String venueId) {
         ensureAdminRole();
         LambdaQueryWrapper<VenueHall> wrapper = new LambdaQueryWrapper<VenueHall>().orderByAsc(VenueHall::getName);
@@ -193,6 +205,24 @@ public class VenueManagementService {
         hall.setStatus(normalizeActiveStatus(request.status(), hall.getStatus()));
         venueHallMapper.updateById(hall);
         return toHallResponse(venueHallMapper.selectById(id));
+    }
+
+    @Transactional
+    public void deleteHall(String id) {
+        ensureAdminRole();
+        getHall(id);
+        Long layoutCount = seatLayoutMapper.selectCount(new LambdaQueryWrapper<SeatLayout>()
+                .eq(SeatLayout::getHallId, id));
+        if (layoutCount != null && layoutCount > 0) {
+            throw new BusinessException(ErrorCode.CONFLICT, "该厅存在座位布局，请先归档并清理布局");
+        }
+        Long scheduleCount = showScheduleMapper.selectCount(new LambdaQueryWrapper<ShowSchedule>()
+                .eq(ShowSchedule::getHallId, id));
+        if (scheduleCount != null && scheduleCount > 0) {
+            throw new BusinessException(ErrorCode.CONFLICT, "该厅已被场次引用，不能删除");
+        }
+        venueAreaMapper.delete(new LambdaQueryWrapper<VenueArea>().eq(VenueArea::getHallId, id));
+        venueHallMapper.deleteById(id);
     }
 
     public List<AdminLayoutResponse> listLayouts(String hallId) {
@@ -380,6 +410,14 @@ public class VenueManagementService {
                 .eq(ScheduleSeat::getScheduleId, scheduleId)) == 0
                 ? List.of()
                 : seatService.listSeats(scheduleId);
+        Set<String> soldSeatCodes = soldSeatCodesFromActiveTickets(scheduleId);
+        if (!soldSeatCodes.isEmpty()) {
+            seats = seats.stream()
+                    .map(seat -> soldSeatCodes.contains(seat.id()) && !"DISABLED".equals(seat.status())
+                            ? new SeatResponse(seat.id(), seat.row(), seat.col(), seat.section(), "SOLD", seat.price())
+                            : seat)
+                    .toList();
+        }
         List<ScheduleAreaResponse> areas = scheduleAreaInventoryMapper.selectCount(new LambdaQueryWrapper<ScheduleAreaInventory>()
                 .eq(ScheduleAreaInventory::getScheduleId, scheduleId)) == 0
                 ? List.of()
@@ -397,6 +435,20 @@ public class VenueManagementService {
                 seats,
                 areas
         );
+    }
+
+    private Set<String> soldSeatCodesFromActiveTickets(String scheduleId) {
+        List<TicketItem> tickets = ticketItemMapper.selectList(new LambdaQueryWrapper<TicketItem>()
+                .eq(TicketItem::getScheduleId, scheduleId)
+                .isNotNull(TicketItem::getSeatId)
+                .in(TicketItem::getStatus, List.of("UNUSED", "CHECKED_IN", "PENDING_REFUND")));
+        if (tickets == null || tickets.isEmpty()) {
+            return Set.of();
+        }
+        return tickets.stream()
+                .map(TicketItem::getSeatId)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toSet());
     }
 
     @Transactional

@@ -2,12 +2,15 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import AdminTableScroller from '../../components/AdminTableScroller.vue'
 import AdminSeatMapEditor from '../../components/AdminSeatMapEditor.vue'
 import {
   createAdminHall,
   createAdminLayout,
   createAdminVenue,
+  deleteAdminHall,
+  deleteAdminVenue,
   getAdminHalls,
   getAdminLayoutAreas,
   getAdminLayouts,
@@ -67,6 +70,7 @@ const layoutDialogMode = ref<DialogMode>('create')
 
 const operatingId = ref('')
 const operatingSeat = ref('')
+const deletingId = ref('')
 const seatDrawerVisible = ref(false)
 const syncDialogVisible = ref(false)
 const syncLoading = ref(false)
@@ -424,6 +428,84 @@ const saveHall = async () => {
   }
 }
 
+const deleteVenue = async (venue: AdminVenue) => {
+  try {
+    await ElMessageBox.confirm(
+      t('admin.deleteVenueConfirm', { name: venue.name }),
+      t('admin.deleteVenue'),
+      {
+        type: 'warning',
+        confirmButtonText: t('common.confirm'),
+        cancelButtonText: t('common.cancel')
+      }
+    )
+  } catch {
+    return
+  }
+
+  deletingId.value = venue.id
+  try {
+    await deleteAdminVenue(venue.id)
+    venues.value = venues.value.filter(item => item.id !== venue.id)
+    if (selectedVenueId.value === venue.id) {
+      selectedVenueId.value = venues.value[0]?.id || ''
+    }
+    if (selectedVenueId.value) {
+      const hallRows = halls.value.filter(hall => hall.venueId === selectedVenueId.value)
+      selectedHallId.value = hallRows.some(hall => hall.id === selectedHallId.value)
+        ? selectedHallId.value
+        : hallRows[0]?.id || ''
+    } else {
+      selectedHallId.value = ''
+    }
+    await ensureLayoutSelection()
+    ElMessage.success(t('admin.venueDeleted'))
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : t('admin.operationFailed'))
+  } finally {
+    deletingId.value = ''
+  }
+}
+
+const deleteHall = async (hall: AdminHall) => {
+  try {
+    await ElMessageBox.confirm(
+      t('admin.deleteHallConfirm', { name: hall.name }),
+      t('admin.deleteHall'),
+      {
+        type: 'warning',
+        confirmButtonText: t('common.confirm'),
+        cancelButtonText: t('common.cancel')
+      }
+    )
+  } catch {
+    return
+  }
+
+  deletingId.value = hall.id
+  try {
+    await deleteAdminHall(hall.id)
+    halls.value = halls.value.filter(item => item.id !== hall.id)
+    const venueIndex = venues.value.findIndex(venue => venue.id === hall.venueId)
+    if (venueIndex >= 0) {
+      venues.value[venueIndex] = {
+        ...venues.value[venueIndex],
+        hallCount: Math.max(0, Number(venues.value[venueIndex].hallCount || 0) - 1)
+      }
+    }
+    if (selectedHallId.value === hall.id) {
+      const hallRows = filteredHalls.value
+      selectedHallId.value = hallRows[0]?.id || ''
+    }
+    await ensureLayoutSelection()
+    ElMessage.success(t('admin.hallDeleted'))
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : t('admin.operationFailed'))
+  } finally {
+    deletingId.value = ''
+  }
+}
+
 const saveLayout = async () => {
   if (!layoutForm.hallId || !layoutForm.name.trim()) {
     ElMessage.error(t('admin.formRequired'))
@@ -670,36 +752,58 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
                 <div class="block-head">
                   <h3>{{ t('admin.venueList') }}</h3>
                 </div>
-                <el-table :data="venues" :empty-text="t('admin.empty')" v-loading="loading" row-key="id" @row-click="selectVenue">
-                  <el-table-column prop="name" :label="t('admin.venueName')" min-width="160" />
-                  <el-table-column prop="city" :label="t('admin.city')" width="100" />
-                  <el-table-column :label="t('admin.halls')" width="86">
-                    <template #default="{ row }">{{ row.hallCount }}</template>
-                  </el-table-column>
-                  <el-table-column :label="t('admin.action')" width="90">
-                    <template #default="{ row }">
-                      <el-button link type="primary" @click.stop="openEditVenue(row)">{{ t('admin.edit') }}</el-button>
-                    </template>
-                  </el-table-column>
-                </el-table>
+                <AdminTableScroller :label="t('admin.tableHorizontalScroll')">
+                  <el-table :data="venues" :empty-text="t('admin.empty')" v-loading="loading" row-key="id" @row-click="selectVenue">
+                    <el-table-column prop="name" :label="t('admin.venueName')" min-width="160" />
+                    <el-table-column prop="city" :label="t('admin.city')" width="100" />
+                    <el-table-column :label="t('admin.halls')" width="86">
+                      <template #default="{ row }">{{ row.hallCount }}</template>
+                    </el-table-column>
+                    <el-table-column :label="t('admin.action')" width="132" fixed="right">
+                      <template #default="{ row }">
+                        <el-button link type="primary" @click.stop="openEditVenue(row)">{{ t('admin.edit') }}</el-button>
+                        <el-button
+                          link
+                          type="danger"
+                          :loading="deletingId === row.id"
+                          :disabled="row.hallCount > 0 || deletingId === row.id"
+                          @click.stop="deleteVenue(row)"
+                        >
+                          {{ t('admin.delete') }}
+                        </el-button>
+                      </template>
+                    </el-table-column>
+                  </el-table>
+                </AdminTableScroller>
               </div>
 
               <div class="table-block">
                 <div class="block-head">
                   <h3>{{ t('admin.hallList') }} · {{ selectedVenueName }}</h3>
                 </div>
-                <el-table :data="filteredHalls" :empty-text="t('admin.empty')" v-loading="loading" row-key="id" @row-click="selectHall">
-                  <el-table-column prop="name" :label="t('admin.hallName')" min-width="150" />
-                  <el-table-column prop="hallType" :label="t('admin.hallType')" width="105" />
-                  <el-table-column prop="capacity" :label="t('admin.capacity')" width="88" />
-                  <el-table-column prop="clearanceMinutes" :label="t('admin.clearanceMinutes')" width="122" />
-                  <el-table-column prop="layoutCount" :label="t('admin.layouts')" width="86" />
-                  <el-table-column :label="t('admin.action')" width="90">
-                    <template #default="{ row }">
-                      <el-button link type="primary" @click.stop="openEditHall(row)">{{ t('admin.edit') }}</el-button>
-                    </template>
-                  </el-table-column>
-                </el-table>
+                <AdminTableScroller :label="t('admin.tableHorizontalScroll')">
+                  <el-table :data="filteredHalls" :empty-text="t('admin.empty')" v-loading="loading" row-key="id" @row-click="selectHall">
+                    <el-table-column prop="name" :label="t('admin.hallName')" min-width="150" />
+                    <el-table-column prop="hallType" :label="t('admin.hallType')" width="105" />
+                    <el-table-column prop="capacity" :label="t('admin.capacity')" width="88" />
+                    <el-table-column prop="clearanceMinutes" :label="t('admin.clearanceMinutes')" width="122" />
+                    <el-table-column prop="layoutCount" :label="t('admin.layouts')" width="86" />
+                    <el-table-column :label="t('admin.action')" width="132" fixed="right">
+                      <template #default="{ row }">
+                        <el-button link type="primary" @click.stop="openEditHall(row)">{{ t('admin.edit') }}</el-button>
+                        <el-button
+                          link
+                          type="danger"
+                          :loading="deletingId === row.id"
+                          :disabled="row.layoutCount > 0 || deletingId === row.id"
+                          @click.stop="deleteHall(row)"
+                        >
+                          {{ t('admin.delete') }}
+                        </el-button>
+                      </template>
+                    </el-table-column>
+                  </el-table>
+                </AdminTableScroller>
               </div>
             </div>
           </el-tab-pane>
@@ -726,45 +830,47 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
                 <div class="block-head">
                   <h3>{{ t('admin.layouts') }} · {{ selectedHallName }}</h3>
                 </div>
-                <el-table :data="visibleLayouts" :empty-text="t('admin.empty')" v-loading="loading" row-key="id" @row-click="selectLayout">
-                  <el-table-column prop="name" :label="t('admin.layoutName')" min-width="180" />
-                  <el-table-column :label="t('admin.ticketMode')" width="112">
-                    <template #default="{ row }">
-                      <el-tag size="small" :type="modeTagType(row.ticketMode)">{{ t(`ticketMode.${row.ticketMode?.toLowerCase()}`) }}</el-tag>
-                    </template>
-                  </el-table-column>
-                  <el-table-column prop="version" :label="t('admin.version')" width="76" />
-                  <el-table-column :label="t('admin.layoutStatus')" width="108">
-                    <template #default="{ row }">
-                      <el-tag size="small" :type="statusTagType(row.status)" effect="plain">{{ row.status }}</el-tag>
-                    </template>
-                  </el-table-column>
-                  <el-table-column :label="t('admin.action')" width="192">
-                    <template #default="{ row }">
-                      <el-button link type="primary" :disabled="operatingId === row.id" @click.stop="openEditLayout(row)">
-                        {{ t('admin.edit') }}
-                      </el-button>
-                      <el-button
-                        v-if="row.status !== 'PUBLISHED'"
-                        link
-                        type="primary"
-                        :loading="operatingId === row.id"
-                        @click.stop="changeStatus(row, 'PUBLISHED')"
-                      >
-                        {{ t('admin.publish') }}
-                      </el-button>
-                      <el-button
-                        v-if="row.status !== 'ARCHIVED'"
-                        link
-                        type="danger"
-                        :loading="operatingId === row.id"
-                        @click.stop="changeStatus(row, 'ARCHIVED')"
-                      >
-                        {{ t('admin.archive') }}
-                      </el-button>
-                    </template>
-                  </el-table-column>
-                </el-table>
+                <AdminTableScroller :label="t('admin.tableHorizontalScroll')">
+                  <el-table :data="visibleLayouts" :empty-text="t('admin.empty')" v-loading="loading" row-key="id" @row-click="selectLayout">
+                    <el-table-column prop="name" :label="t('admin.layoutName')" min-width="180" />
+                    <el-table-column :label="t('admin.ticketMode')" width="112">
+                      <template #default="{ row }">
+                        <el-tag size="small" :type="modeTagType(row.ticketMode)">{{ t(`ticketMode.${row.ticketMode?.toLowerCase()}`) }}</el-tag>
+                      </template>
+                    </el-table-column>
+                    <el-table-column prop="version" :label="t('admin.version')" width="76" />
+                    <el-table-column :label="t('admin.layoutStatus')" width="108">
+                      <template #default="{ row }">
+                        <el-tag size="small" :type="statusTagType(row.status)" effect="plain">{{ row.status }}</el-tag>
+                      </template>
+                    </el-table-column>
+                    <el-table-column :label="t('admin.action')" width="192" fixed="right">
+                      <template #default="{ row }">
+                        <el-button link type="primary" :disabled="operatingId === row.id" @click.stop="openEditLayout(row)">
+                          {{ t('admin.edit') }}
+                        </el-button>
+                        <el-button
+                          v-if="row.status !== 'PUBLISHED'"
+                          link
+                          type="primary"
+                          :loading="operatingId === row.id"
+                          @click.stop="changeStatus(row, 'PUBLISHED')"
+                        >
+                          {{ t('admin.publish') }}
+                        </el-button>
+                        <el-button
+                          v-if="row.status !== 'ARCHIVED'"
+                          link
+                          type="danger"
+                          :loading="operatingId === row.id"
+                          @click.stop="changeStatus(row, 'ARCHIVED')"
+                        >
+                          {{ t('admin.archive') }}
+                        </el-button>
+                      </template>
+                    </el-table-column>
+                  </el-table>
+                </AdminTableScroller>
               </div>
 
               <div class="layout-detail" v-loading="detailLoading">
@@ -869,32 +975,34 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
             <strong>{{ selectedLayout?.status || '-' }}</strong>
           </div>
         </div>
-        <el-table v-if="seats.length > 0" :data="seats" :empty-text="t('admin.empty')" size="small" height="calc(100vh - 220px)">
-          <el-table-column prop="seatCode" :label="t('admin.seatCode')" min-width="124" />
-          <el-table-column prop="rowNo" :label="t('admin.rowNo')" width="60" />
-          <el-table-column prop="colNo" :label="t('admin.colNo')" width="60" />
-          <el-table-column prop="section" :label="t('ticket.section')" width="82" />
-          <el-table-column prop="status" :label="t('common.status')" width="116">
-            <template #default="{ row }">
-              <el-tag size="small" :type="row.status === 'DISABLED' ? 'danger' : 'success'" effect="plain">
-                {{ row.status }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column :label="t('admin.action')" width="100" fixed="right">
-            <template #default="{ row }">
-              <el-button
-                link
-                type="primary"
-                :disabled="!canToggleSeat(row) || operatingSeat === row.id"
-                :loading="operatingSeat === row.id"
-                @click="toggleSeatStatus(row)"
-              >
-                {{ row.status === 'AVAILABLE' ? t('admin.disableSeat') : t('admin.restoreSeat') }}
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <AdminTableScroller v-if="seats.length > 0" :label="t('admin.tableHorizontalScroll')">
+          <el-table :data="seats" :empty-text="t('admin.empty')" size="small" height="calc(100vh - 220px)">
+            <el-table-column prop="seatCode" :label="t('admin.seatCode')" min-width="124" />
+            <el-table-column prop="rowNo" :label="t('admin.rowNo')" width="60" />
+            <el-table-column prop="colNo" :label="t('admin.colNo')" width="60" />
+            <el-table-column prop="section" :label="t('ticket.section')" width="82" />
+            <el-table-column prop="status" :label="t('common.status')" width="116">
+              <template #default="{ row }">
+                <el-tag size="small" :type="row.status === 'DISABLED' ? 'danger' : 'success'" effect="plain">
+                  {{ row.status }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('admin.action')" width="100" fixed="right">
+              <template #default="{ row }">
+                <el-button
+                  link
+                  type="primary"
+                  :disabled="!canToggleSeat(row) || operatingSeat === row.id"
+                  :loading="operatingSeat === row.id"
+                  @click="toggleSeatStatus(row)"
+                >
+                  {{ row.status === 'AVAILABLE' ? t('admin.disableSeat') : t('admin.restoreSeat') }}
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </AdminTableScroller>
         <el-empty v-else :description="t('admin.empty')" />
       </div>
     </el-drawer>

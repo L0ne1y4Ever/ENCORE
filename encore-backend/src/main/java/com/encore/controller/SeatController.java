@@ -3,7 +3,9 @@ package com.encore.controller;
 import com.encore.common.ApiResponse;
 import com.encore.dto.LockSeatsRequest;
 import com.encore.dto.SeatResponse;
+import com.encore.dto.SeatLocksResponse;
 import com.encore.dto.ScheduleAreaResponse;
+import com.encore.dto.UnlockSeatsRequest;
 import com.encore.service.SeatService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -44,5 +46,18 @@ public class SeatController {
             @Valid @RequestBody LockSeatsRequest request
     ) {
         return ApiResponse.ok(seatService.lockSeats(scheduleId, request.seatIds()));
+    }
+
+    @GetMapping("/seats/my-locks")
+    public ApiResponse<SeatLocksResponse> listMySeatLocks(@PathVariable String scheduleId) {
+        return ApiResponse.ok(seatService.listMySeatLocks(scheduleId));
+    }
+
+    @PostMapping("/seats/unlock")
+    public ApiResponse<SeatLocksResponse> unlockMySeatLocks(
+            @PathVariable String scheduleId,
+            @RequestBody(required = false) UnlockSeatsRequest request
+    ) {
+        return ApiResponse.ok(seatService.unlockMySeatLocks(scheduleId, request == null ? null : request.seatIds()));
     }
 }

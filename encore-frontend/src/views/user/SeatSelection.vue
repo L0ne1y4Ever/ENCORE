@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getSeatMap, lockSeats, getScheduleAreas } from '../../api/seat'
-import type { ScheduleAreaResponse } from '../../api/seat'
+import { getSeatMap, lockSeats, getScheduleAreas, getMySeatLocks, unlockSeats } from '../../api/seat'
+import type { ScheduleAreaResponse, SeatLockInfo } from '../../api/seat'
 import {
   cancelGroupOrder,
   checkoutGroupOrder,
@@ -23,7 +23,8 @@ import TicketModeBadge from '../../components/TicketModeBadge.vue'
 import { useAuthStore } from '../../stores/auth'
 import { getScheduleDetail } from '../../api/show'
 import type { Schedule } from '../../mock/shows'
-import { createOrder, getOrderDetail } from '../../api/order'
+import { cancelOrder, createOrder, getMyOrders, getOrderDetail } from '../../api/order'
+import type { Order } from '../../mock/orders'
 import { formatMoney } from '../../utils/money'
 
 const route = useRoute()
@@ -53,6 +54,10 @@ const inviteInputRef = ref<HTMLInputElement | null>(null)
 const now = ref(Date.now())
 const realtimeState = ref<SeatRealtimeConnectionState>('connecting')
 const realtimeNotice = ref<string | null>(null)
+const pendingPaymentOrder = ref<Order | null>(null)
+const mySeatLocks = ref<SeatLockInfo[]>([])
+const recoveryLoading = ref(false)
+const recoveryBusy = ref(false)
 const maxSelect = 6
 const hasUnsavedSelection = ref(false)
 let disconnectRealtime: (() => void) | undefined
@@ -60,6 +65,8 @@ let realtimeNoticeTimer: ReturnType<typeof setTimeout> | undefined
 let groupPollTimer: ReturnType<typeof setInterval> | undefined
 let groupCountdownTimer: ReturnType<typeof setInterval> | undefined
 let groupCopiedTimer: ReturnType<typeof setTimeout> | undefined
+let seatSyncTimer: ReturnType<typeof setInterval> | undefined
+let realtimeVerifyTimer: ReturnType<typeof setTimeout> | undefined
 
 const groupInviteCode = computed(() => {
   return typeof route.query.group === 'string' ? route.query.group : ''
@@ -154,6 +161,18 @@ const groupProgressSteps = computed(() => [
   }
 ])
 
+const formatDateTime = (value?: string | null) => value ? new Date(value).toLocaleString() : '-'
+
+const recoverableLockSeatIds = computed(() => mySeatLocks.value.map(lock => lock.seatId))
+const hasRecoverableLocks = computed(() => recoverableLockSeatIds.value.length > 0)
+const recoveryLockExpiresAt = computed(() => {
+  const timestamps = mySeatLocks.value
+    .map(lock => lock.expiresAt ? new Date(lock.expiresAt).getTime() : Number.NaN)
+    .filter(timestamp => Number.isFinite(timestamp))
+  if (timestamps.length === 0) return null
+  return new Date(Math.min(...timestamps)).toISOString()
+})
+
 const refreshSeatMap = async (showLoading = false) => {
   if (showLoading) {
     loading.value = true
@@ -167,6 +186,55 @@ const refreshSeatMap = async (showLoading = false) => {
   } finally {
     loading.value = false
   }
+}
+
+const reconcileSelectedSeats = () => {
+  const currentGroupSeatIds = new Set(currentMember.value?.seatIds || [])
+  const recoverableSeatIds = new Set(recoverableLockSeatIds.value)
+  selectedSeatIds.value = new Set(Array.from(selectedSeatIds.value).filter((seatId) => {
+    const seat = seats.value.find(item => item.id === seatId)
+    if (!seat) return false
+    if (seat.status === 'AVAILABLE') return true
+    return currentGroupSeatIds.has(seatId) || recoverableSeatIds.has(seatId)
+  }))
+}
+
+const refreshLiveInventory = async () => {
+  if (!schedule.value) return
+  if (schedule.value.ticketMode === 'ZONED' || (schedule.value.ticketMode === 'MIXED' && activeStandId.value === null)) {
+    await loadAreas()
+  } else {
+    await refreshSeatMap(false)
+    reconcileSelectedSeats()
+    if (schedule.value.ticketMode === 'MIXED') {
+      await loadAreas()
+    }
+  }
+}
+
+const startSeatSyncPolling = () => {
+  stopSeatSyncPolling()
+  seatSyncTimer = setInterval(() => {
+    void refreshLiveInventory()
+    void loadPendingRecovery(false)
+  }, 5000)
+}
+
+const stopSeatSyncPolling = () => {
+  if (seatSyncTimer) {
+    clearInterval(seatSyncTimer)
+    seatSyncTimer = undefined
+  }
+}
+
+const verifyRealtimeInventorySoon = () => {
+  if (realtimeVerifyTimer) {
+    clearTimeout(realtimeVerifyTimer)
+  }
+  realtimeVerifyTimer = setTimeout(() => {
+    void refreshLiveInventory()
+    void loadPendingRecovery(false)
+  }, 350)
 }
 
 const loadAreas = async () => {
@@ -185,6 +253,106 @@ const showRealtimeNotice = (messageKey: string) => {
   realtimeNoticeTimer = setTimeout(() => {
     realtimeNotice.value = null
   }, 2500)
+}
+
+const seatDisplayLabel = (seatId: string) => {
+  const seat = seats.value.find(item => item.id === seatId)
+  if (!seat) return seatId
+  return t('seat.info', { row: seat.row, col: seat.col })
+}
+
+const recoverableLockSeatLabel = computed(() => {
+  if (recoverableLockSeatIds.value.length === 0) return t('seat.noSeats')
+  return recoverableLockSeatIds.value.map(seatDisplayLabel).join(' / ')
+})
+
+const refreshInventoryAfterRecovery = async () => {
+  await refreshSeatMap()
+  if (schedule.value?.ticketMode === 'MIXED' || schedule.value?.ticketMode === 'ZONED') {
+    await loadAreas()
+  }
+}
+
+const loadPendingRecovery = async (showLoading = true) => {
+  if (isGroupMode.value || !authStore.currentUser) {
+    pendingPaymentOrder.value = null
+    mySeatLocks.value = []
+    return
+  }
+  if (showLoading) {
+    recoveryLoading.value = true
+  }
+  try {
+    const [orders, locks] = await Promise.all([
+      getMyOrders(),
+      getMySeatLocks(scheduleId)
+    ])
+    pendingPaymentOrder.value = orders
+      .filter(order => order.status === 'PENDING_PAYMENT'
+        && order.scheduleId === scheduleId
+        && order.userId === currentUserId.value)
+      .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())[0] || null
+    mySeatLocks.value = locks.seats || []
+  } catch {
+    pendingPaymentOrder.value = null
+    mySeatLocks.value = []
+  } finally {
+    if (showLoading) {
+      recoveryLoading.value = false
+    }
+  }
+}
+
+const continuePendingPayment = () => {
+  if (pendingPaymentOrder.value) {
+    router.push(`/payment?id=${pendingPaymentOrder.value.id}`)
+  }
+}
+
+const cancelPendingPayment = async () => {
+  if (!pendingPaymentOrder.value || recoveryBusy.value) return
+  recoveryBusy.value = true
+  try {
+    await cancelOrder(pendingPaymentOrder.value.id)
+    pendingPaymentOrder.value = null
+    await refreshInventoryAfterRecovery()
+    await loadPendingRecovery()
+  } catch (error) {
+    alert(error instanceof Error ? error.message : t('profile.cancelReservationFailed'))
+  } finally {
+    recoveryBusy.value = false
+  }
+}
+
+const continueLockedSeatCheckout = () => {
+  if (!hasRecoverableLocks.value) return
+  selectedSeatIds.value = new Set(recoverableLockSeatIds.value)
+  const amount = selectedSeats.value.reduce((sum, seat) => sum + seat.price, 0)
+  sessionStorage.setItem('tempOrder', JSON.stringify({
+    scheduleId,
+    seatIds: recoverableLockSeatIds.value,
+    totalAmount: amount,
+    expiresAt: recoveryLockExpiresAt.value
+  }))
+  router.push('/confirm')
+}
+
+const releaseRecoverableLocks = async () => {
+  if (!hasRecoverableLocks.value || recoveryBusy.value) return
+  recoveryBusy.value = true
+  try {
+    await unlockSeats(scheduleId, recoverableLockSeatIds.value)
+    sessionStorage.removeItem('tempOrder')
+    const released = new Set(recoverableLockSeatIds.value)
+    selectedSeatIds.value = new Set(Array.from(selectedSeatIds.value).filter(seatId => !released.has(seatId)))
+    mySeatLocks.value = []
+    await refreshInventoryAfterRecovery()
+    await loadPendingRecovery()
+  } catch (error) {
+    alert(error instanceof Error ? error.message : t('seat.releaseLocksFailed'))
+  } finally {
+    recoveryBusy.value = false
+  }
 }
 
 const applySeatStatusEvent = async (event: SeatStatusEvent) => {
@@ -222,10 +390,12 @@ const applySeatStatusEvent = async (event: SeatStatusEvent) => {
       }
     }
     showRealtimeNotice('seat.liveUpdated')
+    verifyRealtimeInventorySoon()
     return
   }
 
   if (event.seats.length === 0) {
+    verifyRealtimeInventorySoon()
     return
   }
 
@@ -257,6 +427,7 @@ const applySeatStatusEvent = async (event: SeatStatusEvent) => {
   }
 
   showRealtimeNotice('seat.liveUpdated')
+  verifyRealtimeInventorySoon()
 }
 
 const selectArea = async (area: ScheduleAreaResponse) => {
@@ -320,6 +491,7 @@ onMounted(async () => {
         realtimeState.value = state
       }
     })
+    startSeatSyncPolling()
   }
 
   groupCountdownTimer = setInterval(() => {
@@ -329,13 +501,18 @@ onMounted(async () => {
     await loadGroupOrder(true)
     startGroupPolling()
   }
+  await loadPendingRecovery()
 })
 
 onBeforeUnmount(() => {
   disconnectRealtime?.()
+  stopSeatSyncPolling()
   stopGroupPolling()
   if (realtimeNoticeTimer) {
     clearTimeout(realtimeNoticeTimer)
+  }
+  if (realtimeVerifyTimer) {
+    clearTimeout(realtimeVerifyTimer)
   }
   if (groupCountdownTimer) {
     clearInterval(groupCountdownTimer)
@@ -650,11 +827,7 @@ const copyGroupInvite = async () => {
 
 const memberSeatLabel = (member: GroupOrderMember) => {
   if (member.seatIds.length === 0) return t('seat.group.noMemberSeats')
-  return member.seatIds.map(seatId => {
-    const seat = seats.value.find(item => item.id === seatId)
-    if (!seat) return seatId
-    return t('seat.info', { row: seat.row, col: seat.col })
-  }).join(' / ')
+  return member.seatIds.map(seatDisplayLabel).join(' / ')
 }
 
 const selectedSeats = computed(() => {
@@ -728,7 +901,8 @@ const submitLock = async () => {
     sessionStorage.setItem('tempOrder', JSON.stringify({
       scheduleId,
       seatIds: Array.from(selectedSeatIds.value),
-      totalAmount: totalAmount.value
+      totalAmount: totalAmount.value,
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString()
     }))
     router.push('/confirm')
   } catch (e) {
@@ -1109,6 +1283,45 @@ const stageDisplayLabel = computed(() => {
             </div>
           </template>
         </section>
+
+        <transition name="list-anim">
+          <section
+            v-if="!isGroupMode && (pendingPaymentOrder || hasRecoverableLocks || recoveryLoading)"
+            class="recovery-card"
+          >
+            <template v-if="pendingPaymentOrder">
+              <div>
+                <strong>{{ t('seat.pendingOrderTitle') }}</strong>
+                <p>{{ t('seat.pendingOrderHint', { deadline: formatDateTime(pendingPaymentOrder.expiresAt) }) }}</p>
+              </div>
+              <div class="recovery-actions">
+                <button class="btn-small primary" type="button" :disabled="recoveryBusy" @click="continuePendingPayment">
+                  {{ t('seat.continuePendingPayment') }}
+                </button>
+                <button class="btn-small danger" type="button" :disabled="recoveryBusy" @click="cancelPendingPayment">
+                  {{ t('seat.cancelPendingOrder') }}
+                </button>
+              </div>
+            </template>
+            <template v-else-if="hasRecoverableLocks">
+              <div>
+                <strong>{{ t('seat.lockedSeatsTitle') }}</strong>
+                <p>{{ t('seat.lockedSeatsHint', { seats: recoverableLockSeatLabel, deadline: formatDateTime(recoveryLockExpiresAt) }) }}</p>
+              </div>
+              <div class="recovery-actions">
+                <button class="btn-small primary" type="button" :disabled="recoveryBusy" @click="continueLockedSeatCheckout">
+                  {{ t('seat.continueLockedSeats') }}
+                </button>
+                <button class="btn-small danger" type="button" :disabled="recoveryBusy" @click="releaseRecoverableLocks">
+                  {{ t('seat.releaseLockedSeats') }}
+                </button>
+              </div>
+            </template>
+            <template v-else>
+              <strong>{{ t('seat.recoveryChecking') }}</strong>
+            </template>
+          </section>
+        </transition>
 
         <div class="summary-meta">
           <div>
@@ -2108,6 +2321,51 @@ const stageDisplayLabel = computed(() => {
         color: #080808;
         filter: brightness(1.05);
       }
+    }
+
+    &.danger {
+      border-color: rgba(229, 9, 20, 0.38);
+      color: rgba(255, 190, 190, 0.9);
+
+      &:hover:not(:disabled) {
+        border-color: rgba(229, 9, 20, 0.72);
+        color: #fff;
+      }
+    }
+  }
+
+  .recovery-card {
+    border: 1px solid rgba(212, 175, 55, 0.28);
+    border-radius: var(--radius-md);
+    background: rgba(212, 175, 55, 0.07);
+    display: grid;
+    gap: var(--spacing-3);
+    padding: var(--spacing-3);
+    font-family: var(--font-family-sans);
+
+    strong {
+      color: var(--color-text-primary);
+      display: block;
+      font-size: 14px;
+      font-weight: 900;
+      margin-bottom: 5px;
+    }
+
+    p {
+      margin: 0;
+      color: var(--color-text-secondary);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+  }
+
+  .recovery-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-2);
+
+    @media (max-width: 460px) {
+      grid-template-columns: 1fr;
     }
   }
 

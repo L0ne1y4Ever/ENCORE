@@ -84,6 +84,16 @@ const orderStatusLabel = (status: string) => {
   return t(`profile.orderStatus.${status.toLowerCase()}`)
 }
 
+const orderChannelLabel = (channel?: string | null) => {
+  const key = String(channel || 'ONLINE').toLowerCase()
+  return t(`admin.orderChannels.${key}`)
+}
+
+const paymentMethodLabel = (method?: string | null) => {
+  const key = String(method || 'SIMULATED').toLowerCase()
+  return t(`admin.paymentMethods.${key}`)
+}
+
 const statusTagType = (row: AdminOrder) => {
   const status = displayStatus(row)
   if (status === 'PAID') return 'success'
@@ -247,6 +257,17 @@ const exportOrders = async () => {
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column :label="t('admin.orderChannel')" width="140">
+          <template #default="{ row }">
+            <div class="channel-cell">
+              <el-tag :type="row.orderChannel === 'OFFLINE' ? 'warning' : 'info'" effect="plain">
+                {{ orderChannelLabel(row.orderChannel) }}
+              </el-tag>
+              <span>{{ paymentMethodLabel(row.paymentMethod) }}</span>
+              <small v-if="row.cashierUsername">{{ row.cashierUsername }}</small>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column :label="t('admin.refundReview')" min-width="220">
           <template #default="{ row }">
             <div v-if="row.refundRequest" class="refund-cell">
@@ -357,6 +378,23 @@ const exportOrders = async () => {
 
 .muted-text {
   color: var(--color-text-muted);
+}
+
+.channel-cell {
+  display: grid;
+  gap: 4px;
+  align-items: start;
+
+  span,
+  small {
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    line-height: 1.25;
+  }
+
+  small {
+    color: var(--color-text-muted);
+  }
 }
 
 .table-container {

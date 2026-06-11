@@ -72,11 +72,13 @@ public class AdminAuditLogInterceptor implements HandlerInterceptor {
         if (path.contains("/layouts")) return "LAYOUT";
         if (path.contains("/schedules") && path.contains("/inventory")) return "INVENTORY";
         if (path.contains("/schedules")) return "SCHEDULE";
+        if (path.contains("/offline-sales")) return "OFFLINE_SALE";
         if (path.contains("/orders")) return "ORDER";
         return "ADMIN";
     }
 
     private String resolveAction(String method, String path) {
+        if (path.endsWith("/offline-sales")) return "CREATE_OFFLINE_SALE";
         if (path.endsWith("/refund/approve")) return "APPROVE_REFUND";
         if (path.endsWith("/refund/reject")) return "REJECT_REFUND";
         if (path.endsWith("/refund")) return "REFUND";

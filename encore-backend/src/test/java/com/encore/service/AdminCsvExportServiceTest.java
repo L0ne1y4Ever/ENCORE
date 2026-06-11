@@ -29,6 +29,10 @@ class AdminCsvExportServiceTest {
                 LocalDateTime.of(2026, 6, 21, 19, 30),
                 BigDecimal.valueOf(180),
                 "PAID",
+                "OFFLINE",
+                "COUNTER",
+                "u-admin",
+                "admin",
                 2,
                 0,
                 LocalDateTime.of(2026, 6, 9, 12, 0),
@@ -38,8 +42,8 @@ class AdminCsvExportServiceTest {
 
         String csv = new AdminCsvExportService(adminService).exportOrdersCsv();
 
-        assertThat(csv).contains("订单号,用户,演出,剧场,金额,状态,票数,已核销,创建时间,支付时间");
-        assertThat(csv).contains("ord-1,user,茶馆,Main Hall,180,PAID,2,0,2026-06-09 12:00:00,2026-06-09 12:03:00");
+        assertThat(csv).contains("订单号,用户,演出,剧场,金额,状态,来源,收款方式,收银员,票数,已核销,创建时间,支付时间");
+        assertThat(csv).contains("ord-1,user,茶馆,Main Hall,180,PAID,OFFLINE,COUNTER,admin,2,0,2026-06-09 12:00:00,2026-06-09 12:03:00");
     }
 
     @Test

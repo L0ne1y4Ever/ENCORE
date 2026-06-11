@@ -32,6 +32,7 @@ application-local.yaml
 .codex/
 .sds_tmp/
 .srs_tmp/
+.ppt_tmp/
 
 # IDE / OS
 .idea/

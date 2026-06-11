@@ -2,18 +2,24 @@ package com.encore.service;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.encore.dto.AdminBoxOfficeResponse;
+import com.encore.dto.AdminDashboardResponse;
+import com.encore.dto.AdminOfflineSaleRequest;
+import com.encore.dto.AdminOfflineSaleResponse;
+import com.encore.dto.AdminOrderResponse;
 import com.encore.dto.AdminScheduleResponse;
 import com.encore.dto.ReviewRefundRequest;
 import com.encore.dto.SchedulePricingRequest;
 import com.encore.dto.UpdateScheduleRequest;
 import com.encore.exception.BusinessException;
 import com.encore.entity.RefundRequest;
+import com.encore.entity.ScheduleAreaInventory;
 import com.encore.entity.ScheduleSeat;
 import com.encore.entity.ShowEntity;
 import com.encore.entity.ShowSchedule;
 import com.encore.entity.TicketItem;
 import com.encore.entity.TicketOrder;
 import com.encore.entity.UserAccount;
+import com.encore.entity.VenueArea;
 import com.encore.mapper.ScheduleSeatMapper;
 import com.encore.mapper.ScheduleAreaInventoryMapper;
 import com.encore.mapper.RefundRequestMapper;
@@ -33,13 +39,18 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -74,9 +85,251 @@ class AdminServiceTest {
     @Mock
     private SeatService seatService;
     @Mock
+    private OrderService orderService;
+    @Mock
     private RefundRequestMapper refundRequestMapper;
     @Mock
     private RefundRequestTicketMapper refundRequestTicketMapper;
+
+    @Test
+    void createOfflineSeatedSaleCreatesPaidOrderAndSellsSeat() {
+        AdminService service = createService();
+        ShowSchedule schedule = onSaleSchedule("SEATED");
+        UserAccount buyer = user("u-buyer", "user");
+        buyer.setUsername("alice");
+        buyer.setDisplayName("Alice");
+        ScheduleSeat seat = pricedSeat("seat-1-1", "VIP", 150);
+        TicketOrder order = paidOfflineOrder("ord-offline-1", "u-buyer");
+        TicketItem ticket = issuedTicket(order.getId(), "seat-1-1", null, "u-buyer", "Alice");
+
+        when(userAccountMapper.selectById(any())).thenAnswer(invocation -> {
+            String id = invocation.getArgument(0);
+            if ("u-admin".equals(id)) return user("u-admin", "admin");
+            if ("u-buyer".equals(id)) return buyer;
+            return null;
+        });
+        when(userAccountMapper.selectOne(any())).thenReturn(buyer);
+        when(showScheduleMapper.selectById("sch-1")).thenReturn(schedule);
+        when(showMapper.selectById("show-1")).thenReturn(show());
+        when(ticketItemMapper.selectList(any())).thenReturn(List.of(ticket));
+        when(orderService.createPaidCounterSale(
+                eq(schedule),
+                eq("SEATED"),
+                eq("u-buyer"),
+                eq("Alice"),
+                eq("u-admin"),
+                eq(List.of("seat-1-1")),
+                eq(null),
+                eq(null)
+        )).thenReturn(new OrderService.CounterSaleResult(order, List.of(ticket), List.of(seat), null, null));
+
+        AdminOfflineSaleResponse response;
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-admin");
+
+            response = service.createOfflineSale(new AdminOfflineSaleRequest(
+                    "sch-1",
+                    "alice",
+                    null,
+                    List.of("seat-1-1"),
+                    null,
+                    null
+            ));
+        }
+
+        assertThat(response.order().status()).isEqualTo("PAID");
+        assertThat(response.totalAmount()).isEqualByComparingTo("150");
+        assertThat(response.tickets()).hasSize(1);
+        assertThat(response.tickets().get(0).holderUserId()).isEqualTo("u-buyer");
+        assertThat(response.tickets().get(0).holderDisplayName()).isEqualTo("Alice");
+        verify(orderService).createPaidCounterSale(
+                schedule,
+                "SEATED",
+                "u-buyer",
+                "Alice",
+                "u-admin",
+                List.of("seat-1-1"),
+                null,
+                null
+        );
+    }
+
+    @Test
+    void createOfflineSeatedSaleRejectsWhenAtomicSeatSaleFails() {
+        AdminService service = createService();
+        ShowSchedule schedule = onSaleSchedule("SEATED");
+        UserAccount buyer = user("u-buyer", "user");
+        buyer.setUsername("alice");
+        buyer.setDisplayName("Alice");
+
+        when(userAccountMapper.selectById("u-admin")).thenReturn(user("u-admin", "admin"));
+        when(userAccountMapper.selectOne(any())).thenReturn(buyer);
+        when(showScheduleMapper.selectById("sch-1")).thenReturn(schedule);
+        when(orderService.createPaidCounterSale(
+                eq(schedule),
+                eq("SEATED"),
+                eq("u-buyer"),
+                eq("Alice"),
+                eq("u-admin"),
+                eq(List.of("seat-1-1")),
+                eq(null),
+                eq(null)
+        )).thenThrow(new BusinessException(com.encore.common.ErrorCode.CONFLICT, "座位状态已变化，无法线下出票"));
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-admin");
+
+            assertThatThrownBy(() -> service.createOfflineSale(new AdminOfflineSaleRequest(
+                    "sch-1",
+                    "alice",
+                    null,
+                    List.of("seat-1-1"),
+                    null,
+                    null
+            )))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("座位状态已变化，无法线下出票");
+        }
+
+        verify(ticketItemMapper, never()).insert(any(TicketItem.class));
+        verify(orderService).createPaidCounterSale(
+                schedule,
+                "SEATED",
+                "u-buyer",
+                "Alice",
+                "u-admin",
+                List.of("seat-1-1"),
+                null,
+                null
+        );
+    }
+
+    @Test
+    void createOfflineAreaSaleCreatesGuestOrderAndSellsAvailableInventory() {
+        AdminService service = createService();
+        ShowSchedule schedule = onSaleSchedule("ZONED");
+        ScheduleAreaInventory inventory = areaInventory();
+        VenueArea area = area();
+        AtomicReference<UserAccount> guest = new AtomicReference<>();
+        TicketOrder order = paidOfflineOrder("ord-offline-1", "u-offline-guest");
+        order.setTotalAmount(BigDecimal.valueOf(160));
+        List<TicketItem> issuedTickets = List.of(
+                issuedTicket(order.getId(), null, "inv-1", "u-offline-guest", "张三"),
+                issuedTicket(order.getId(), null, "inv-1", "u-offline-guest", "张三")
+        );
+
+        when(userAccountMapper.selectById(any())).thenAnswer(invocation -> {
+            String id = invocation.getArgument(0);
+            if ("u-admin".equals(id)) return user("u-admin", "admin");
+            if ("u-offline-guest".equals(id)) return guest.get();
+            return null;
+        });
+        when(userAccountMapper.selectOne(any())).thenReturn(null);
+        when(userAccountMapper.insert(any(UserAccount.class))).thenAnswer(invocation -> {
+            guest.set(invocation.getArgument(0));
+            return 1;
+        });
+        when(showScheduleMapper.selectById("sch-1")).thenReturn(schedule);
+        when(showMapper.selectById("show-1")).thenReturn(show());
+        when(ticketItemMapper.selectList(any())).thenReturn(issuedTickets);
+        when(orderService.createPaidCounterSale(
+                eq(schedule),
+                eq("ZONED"),
+                eq("u-offline-guest"),
+                eq("张三"),
+                eq("u-admin"),
+                eq(null),
+                eq("inv-1"),
+                eq(2)
+        )).thenReturn(new OrderService.CounterSaleResult(order, issuedTickets, List.of(), inventory, area));
+
+        AdminOfflineSaleResponse response;
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-admin");
+
+            response = service.createOfflineSale(new AdminOfflineSaleRequest(
+                    "sch-1",
+                    null,
+                    "张三",
+                    null,
+                    "inv-1",
+                    2
+            ));
+        }
+
+        assertThat(response.order().status()).isEqualTo("PAID");
+        assertThat(response.totalAmount()).isEqualByComparingTo("160");
+        assertThat(response.tickets()).hasSize(2);
+        assertThat(response.tickets()).allMatch(ticket -> "张三".equals(ticket.holderDisplayName()));
+        assertThat(guest.get().getUsername()).isEqualTo("__offline_guest__");
+        verify(orderService).createPaidCounterSale(
+                schedule,
+                "ZONED",
+                "u-offline-guest",
+                "张三",
+                "u-admin",
+                null,
+                "inv-1",
+                2
+        );
+    }
+
+    @Test
+    void createOfflineSaleRejectsEndedSchedule() {
+        AdminService service = createService();
+        ShowSchedule schedule = onSaleSchedule("SEATED");
+        schedule.setEndTime(LocalDateTime.now().minusMinutes(1));
+
+        when(userAccountMapper.selectById("u-admin")).thenReturn(user("u-admin", "admin"));
+        when(showScheduleMapper.selectById("sch-1")).thenReturn(schedule);
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-admin");
+
+            assertThatThrownBy(() -> service.createOfflineSale(new AdminOfflineSaleRequest(
+                    "sch-1",
+                    "alice",
+                    null,
+                    List.of("seat-1-1"),
+                    null,
+                    null
+            )))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("该场次已结束，无法线下售票");
+        }
+
+        verify(ticketOrderMapper, never()).insert(any(TicketOrder.class));
+    }
+
+    @Test
+    void createOfflineSaleRejectsConcertSchedule() {
+        AdminService service = createService();
+        ShowSchedule schedule = onSaleSchedule("SEATED");
+        ShowEntity concert = show();
+        concert.setCategory("Concert");
+
+        when(userAccountMapper.selectById("u-admin")).thenReturn(user("u-admin", "admin"));
+        when(showScheduleMapper.selectById("sch-1")).thenReturn(schedule);
+        when(showMapper.selectById("show-1")).thenReturn(concert);
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-admin");
+
+            assertThatThrownBy(() -> service.createOfflineSale(new AdminOfflineSaleRequest(
+                    "sch-1",
+                    "alice",
+                    null,
+                    List.of("seat-1-1"),
+                    null,
+                    null
+            )))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("演唱会不支持线下售票");
+        }
+
+        verify(ticketOrderMapper, never()).insert(any(TicketOrder.class));
+        verify(seatService, never()).lockSeatsForOwner(any(), any(), any(), any(), anyBoolean());
+    }
 
     @Test
     void refundOrderPublishesAvailableEvent() {
@@ -106,6 +359,31 @@ class AdminServiceTest {
                 List.of("seat-1-1")
         );
         verify(dashboardRefreshPublisher).publish("ORDER_REFUNDED", "ord-1");
+    }
+
+    @Test
+    void adminDirectRefundRejectsOrderWithPendingTicketRefund() {
+        AdminService service = createService();
+        TicketOrder order = paidOrder();
+        TicketItem ticket = unusedTicket();
+        ticket.setStatus("PENDING_REFUND");
+
+        when(userAccountMapper.selectById("u-admin")).thenReturn(user("u-admin", "admin"));
+        when(ticketOrderMapper.selectById("ord-1")).thenReturn(order);
+        when(ticketItemMapper.selectList(any())).thenReturn(List.of(ticket));
+        when(refundRequestMapper.selectList(any())).thenReturn(List.of());
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-admin");
+
+            assertThatThrownBy(() -> service.refundOrder("ord-1"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("该订单已有待审核退票申请，请先完成审核");
+        }
+
+        verify(refundRequestMapper, never()).insert(any(RefundRequest.class));
+        verify(ticketItemMapper, never()).updateById(ticket);
+        verify(dashboardRefreshPublisher, never()).publish("ORDER_REFUNDED", "ord-1");
     }
 
     @Test
@@ -143,6 +421,31 @@ class AdminServiceTest {
         ));
         verify(seatStatusPublisher).publishSeatStatus("sch-1", "REFUND_APPROVED", "AVAILABLE", List.of("seat-1-1"));
         verify(dashboardRefreshPublisher).publish("ORDER_REFUNDED", "ord-1");
+    }
+
+    @Test
+    void approveTicketRefundRejectsMissingTicketScopeInsteadOfRefundingWholeOrder() {
+        AdminService service = createService();
+        TicketOrder order = paidOrder();
+        RefundRequest refundRequest = refundRequest("PENDING");
+        refundRequest.setScope("TICKET");
+
+        when(userAccountMapper.selectById("u-admin")).thenReturn(user("u-admin", "admin"));
+        when(ticketOrderMapper.selectById("ord-1")).thenReturn(order);
+        when(refundRequestMapper.selectList(any())).thenReturn(List.of(refundRequest));
+        when(refundRequestTicketMapper.selectList(any())).thenReturn(List.of());
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-admin");
+
+            assertThatThrownBy(() -> service.approveRefund("ord-1", new ReviewRefundRequest("同意")))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("票级退票申请缺少票据范围，无法审核");
+        }
+
+        verify(refundRequestMapper, never()).updateById(refundRequest);
+        verify(ticketItemMapper, never()).updateById(any(TicketItem.class));
+        verify(dashboardRefreshPublisher, never()).publish("ORDER_REFUNDED", "ord-1");
     }
 
     @Test
@@ -359,6 +662,87 @@ class AdminServiceTest {
     }
 
     @Test
+    void listOrdersReportsActiveTicketCountExcludingVoidedTickets() {
+        AdminService service = createService();
+        TicketOrder order = paidOrder();
+        TicketItem unused = ticket("tk-unused", "ord-1", "UNUSED");
+        TicketItem checkedIn = ticket("tk-checked", "ord-1", "CHECKED_IN");
+        TicketItem voided = ticket("tk-void", "ord-1", "VOID");
+
+        when(userAccountMapper.selectById("u-admin")).thenReturn(user("u-admin", "admin"));
+        when(userAccountMapper.selectById("u-1")).thenReturn(user("u-1", "user"));
+        when(ticketOrderMapper.selectList(any())).thenReturn(List.of(order));
+        when(ticketItemMapper.selectList(any())).thenReturn(List.of(unused, checkedIn, voided));
+        when(showScheduleMapper.selectById("sch-1")).thenReturn(schedule());
+        when(showMapper.selectById("show-1")).thenReturn(show());
+        when(refundRequestMapper.selectList(any())).thenReturn(List.of());
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-admin");
+
+            List<AdminOrderResponse> responses = service.listOrders();
+
+            assertThat(responses).singleElement().satisfies(response -> {
+                assertThat(response.ticketCount()).isEqualTo(2);
+                assertThat(response.checkedInCount()).isEqualTo(1);
+            });
+        }
+    }
+
+    @Test
+    void dashboardUsesBoxOfficePolicyForRevenueTicketsAndTrends() {
+        AdminService service = createService();
+        LocalDateTime now = LocalDateTime.now();
+        TicketOrder paid = order("ord-paid", "PAID", BigDecimal.valueOf(180), now.minusDays(1), now.plusMinutes(10));
+        TicketOrder pendingRefund = order("ord-pending-refund", "PENDING_REFUND", BigDecimal.valueOf(120), now.minusDays(1), now.plusMinutes(10));
+        TicketOrder refunded = order("ord-refunded", "REFUNDED", BigDecimal.valueOf(80), now.minusDays(1), now.plusMinutes(10));
+        TicketOrder pending = order("ord-pending", "PENDING_PAYMENT", BigDecimal.valueOf(50), null, now.plusMinutes(20));
+        ShowSchedule schedule = schedule();
+        ShowEntity show = show();
+
+        when(userAccountMapper.selectById("u-admin")).thenReturn(user("u-admin", "admin"));
+        when(ticketOrderMapper.selectList(any())).thenReturn(List.of(paid, pendingRefund, refunded, pending));
+        when(ticketItemMapper.selectList(any())).thenReturn(List.of(
+                ticket("tk-paid-1", "ord-paid", "UNUSED"),
+                ticket("tk-paid-2", "ord-paid", "CHECKED_IN"),
+                ticket("tk-pending-refund", "ord-pending-refund", "PENDING_REFUND"),
+                ticket("tk-refunded", "ord-refunded", "VOID"),
+                ticket("tk-pending", "ord-pending", "PENDING")
+        ));
+        when(showScheduleMapper.selectList(any())).thenReturn(List.of(schedule));
+        when(showMapper.selectList(any())).thenReturn(List.of(show));
+        when(showMapper.selectCount(any())).thenReturn(1L);
+        when(refundRequestMapper.selectList(any())).thenReturn(List.of());
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-admin");
+
+            AdminDashboardResponse response = service.dashboard();
+
+            assertThat(response.totalRevenue()).isEqualByComparingTo("300");
+            assertThat(response.ticketsSold()).isEqualTo(3);
+            assertThat(response.activeShows()).isEqualTo(1);
+            assertThat(response.avgAttendance()).isEqualByComparingTo("33.3");
+            assertThat(response.checkInSummary().checkedIn()).isEqualTo(1);
+            assertThat(response.checkInSummary().unused()).isEqualTo(2);
+            assertThat(response.checkInSummary().voided()).isEqualTo(1);
+            assertThat(response.financeSummary().salesRevenue()).isEqualByComparingTo("380");
+            assertThat(response.financeSummary().netRevenue()).isEqualByComparingTo("300");
+            assertThat(response.financeSummary().validTickets()).isEqualTo(3);
+
+            AdminDashboardResponse.SalesTrendItem activeTrend = response.salesTrend().stream()
+                    .filter(item -> item.date().equals(now.minusDays(1).toLocalDate()))
+                    .findFirst()
+                    .orElseThrow();
+            assertThat(activeTrend.revenue()).isEqualByComparingTo("300");
+            assertThat(activeTrend.ticketCount()).isEqualTo(3);
+            assertThat(response.topShows()).hasSize(1);
+            assertThat(response.topShows().get(0).revenue()).isEqualByComparingTo("300");
+            assertThat(response.topShows().get(0).ticketCount()).isEqualTo(3);
+        }
+    }
+
+    @Test
     void boxOfficeCanFilterByCategoryBeforeShow() {
         AdminService service = createService();
         LocalDateTime now = LocalDateTime.now();
@@ -468,6 +852,7 @@ class AdminServiceTest {
                 scheduleAreaInventoryMapper,
                 venueManagementService,
                 seatService,
+                orderService,
                 refundRequestMapper,
                 refundRequestTicketMapper
         );
@@ -483,6 +868,36 @@ class AdminServiceTest {
         order.setCreatedAt(LocalDateTime.now().minusMinutes(10));
         order.setPaidAt(LocalDateTime.now().minusMinutes(5));
         return order;
+    }
+
+    private TicketOrder paidOfflineOrder(String orderId, String userId) {
+        TicketOrder order = new TicketOrder();
+        order.setId(orderId);
+        order.setUserId(userId);
+        order.setScheduleId("sch-1");
+        order.setTotalAmount(BigDecimal.valueOf(150));
+        order.setStatus("PAID");
+        order.setOrderChannel("OFFLINE");
+        order.setPaymentMethod("COUNTER");
+        order.setCashierUserId("u-admin");
+        order.setCreatedAt(LocalDateTime.now().minusMinutes(2));
+        order.setExpiresAt(LocalDateTime.now().minusMinutes(2));
+        order.setPaidAt(LocalDateTime.now().minusMinutes(1));
+        return order;
+    }
+
+    private TicketItem issuedTicket(String orderId, String seatId, String areaInventoryId, String holderUserId, String holderDisplayName) {
+        TicketItem ticket = new TicketItem();
+        ticket.setId("tk-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
+        ticket.setOrderId(orderId);
+        ticket.setScheduleId("sch-1");
+        ticket.setSeatId(seatId);
+        ticket.setAreaInventoryId(areaInventoryId);
+        ticket.setTicketCode("T" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
+        ticket.setStatus("UNUSED");
+        ticket.setHolderUserId(holderUserId);
+        ticket.setHolderDisplayName(holderDisplayName);
+        return ticket;
     }
 
     private RefundRequest refundRequest(String status) {
@@ -547,6 +962,40 @@ class AdminServiceTest {
         schedule.setTheaterName("Main Hall");
         schedule.setStartTime(LocalDateTime.now().plusDays(1));
         return schedule;
+    }
+
+    private ShowSchedule onSaleSchedule(String ticketMode) {
+        ShowSchedule schedule = schedule();
+        schedule.setEndTime(LocalDateTime.now().plusDays(1).plusHours(2));
+        schedule.setSaleStartTime(LocalDateTime.now().minusDays(1));
+        schedule.setSaleEndTime(LocalDateTime.now().plusHours(1));
+        schedule.setStatus("ON_SALE");
+        schedule.setPublishStatus("PUBLISHED");
+        schedule.setTicketMode(ticketMode);
+        return schedule;
+    }
+
+    private ScheduleAreaInventory areaInventory() {
+        ScheduleAreaInventory inventory = new ScheduleAreaInventory();
+        inventory.setId("inv-1");
+        inventory.setScheduleId("sch-1");
+        inventory.setAreaId("area-1");
+        inventory.setPrice(BigDecimal.valueOf(80));
+        inventory.setTotalCount(20);
+        inventory.setAvailableCount(10);
+        inventory.setLockedCount(0);
+        inventory.setSoldCount(0);
+        inventory.setStatus("AVAILABLE");
+        return inventory;
+    }
+
+    private VenueArea area() {
+        VenueArea area = new VenueArea();
+        area.setId("area-1");
+        area.setName("站席区");
+        area.setAreaType("STANDING");
+        area.setIsSeated(false);
+        return area;
     }
 
     private ShowEntity show() {

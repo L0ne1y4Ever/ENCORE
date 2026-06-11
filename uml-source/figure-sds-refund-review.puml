@@ -1,0 +1,54 @@
+@startuml
+skinparam shadowing false
+skinparam DefaultFontName "Microsoft YaHei"
+skinparam DefaultFontSize 12
+skinparam sequence {
+  ArrowColor #5B0E0E
+  LifeLineBorderColor #5B0E0E
+  LifeLineBackgroundColor #FFF8E7
+  ParticipantBackgroundColor #FBF3DF
+  ParticipantBorderColor #5B0E0E
+}
+title 票级退票申请与后台审核流程
+
+actor "持票用户/订单发起人" as User
+participant "Profile / ETicket" as UI
+participant "OrderController" as OC
+participant "OrderService" as OS
+database "ticket_item" as Ticket
+database "refund_request\nrefund_request_ticket" as Refund
+participant "Admin Orders" as AdminUI
+participant "AdminService" as Admin
+participant "SeatStatusPublisher" as SeatPush
+participant "DashboardRefreshPublisher" as DashPush
+
+User -> UI : 点击“申请退票”\n填写可选原因/选择可退票据
+UI -> OC : POST /api/orders/{id}/refund\n{reason, ticketIds?}
+OC -> OS : refundOrder(orderId, request)
+OS -> Ticket : 校验订单/持票人/票据状态/场次未结束
+
+alt 订单发起人且满足自助窗口
+  OS -> Refund : 创建 APPROVED + USER_AUTO 记录
+  OS -> Ticket : 票据置 VOID，释放座位/区域库存
+  OS -> SeatPush : 推送座位可售状态
+  OS -> DashPush : 刷新票房与订单看板
+  OS --> UI : 返回已退款订单
+else 票级或超出自助窗口
+  OS -> Refund : 创建 PENDING 记录\n写入 scope、ticket_count、refund_amount
+  OS -> Ticket : 关联票据置 PENDING_REFUND
+  OS --> UI : 返回退票审核中
+end
+
+AdminUI -> Admin : approve/reject(orderId, note)
+Admin -> Refund : 查询最新 PENDING 申请及关联票据
+alt 审核通过
+  Admin -> Ticket : PENDING_REFUND -> VOID
+  Admin -> SeatPush : 释放对应座位/区域库存
+  Admin -> Refund : 状态置 APPROVED，写审核备注
+  Admin -> DashPush : 刷新看板与票房统计
+else 审核拒绝
+  Admin -> Ticket : PENDING_REFUND -> UNUSED
+  Admin -> Refund : 状态置 REJECTED，写审核备注
+end
+Admin --> AdminUI : 返回最新订单/申请摘要
+@enduml

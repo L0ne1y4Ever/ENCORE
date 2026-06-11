@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
+import AdminTableScroller from '../../components/AdminTableScroller.vue'
 import {
   createAdminStaffUser,
   getAdminStaffUsers,
@@ -198,30 +199,32 @@ const statusType = (status: string) => status === 'ACTIVE' ? 'success' : 'info'
     </div>
 
     <section class="panel">
-      <el-table :data="users" :empty-text="t('admin.empty')" v-loading="loading" row-key="id">
-        <el-table-column prop="username" :label="t('common.username')" min-width="140" />
-        <el-table-column prop="displayName" :label="t('common.nickname')" min-width="150" />
-        <el-table-column prop="role" :label="t('admin.staffRole')" width="120">
-          <template #default="{ row }">
-            <el-tag size="small" effect="plain">{{ row.role }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="status" :label="t('common.status')" width="120">
-          <template #default="{ row }">
-            <el-tag size="small" :type="statusType(row.status)" effect="plain">{{ row.status }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column :label="t('admin.action')" width="220">
-          <template #default="{ row }">
-            <el-button link type="primary" :disabled="!row.editable" @click="openEdit(row)">
-              {{ t('admin.edit') }}
-            </el-button>
-            <el-button link type="primary" :disabled="!row.editable || operatingId === row.id" @click="openResetPassword(row)">
-              {{ t('admin.resetPassword') }}
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <AdminTableScroller :label="t('admin.tableHorizontalScroll')">
+        <el-table :data="users" :empty-text="t('admin.empty')" v-loading="loading" row-key="id">
+          <el-table-column prop="username" :label="t('common.username')" min-width="140" />
+          <el-table-column prop="displayName" :label="t('common.nickname')" min-width="150" />
+          <el-table-column prop="role" :label="t('admin.staffRole')" width="120">
+            <template #default="{ row }">
+              <el-tag size="small" effect="plain">{{ row.role }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="status" :label="t('common.status')" width="120">
+            <template #default="{ row }">
+              <el-tag size="small" :type="statusType(row.status)" effect="plain">{{ row.status }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column :label="t('admin.action')" width="220" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="primary" :disabled="!row.editable" @click="openEdit(row)">
+                {{ t('admin.edit') }}
+              </el-button>
+              <el-button link type="primary" :disabled="!row.editable || operatingId === row.id" @click="openResetPassword(row)">
+                {{ t('admin.resetPassword') }}
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </AdminTableScroller>
     </section>
 
     <el-dialog
