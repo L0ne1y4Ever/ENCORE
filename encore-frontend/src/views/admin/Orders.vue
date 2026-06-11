@@ -268,7 +268,6 @@ const exportOrders = async () => {
                 link
                 type="primary"
                 :loading="operatingId === row.id"
-                :disabled="row.checkedInCount > 0"
                 @click="reviewRefund(row, 'approve')"
               >
                 {{ t('admin.approveRefund') }}

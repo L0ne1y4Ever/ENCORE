@@ -732,7 +732,7 @@ const submitLock = async () => {
     }))
     router.push('/confirm')
   } catch (e) {
-    alert(t('seat.conflict'))
+    alert(e instanceof Error && e.message ? e.message : t('seat.conflict'))
     await refreshSeatMap()
     selectedSeatIds.value.clear()
   } finally {
@@ -1558,8 +1558,8 @@ const stageDisplayLabel = computed(() => {
 }
 
 .stage-container {
-  width: 70%;
-  max-width: 500px;
+  width: 78%;
+  max-width: 740px;
   text-align: center;
   position: relative;
 
@@ -1604,10 +1604,25 @@ const stageDisplayLabel = computed(() => {
 }
 
 .seat-map {
+  /* 座位尺寸统一由变量驱动：演示/大屏下加大座位，提高投影可读性；
+     中小屏自动回落，超宽看台仍有横向滚动兜底。图例方块在 .seat-map 外，
+     取 fallback 24px 不受影响。 */
+  --seat-size: 40px;
+  --seat-gap: 8px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--spacing-2);
+
+  @media (max-width: 1600px) {
+    --seat-size: 32px;
+    --seat-gap: 7px;
+  }
+
+  @media (max-width: 1200px) {
+    --seat-size: 26px;
+    --seat-gap: 6px;
+  }
 
   .column-label-row {
     display: flex;
@@ -1621,23 +1636,23 @@ const stageDisplayLabel = computed(() => {
     }
 
     .row-label.spacer {
-      width: 24px;
+      width: var(--seat-size, 24px);
       visibility: hidden;
     }
 
     .column-labels {
       display: flex;
-      gap: 6px;
+      gap: var(--seat-gap, 6px);
 
       span {
-        width: 24px;
+        width: var(--seat-size, 24px);
         height: 14px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         color: rgba(255, 255, 255, 0.38);
         font-family: var(--font-family-sans);
-        font-size: 10px;
+        font-size: 11px;
         font-weight: 700;
         font-variant-numeric: tabular-nums;
         line-height: 1;
@@ -1651,9 +1666,9 @@ const stageDisplayLabel = computed(() => {
     gap: var(--spacing-4);
 
     .row-label {
-      width: 24px;
+      width: var(--seat-size, 24px);
       text-align: center;
-      font-size: 12px;
+      font-size: 13px;
       color: rgba(255, 255, 255, 0.54);
       font-family: var(--font-family-sans);
       font-weight: 700;
@@ -1661,15 +1676,15 @@ const stageDisplayLabel = computed(() => {
 
     .seats-container {
       display: flex;
-      gap: 6px;
+      gap: var(--seat-gap, 6px);
     }
   }
 }
 
 .seat-item, .box {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
+  width: var(--seat-size, 24px);
+  height: var(--seat-size, 24px);
+  border-radius: 7px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1722,8 +1737,8 @@ const stageDisplayLabel = computed(() => {
     &::after {
       content: '';
       position: absolute;
-      width: 4px;
-      height: 4px;
+      width: 5px;
+      height: 5px;
       background-color: rgba(255, 255, 255, 0.56);
       border-radius: 50%;
     }
@@ -1736,8 +1751,8 @@ const stageDisplayLabel = computed(() => {
     &::after {
       content: '';
       position: absolute;
-      width: 6px;
-      height: 6px;
+      width: 7px;
+      height: 7px;
       background-color: rgba(255, 255, 255, 0.42);
       border-radius: 50%;
     }
@@ -1758,8 +1773,8 @@ const stageDisplayLabel = computed(() => {
     }
 
     .seat-dot {
-      width: 6px;
-      height: 6px;
+      width: 8px;
+      height: 8px;
       background-color: #080808;
       border-radius: 50%;
     }

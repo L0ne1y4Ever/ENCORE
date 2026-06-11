@@ -45,8 +45,19 @@ const seatDisplay = (ticket: TicketItem) => {
   return ticket.seatLabel || ticket.seatId
 }
 
+const hasPassed = (value?: string | null) => {
+  if (!value) return false
+  const time = Date.parse(value)
+  return Number.isFinite(time) && Date.now() > time
+}
+
+const isExpiredTicket = (ticket: TicketItem) => {
+  return ticket.status === 'UNUSED' && hasPassed(order.value?.endTime)
+}
+
 const ticketStatusKey = (ticket: TicketItem) => {
   if (order.value?.status === 'PENDING_REFUND' && ticket.status === 'UNUSED') return 'pendingRefund'
+  if (isExpiredTicket(ticket)) return 'expired'
   const status = (ticket.status || 'UNUSED').toLowerCase()
   if (status === 'checked_in') return 'checkedIn'
   if (status === 'pending_refund') return 'pendingRefund'
@@ -60,6 +71,7 @@ const ticketStatusLabel = (ticket: TicketItem) => {
 }
 
 const ticketSubStatusLabel = (ticket: TicketItem) => {
+  if (isExpiredTicket(ticket)) return locale.value === 'zh' ? '演出已结束' : 'Show Ended'
   const status = (ticket.status || 'UNUSED').toLowerCase()
   if (status === 'checked_in') return locale.value === 'zh' ? '已核销' : 'Checked In'
   if (status === 'pending_refund') return locale.value === 'zh' ? '退票审核中' : 'Refund Review'
@@ -71,7 +83,7 @@ const ticketSubStatusLabel = (ticket: TicketItem) => {
 const ticketStateClass = (ticket: TicketItem) => {
   const key = ticketStatusKey(ticket)
   return {
-    'ticket-card--inactive': key === 'checkedIn' || key === 'void' || key === 'pendingRefund',
+    'ticket-card--inactive': key === 'checkedIn' || key === 'void' || key === 'pendingRefund' || key === 'expired',
     'ticket-card--reserved': key === 'reserved'
   }
 }
@@ -642,7 +654,8 @@ const barcodeBars = (ticketCode: string) => {
       }
 
       &.tag--checkedIn,
-      &.tag--void {
+      &.tag--void,
+      &.tag--expired {
         color: rgba(255, 255, 255, 0.68);
 
         .dot {

@@ -450,7 +450,7 @@ const getAreaOpacity = (area: ScheduleAreaResponse) => {
 
 .stage-guide {
   width: 100%;
-  max-width: 480px;
+  max-width: 640px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -502,10 +502,16 @@ const getAreaOpacity = (area: ScheduleAreaResponse) => {
 }
 
 .svg-container {
+  /* 放大场馆图主体：宽屏下占满主区可用宽度，矮屏回落避免纵向溢出
+     （SVG viewBox 800×550 等比缩放，宽 1200 时高约 825）。 */
   width: 100%;
-  max-width: 760px;
+  max-width: min(1200px, 94%);
   margin: 0 auto;
   filter: drop-shadow(0 16px 48px rgba(0,0,0,0.7));
+
+  @media (max-height: 920px) {
+    max-width: min(960px, 94%);
+  }
 }
 
 .venue-svg {

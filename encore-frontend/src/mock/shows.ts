@@ -23,7 +23,9 @@ export interface Schedule {
   theaterName: string
   startTime: string
   endTime: string
-  status: 'ON_SALE' | 'SOLD_OUT' | 'PREPARING' | 'COMING_SOON'
+  saleStartTime?: string | null
+  saleEndTime?: string | null
+  status: 'ON_SALE' | 'SOLD_OUT' | 'PREPARING' | 'COMING_SOON' | 'CANCELLED' | 'ENDED'
   priceRange: string
   minPrice?: number | string | null
   maxPrice?: number | string | null

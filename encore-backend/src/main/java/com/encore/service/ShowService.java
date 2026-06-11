@@ -25,6 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -121,7 +122,7 @@ public class ShowService {
         Map<String, ShowSchedule> scheduleById = schedules.stream()
                 .collect(Collectors.toMap(ShowSchedule::getId, Function.identity(), (left, right) -> left));
         Map<String, Long> availableSchedulesByShow = schedules.stream()
-                .filter(schedule -> "ON_SALE".equals(schedule.getStatus()))
+                .filter(this::isPurchasableSchedule)
                 .collect(Collectors.groupingBy(ShowSchedule::getShowId, Collectors.counting()));
         Map<String, Long> availableTicketsByShow = calculateAvailableTicketsByShow(schedules);
         Map<String, PriceBounds> priceBoundsByShow = collectPriceBoundsByShow(schedules);
@@ -208,6 +209,7 @@ public class ShowService {
                         .orderByAsc(ShowSchedule::getStartTime))
                 .stream()
                 .filter(this::isPublicSchedule)
+                .filter(this::isUserListableSchedule)
                 .map(this::toScheduleResponse)
                 .toList();
     }
@@ -321,7 +323,7 @@ public class ShowService {
     private Map<String, Long> calculateAvailableTicketsByShow(List<ShowSchedule> schedules) {
         Map<String, Long> availableTicketsByShow = new HashMap<>();
         for (ShowSchedule schedule : schedules) {
-            if (!"ON_SALE".equals(schedule.getStatus())) {
+            if (!isPurchasableSchedule(schedule)) {
                 continue;
             }
             availableTicketsByShow.merge(schedule.getShowId(), countAvailableTickets(schedule), Long::sum);
@@ -353,7 +355,10 @@ public class ShowService {
     }
 
     private boolean hasDisplayablePrice(ShowSchedule schedule) {
-        return !"CANCELLED".equals(schedule.getStatus()) && !"ENDED".equals(schedule.getStatus());
+        return !"CANCELLED".equals(schedule.getStatus())
+                && !"ENDED".equals(schedule.getStatus())
+                && (schedule.getEndTime() == null || !LocalDateTime.now().isAfter(schedule.getEndTime()))
+                && !isSaleEnded(schedule);
     }
 
     private PriceBounds priceBoundsForSchedule(ShowSchedule schedule) {
@@ -512,6 +517,55 @@ public class ShowService {
         return schedule.getPublishStatus() == null || "PUBLISHED".equals(schedule.getPublishStatus());
     }
 
+    private boolean isPurchasableSchedule(ShowSchedule schedule) {
+        if (!isPublicSchedule(schedule) || !"ON_SALE".equals(schedule.getStatus())) {
+            return false;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        if (schedule.getSaleStartTime() != null && now.isBefore(schedule.getSaleStartTime())) {
+            return false;
+        }
+        if (schedule.getEndTime() != null && now.isAfter(schedule.getEndTime())) {
+            return false;
+        }
+        return !isSaleEnded(schedule);
+    }
+
+    private boolean isUserListableSchedule(ShowSchedule schedule) {
+        if (!isPublicSchedule(schedule)) {
+            return false;
+        }
+        if ("CANCELLED".equals(schedule.getStatus()) || "ENDED".equals(schedule.getStatus())) {
+            return false;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        if (schedule.getEndTime() != null && now.isAfter(schedule.getEndTime())) {
+            return false;
+        }
+        return schedule.getSaleEndTime() == null || !now.isAfter(schedule.getSaleEndTime());
+    }
+
+    private boolean isSaleEnded(ShowSchedule schedule) {
+        return schedule.getSaleEndTime() != null && LocalDateTime.now().isAfter(schedule.getSaleEndTime());
+    }
+
+    private String effectiveScheduleStatus(ShowSchedule schedule) {
+        if (schedule.getEndTime() != null && LocalDateTime.now().isAfter(schedule.getEndTime())) {
+            return "ENDED";
+        }
+        if (!"ON_SALE".equals(schedule.getStatus())) {
+            return schedule.getStatus();
+        }
+        LocalDateTime now = LocalDateTime.now();
+        if (schedule.getSaleStartTime() != null && now.isBefore(schedule.getSaleStartTime())) {
+            return "COMING_SOON";
+        }
+        if (isSaleEnded(schedule)) {
+            return "ENDED";
+        }
+        return schedule.getStatus();
+    }
+
     private ScheduleResponse toScheduleResponse(ShowSchedule schedule) {
         ShowEntity show = showMapper.selectById(schedule.getShowId());
         String category = show != null ? show.getCategory() : null;
@@ -524,7 +578,7 @@ public class ShowService {
                 schedule.getEndTime(),
                 schedule.getSaleStartTime(),
                 schedule.getSaleEndTime(),
-                schedule.getStatus(),
+                effectiveScheduleStatus(schedule),
                 schedule.getPublishStatus() == null ? "PUBLISHED" : schedule.getPublishStatus(),
                 displayPriceRange(priceBounds),
                 minPrice(priceBounds),

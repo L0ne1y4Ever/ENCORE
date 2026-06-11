@@ -217,10 +217,12 @@ class OrderServiceTest {
         TicketOrder order = paidGroupOrder();
         TicketItem hostTicket = heldTicket("tk-1", "seat-1-1", "u-101", "发起人");
         TicketItem inviteeTicket = heldTicket("tk-2", "seat-1-2", "u-102", "拼座好友");
+        ShowSchedule schedule = schedule(LocalDateTime.now().plusDays(1), LocalDateTime.now().plusDays(1).plusHours(2));
 
         when(ticketOrderMapper.selectById("ord-1")).thenReturn(order);
         when(ticketItemMapper.selectList(any())).thenReturn(List.of(hostTicket, inviteeTicket));
         when(userAccountMapper.selectById("u-102")).thenReturn(user("u-102", "拼座好友", "user"));
+        when(showScheduleMapper.selectById("sch-1")).thenReturn(schedule);
         when(scheduleSeatMapper.selectOne(any())).thenReturn(seat("seat-1-2", 100));
 
         OrderResponse response;
@@ -230,11 +232,44 @@ class OrderServiceTest {
         }
 
         assertThat(response.totalAmount()).isEqualByComparingTo(BigDecimal.valueOf(100));
+        assertThat(response.endTime()).isEqualTo(schedule.getEndTime());
         assertThat(response.tickets()).singleElement().satisfies(ticket -> {
             assertThat(ticket.seatId()).isEqualTo("seat-1-2");
+            assertThat(ticket.price()).isEqualByComparingTo(BigDecimal.valueOf(100));
             assertThat(ticket.holderUserId()).isEqualTo("u-102");
             assertThat(ticket.holderDisplayName()).isEqualTo("拼座好友");
         });
+    }
+
+    @Test
+    void inviteeVisibleAmountExcludesPendingAndVoidedTickets() {
+        OrderService service = createService();
+        TicketOrder order = paidGroupOrder();
+        TicketItem activeTicket = heldTicket("tk-2", "seat-1-2", "u-102", "拼座好友");
+        TicketItem pendingRefundTicket = heldTicket("tk-3", "seat-1-3", "u-102", "拼座好友");
+        pendingRefundTicket.setStatus("PENDING_REFUND");
+        TicketItem voidedTicket = heldTicket("tk-4", "seat-1-4", "u-102", "拼座好友");
+        voidedTicket.setStatus("VOID");
+
+        when(ticketOrderMapper.selectById("ord-1")).thenReturn(order);
+        when(ticketItemMapper.selectList(any())).thenReturn(List.of(activeTicket, pendingRefundTicket, voidedTicket));
+        when(userAccountMapper.selectById("u-102")).thenReturn(user("u-102", "拼座好友", "user"));
+        when(scheduleSeatMapper.selectOne(any()))
+                .thenReturn(
+                        seat("seat-1-2", 100),
+                        seat("seat-1-2", 100),
+                        seat("seat-1-3", 80),
+                        seat("seat-1-4", 60)
+                );
+
+        OrderResponse response;
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-102");
+            response = service.getOrderDetail("ord-1");
+        }
+
+        assertThat(response.totalAmount()).isEqualByComparingTo(BigDecimal.valueOf(100));
+        assertThat(response.tickets()).hasSize(3);
     }
 
     @Test
@@ -395,6 +430,29 @@ class OrderServiceTest {
     }
 
     @Test
+    void refundAfterShowEndIsRejected() {
+        OrderService service = createService();
+        TicketOrder order = pendingOrder(LocalDateTime.now().plusMinutes(10));
+        order.setStatus("PAID");
+        TicketItem ticket = ticket();
+        ticket.setStatus("UNUSED");
+        ShowSchedule schedule = schedule(LocalDateTime.now().minusHours(3), LocalDateTime.now().minusHours(1));
+
+        when(ticketOrderMapper.selectById("ord-1")).thenReturn(order);
+        when(showScheduleMapper.selectById("sch-1")).thenReturn(schedule);
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-1");
+            assertThatThrownBy(() -> service.refundOrder("ord-1"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("演出已结束，无法申请退票");
+        }
+
+        verify(ticketItemMapper, never()).updateById(ticket);
+        verify(refundRequestMapper, never()).insert(any(RefundRequest.class));
+    }
+
+    @Test
     void getOrderDetailRejectsOtherUserOrder() {
         OrderService service = createService();
         TicketOrder order = pendingOrder(LocalDateTime.now().plusMinutes(10));
@@ -495,6 +553,15 @@ class OrderServiceTest {
         seat.setStatus("AVAILABLE");
         seat.setPrice(BigDecimal.valueOf(price));
         return seat;
+    }
+
+    private ShowSchedule schedule(LocalDateTime startTime, LocalDateTime endTime) {
+        ShowSchedule schedule = new ShowSchedule();
+        schedule.setId("sch-1");
+        schedule.setStartTime(startTime);
+        schedule.setEndTime(endTime);
+        schedule.setTheaterName("Main Hall");
+        return schedule;
     }
 
     private com.encore.entity.UserAccount user(String id, String displayName, String role) {

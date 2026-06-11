@@ -1,5 +1,7 @@
 package com.encore.dto;
 
+import java.math.BigDecimal;
+
 public record TicketItemResponse(
         String id,
         String orderId,
@@ -13,6 +15,7 @@ public record TicketItemResponse(
         String seatLabel,
         Integer rowNo,
         Integer colNo,
+        BigDecimal price,
         String holderUserId,
         String holderDisplayName
 ) {

@@ -260,7 +260,8 @@ export default {
       checkedIn: 'Status: Checked in',
       pendingRefund: 'Status: Refund review',
       void: 'Status: Void',
-      reserved: 'Status: Reserved'
+      reserved: 'Status: Reserved',
+      expired: 'Status: Expired'
     },
     unassigned: 'General Admission / Unassigned',
     freeArea: 'General Area',
@@ -644,6 +645,8 @@ export default {
       ended: 'Ended'
     },
     priceRange: 'Price Range',
+    pricingConfig: 'Pricing',
+    basePrice: 'Base Price',
     ticketMode: 'Ticket Mode',
     startTime: 'Start Time',
     endTime: 'End Time',
@@ -652,6 +655,8 @@ export default {
     vipPrice: 'VIP Price',
     standardPrice: 'A Price',
     economyPrice: 'B Price',
+    pricingInvalid: 'Prices must be greater than 0',
+    pricingLockedHint: 'This schedule already has locked seats, sold tickets, or orders. Real ticket prices can no longer be changed.',
     scheduleSaved: 'Schedule saved',
     scheduleCancelled: 'Schedule cancelled',
     cancelSchedule: 'Cancel',

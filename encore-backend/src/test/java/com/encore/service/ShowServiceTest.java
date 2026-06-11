@@ -298,6 +298,38 @@ class ShowServiceTest {
     }
 
     @Test
+    void listSchedulesHidesExpiredAndCancelledSchedulesForUsers() {
+        ShowService service = createService();
+        ShowEntity show = show("s-visible", "PUBLISHED", 10, 1);
+        ShowSchedule onSale = schedule("sch-on-sale", "s-visible", "ON_SALE", "$80 - $120");
+        onSale.setStartTime(LocalDateTime.now().plusDays(2));
+        onSale.setEndTime(LocalDateTime.now().plusDays(2).plusHours(2));
+        onSale.setSaleEndTime(LocalDateTime.now().plusDays(1));
+        ShowSchedule soldOut = schedule("sch-sold-out", "s-visible", "SOLD_OUT", "$80 - $120");
+        soldOut.setStartTime(LocalDateTime.now().plusDays(3));
+        soldOut.setEndTime(LocalDateTime.now().plusDays(3).plusHours(2));
+        ShowSchedule saleEnded = schedule("sch-sale-ended", "s-visible", "ON_SALE", "$50 - $80");
+        saleEnded.setStartTime(LocalDateTime.now().plusDays(1));
+        saleEnded.setEndTime(LocalDateTime.now().plusDays(1).plusHours(2));
+        saleEnded.setSaleEndTime(LocalDateTime.now().minusMinutes(1));
+        ShowSchedule showEnded = schedule("sch-show-ended", "s-visible", "ON_SALE", "$50 - $80");
+        showEnded.setStartTime(LocalDateTime.now().minusHours(3));
+        showEnded.setEndTime(LocalDateTime.now().minusHours(1));
+        ShowSchedule cancelled = schedule("sch-cancelled", "s-visible", "CANCELLED", "$50 - $80");
+
+        when(showMapper.selectById("s-visible")).thenReturn(show);
+        when(showScheduleMapper.selectList(any())).thenReturn(
+                List.of(onSale, soldOut, saleEnded, showEnded, cancelled),
+                List.of(onSale, soldOut, saleEnded, showEnded, cancelled)
+        );
+
+        List<com.encore.dto.ScheduleResponse> schedules = service.listSchedules("s-visible");
+
+        assertThat(schedules).extracting(com.encore.dto.ScheduleResponse::id)
+                .containsExactly("sch-on-sale", "sch-sold-out");
+    }
+
+    @Test
     void recommendationsLimitToEightShowsAndAssignRanks() {
         ShowService service = createService();
         List<ShowEntity> shows = java.util.stream.IntStream.rangeClosed(1, 10)

@@ -51,6 +51,7 @@ interface ScheduleForm {
   publishStatus: PublishStatus
   priceRange: string
   ticketMode: string
+  basePrice: number
   seatRows: number
   seatCols: number
   vipPrice: number
@@ -106,6 +107,10 @@ const toDateTimeValue = (date: Date) => {
 }
 
 const formatPriceRange = (value: string) => formatMoneyRange(value, locale.value) || value
+const positivePrice = (value: number | string | null | undefined, fallback: number) => {
+  const amount = Number(value)
+  return Number.isFinite(amount) && amount > 0 ? amount : fallback
+}
 
 const defaultStartTime = () => {
   const date = new Date()
@@ -144,6 +149,7 @@ const emptyForm = (): ScheduleForm => {
     publishStatus: 'DRAFT',
     priceRange: '50 - 150',
     ticketMode: layout?.ticketMode || 'SEATED',
+    basePrice: 100,
     seatRows: 10,
     seatCols: 15,
     vipPrice: 150,
@@ -163,6 +169,24 @@ const categoryOptions = computed(() => {
 const filteredHallOptions = computed(() => {
   if (!venueFilter.value) return halls.value
   return halls.value.filter(hall => hall.venueId === venueFilter.value)
+})
+const editingSchedule = computed(() => tableData.value.find(row => row.id === form.id))
+const pricingLocked = computed(() => {
+  if (dialogMode.value !== 'edit') return false
+  const row = editingSchedule.value
+  if (!row) return false
+  return Number(row.paidTickets || 0) > 0
+    || Number(row.soldSeats || 0) > 0
+    || Number(row.lockedSeats || 0) > 0
+})
+const priceRangePreview = computed(() => {
+  const values = [form.basePrice, form.vipPrice, form.standardPrice, form.economyPrice]
+    .map(value => Number(value))
+    .filter(value => Number.isFinite(value) && value > 0)
+  if (!values.length) return ''
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  return min === max ? String(min) : `${min} - ${max}`
 })
 
 const filteredSchedules = computed(() => {
@@ -371,18 +395,19 @@ const openEdit = (row: AdminSchedule) => {
     publishStatus: (row.publishStatus === 'PUBLISHED' ? 'PUBLISHED' : 'DRAFT') as PublishStatus,
     priceRange: row.priceRange,
     ticketMode: row.ticketMode || 'SEATED',
+    basePrice: positivePrice(row.basePrice, 100),
     seatRows: 10,
     seatCols: 15,
-    vipPrice: 150,
-    standardPrice: 100,
-    economyPrice: 50
+    vipPrice: positivePrice(row.vipPrice, 150),
+    standardPrice: positivePrice(row.standardPrice, 100),
+    economyPrice: positivePrice(row.economyPrice, 50)
   })
   dialogMode.value = 'edit'
   dialogVisible.value = true
 }
 
 const validateForm = () => {
-  if (!form.showId || !form.hallId || !form.layoutId || !form.theaterName.trim() || !form.startTime || !form.endTime || !form.priceRange.trim()) {
+  if (!form.showId || !form.hallId || !form.layoutId || !form.theaterName.trim() || !form.startTime || !form.endTime) {
     ElMessage.error(t('admin.formRequired'))
     return false
   }
@@ -394,12 +419,23 @@ const validateForm = () => {
     ElMessage.error(t('admin.saleTimeInvalid'))
     return false
   }
-  if (dialogMode.value === 'create' && !form.layoutId && (form.seatRows < 1 || form.seatCols < 1 || form.vipPrice <= 0 || form.standardPrice <= 0 || form.economyPrice <= 0)) {
+  if (form.basePrice <= 0 || form.vipPrice <= 0 || form.standardPrice <= 0 || form.economyPrice <= 0) {
+    ElMessage.error(t('admin.pricingInvalid'))
+    return false
+  }
+  if (dialogMode.value === 'create' && !form.layoutId && (form.seatRows < 1 || form.seatCols < 1)) {
     ElMessage.error(t('admin.seatsInvalid'))
     return false
   }
   return true
 }
+
+const pricingPayload = () => ({
+  basePrice: form.basePrice,
+  vipPrice: form.vipPrice,
+  standardPrice: form.standardPrice,
+  economyPrice: form.economyPrice
+})
 
 const buildCreatePayload = (): CreateAdminSchedulePayload => ({
   showId: form.showId,
@@ -412,7 +448,8 @@ const buildCreatePayload = (): CreateAdminSchedulePayload => ({
   saleEndTime: form.saleEndTime || null,
   status: form.status,
   publishStatus: form.publishStatus,
-  priceRange: form.priceRange.trim(),
+  priceRange: priceRangePreview.value,
+  pricing: pricingPayload(),
   ticketMode: form.ticketMode,
   seatRows: form.seatRows,
   seatCols: form.seatCols,
@@ -432,7 +469,8 @@ const buildUpdatePayload = (): UpdateAdminSchedulePayload => ({
   saleEndTime: form.saleEndTime || null,
   status: form.status,
   publishStatus: form.publishStatus,
-  priceRange: form.priceRange.trim(),
+  priceRange: priceRangePreview.value,
+  pricing: pricingLocked.value ? undefined : pricingPayload(),
   ticketMode: form.ticketMode
 })
 
@@ -821,8 +859,50 @@ const openInventory = (row: AdminSchedule) => {
                 class="full-control"
               />
             </el-form-item>
-            <el-form-item :label="t('admin.priceRange')" required class="span-2">
-              <el-input v-model="form.priceRange" maxlength="64" />
+          </div>
+        </div>
+        <div class="form-section">
+          <h3>{{ t('admin.pricingConfig') }}</h3>
+          <div class="form-grid">
+            <el-form-item :label="t('admin.basePrice')" required>
+              <el-input-number
+                v-model="form.basePrice"
+                :min="1"
+                :precision="2"
+                :disabled="pricingLocked"
+                class="full-control"
+              />
+            </el-form-item>
+            <el-form-item :label="t('admin.vipPrice')" required>
+              <el-input-number
+                v-model="form.vipPrice"
+                :min="1"
+                :precision="2"
+                :disabled="pricingLocked"
+                class="full-control"
+              />
+            </el-form-item>
+            <el-form-item :label="t('admin.standardPrice')" required>
+              <el-input-number
+                v-model="form.standardPrice"
+                :min="1"
+                :precision="2"
+                :disabled="pricingLocked"
+                class="full-control"
+              />
+            </el-form-item>
+            <el-form-item :label="t('admin.economyPrice')" required>
+              <el-input-number
+                v-model="form.economyPrice"
+                :min="1"
+                :precision="2"
+                :disabled="pricingLocked"
+                class="full-control"
+              />
+            </el-form-item>
+            <el-form-item :label="t('admin.priceRange')" class="span-2">
+              <el-input :model-value="formatPriceRange(priceRangePreview)" readonly />
+              <p v-if="pricingLocked" class="field-hint">{{ t('admin.pricingLockedHint') }}</p>
             </el-form-item>
           </div>
         </div>

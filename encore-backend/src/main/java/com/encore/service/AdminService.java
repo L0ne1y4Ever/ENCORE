@@ -14,6 +14,7 @@ import com.encore.dto.CreateScheduleRequest;
 import com.encore.dto.CreateShowRequest;
 import com.encore.dto.RefundRequestSummary;
 import com.encore.dto.ReviewRefundRequest;
+import com.encore.dto.SchedulePricingRequest;
 import com.encore.dto.UpdateScheduleRequest;
 import com.encore.dto.UpdateShowRequest;
 import com.encore.entity.RefundRequest;
@@ -47,7 +48,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -73,6 +76,17 @@ public class AdminService {
     private static final Set<String> SHOW_STATUSES = Set.of("DRAFT", "PUBLISHED", "ARCHIVED");
     private static final Set<String> TICKET_MODES = Set.of("SEATED", "ZONED", "MIXED");
     private static final Set<String> BOX_OFFICE_RANGES = Set.of("LAST_7_DAYS", "LAST_30_DAYS", "ALL", "CUSTOM");
+
+    private record SchedulePricing(
+            BigDecimal basePrice,
+            BigDecimal vipPrice,
+            BigDecimal standardPrice,
+            BigDecimal economyPrice
+    ) {
+    }
+
+    private record PriceBounds(BigDecimal min, BigDecimal max) {
+    }
 
     private final ShowScheduleMapper showScheduleMapper;
     private final ShowMapper showMapper;
@@ -445,7 +459,8 @@ public class AdminService {
         schedule.setSaleEndTime(request.saleEndTime());
         schedule.setStatus(StringUtils.hasText(request.status()) ? normalizeScheduleStatus(request.status()) : "PREPARING");
         schedule.setPublishStatus(StringUtils.hasText(request.publishStatus()) ? request.publishStatus().trim().toUpperCase() : "DRAFT");
-        schedule.setPriceRange(clean(request.priceRange()));
+        schedule.setPriceRange(cleanOptional(request.priceRange()));
+        SchedulePricing pricing = pricingForCreate(request);
 
         String mode = request.ticketMode();
         if (mode == null || mode.isBlank()) {
@@ -486,9 +501,9 @@ public class AdminService {
                     schedule.getId(),
                     request.seatRows() == null ? DEFAULT_SEAT_ROWS : request.seatRows(),
                     request.seatCols() == null ? DEFAULT_SEAT_COLS : request.seatCols(),
-                    request.vipPrice() == null ? DEFAULT_VIP_PRICE : request.vipPrice(),
-                    request.standardPrice() == null ? DEFAULT_STANDARD_PRICE : request.standardPrice(),
-                    request.economyPrice() == null ? DEFAULT_ECONOMY_PRICE : request.economyPrice()
+                    pricing.vipPrice(),
+                    pricing.standardPrice(),
+                    pricing.economyPrice()
             );
         } else {
             // ZONED or MIXED
@@ -537,6 +552,8 @@ public class AdminService {
                 }
             }
         }
+        applySchedulePricing(schedule.getId(), pricing);
+        syncSchedulePriceRange(schedule.getId(), cleanOptional(request.priceRange()));
         return toScheduleResponse(showScheduleMapper.selectById(schedule.getId()));
     }
 
@@ -559,7 +576,7 @@ public class AdminService {
         schedule.setSaleEndTime(request.saleEndTime());
         schedule.setStatus(normalizeScheduleStatus(request.status()));
         schedule.setPublishStatus(StringUtils.hasText(request.publishStatus()) ? request.publishStatus().trim().toUpperCase() : schedule.getPublishStatus());
-        schedule.setPriceRange(clean(request.priceRange()));
+        schedule.setPriceRange(cleanOptional(request.priceRange()));
         if (request.ticketMode() != null) {
             schedule.setTicketMode(normalizeTicketMode(request.ticketMode()));
         }
@@ -567,6 +584,12 @@ public class AdminService {
             venueManagementService.ensureScheduleConflictFree(scheduleId, schedule.getHallId(), schedule.getStartTime(), schedule.getEndTime());
         }
         showScheduleMapper.updateById(schedule);
+        SchedulePricing pricing = pricingForUpdate(request);
+        if (pricing != null && pricingWouldChange(scheduleId, pricing)) {
+            ensureSchedulePricingEditable(scheduleId);
+            applySchedulePricing(scheduleId, pricing);
+        }
+        syncSchedulePriceRange(scheduleId, cleanOptional(request.priceRange()));
         if ("CANCELLED".equals(schedule.getStatus())) {
             releaseScheduleLocks(scheduleId);
             seatStatusPublisher.publishScheduleCancelled(scheduleId);
@@ -1095,6 +1118,284 @@ public class AdminService {
         }
     }
 
+    private SchedulePricing pricingForCreate(CreateScheduleRequest request) {
+        if (request.pricing() != null) {
+            return normalizePricing(request.pricing(), DEFAULT_STANDARD_PRICE);
+        }
+        BigDecimal standard = positiveOrDefault(request.standardPrice(), DEFAULT_STANDARD_PRICE);
+        return new SchedulePricing(
+                standard,
+                positiveOrDefault(request.vipPrice(), DEFAULT_VIP_PRICE),
+                standard,
+                positiveOrDefault(request.economyPrice(), DEFAULT_ECONOMY_PRICE)
+        );
+    }
+
+    private SchedulePricing pricingForUpdate(UpdateScheduleRequest request) {
+        return request.pricing() == null ? null : normalizePricing(request.pricing(), DEFAULT_STANDARD_PRICE);
+    }
+
+    private SchedulePricing normalizePricing(SchedulePricingRequest request, BigDecimal fallback) {
+        BigDecimal base = positiveOrDefault(request.basePrice(), fallback);
+        BigDecimal standard = positiveOrDefault(request.standardPrice(), base);
+        return new SchedulePricing(
+                base,
+                positiveOrDefault(request.vipPrice(), standard),
+                standard,
+                positiveOrDefault(request.economyPrice(), standard)
+        );
+    }
+
+    private BigDecimal positiveOrDefault(BigDecimal value, BigDecimal fallback) {
+        if (value == null) {
+            return fallback;
+        }
+        if (value.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "票价必须大于 0");
+        }
+        return value;
+    }
+
+    private void applySchedulePricing(String scheduleId, SchedulePricing pricing) {
+        List<ScheduleSeat> seats = scheduleSeatMapper.selectList(new LambdaQueryWrapper<ScheduleSeat>()
+                .eq(ScheduleSeat::getScheduleId, scheduleId));
+        List<ScheduleAreaInventory> inventories = scheduleAreaInventoryMapper.selectList(new LambdaQueryWrapper<ScheduleAreaInventory>()
+                .eq(ScheduleAreaInventory::getScheduleId, scheduleId));
+        Map<String, VenueArea> areaById = areaById(seats, inventories);
+
+        for (ScheduleSeat seat : seats == null ? List.<ScheduleSeat>of() : seats) {
+            BigDecimal nextPrice = priceForSeat(seat, areaById, pricing);
+            if (!moneyEquals(seat.getPrice(), nextPrice)) {
+                seat.setPrice(nextPrice);
+                scheduleSeatMapper.updateById(seat);
+            }
+        }
+        for (ScheduleAreaInventory inventory : inventories == null ? List.<ScheduleAreaInventory>of() : inventories) {
+            BigDecimal nextPrice = priceForArea(areaById.get(inventory.getAreaId()), pricing);
+            if (!moneyEquals(inventory.getPrice(), nextPrice)) {
+                inventory.setPrice(nextPrice);
+                scheduleAreaInventoryMapper.updateById(inventory);
+            }
+        }
+    }
+
+    private Map<String, VenueArea> areaById(List<ScheduleSeat> seats, List<ScheduleAreaInventory> inventories) {
+        Set<String> areaIds = new HashSet<>();
+        for (ScheduleSeat seat : seats == null ? List.<ScheduleSeat>of() : seats) {
+            if (StringUtils.hasText(seat.getAreaId())) {
+                areaIds.add(seat.getAreaId());
+            }
+        }
+        for (ScheduleAreaInventory inventory : inventories == null ? List.<ScheduleAreaInventory>of() : inventories) {
+            if (StringUtils.hasText(inventory.getAreaId())) {
+                areaIds.add(inventory.getAreaId());
+            }
+        }
+        if (areaIds.isEmpty()) {
+            return Map.of();
+        }
+        return venueAreaMapper.selectList(new LambdaQueryWrapper<VenueArea>().in(VenueArea::getId, areaIds))
+                .stream()
+                .collect(Collectors.toMap(VenueArea::getId, Function.identity(), (left, right) -> left));
+    }
+
+    private BigDecimal priceForSeat(ScheduleSeat seat, Map<String, VenueArea> areaById, SchedulePricing pricing) {
+        if (StringUtils.hasText(seat.getSection())) {
+            return priceForCode(seat.getSection(), pricing);
+        }
+        return priceForArea(areaById.get(seat.getAreaId()), pricing);
+    }
+
+    private BigDecimal priceForArea(VenueArea area, SchedulePricing pricing) {
+        if (area == null) {
+            return pricing.basePrice();
+        }
+        String code = StringUtils.hasText(area.getCode()) ? area.getCode() : area.getName();
+        return priceForCode(code, pricing);
+    }
+
+    private BigDecimal priceForCode(String code, SchedulePricing pricing) {
+        String bucket = pricingBucket(code);
+        if ("VIP".equals(bucket)) {
+            return pricing.vipPrice();
+        }
+        if ("STANDARD".equals(bucket)) {
+            return pricing.standardPrice();
+        }
+        if ("ECONOMY".equals(bucket)) {
+            return pricing.economyPrice();
+        }
+        return pricing.basePrice();
+    }
+
+    private String pricingBucket(String code) {
+        String normalized = code == null ? "" : code.trim().toUpperCase(Locale.ROOT);
+        if (normalized.contains("VIP")) {
+            return "VIP";
+        }
+        if ("A".equals(normalized) || normalized.contains("STANDARD")) {
+            return "STANDARD";
+        }
+        if ("B".equals(normalized) || normalized.contains("ECONOMY")) {
+            return "ECONOMY";
+        }
+        return "BASE";
+    }
+
+    private boolean pricingWouldChange(String scheduleId, SchedulePricing pricing) {
+        List<ScheduleSeat> seats = scheduleSeatMapper.selectList(new LambdaQueryWrapper<ScheduleSeat>()
+                .eq(ScheduleSeat::getScheduleId, scheduleId));
+        List<ScheduleAreaInventory> inventories = scheduleAreaInventoryMapper.selectList(new LambdaQueryWrapper<ScheduleAreaInventory>()
+                .eq(ScheduleAreaInventory::getScheduleId, scheduleId));
+        Map<String, VenueArea> areaById = areaById(seats, inventories);
+        for (ScheduleSeat seat : seats == null ? List.<ScheduleSeat>of() : seats) {
+            if (!moneyEquals(seat.getPrice(), priceForSeat(seat, areaById, pricing))) {
+                return true;
+            }
+        }
+        for (ScheduleAreaInventory inventory : inventories == null ? List.<ScheduleAreaInventory>of() : inventories) {
+            if (!moneyEquals(inventory.getPrice(), priceForArea(areaById.get(inventory.getAreaId()), pricing))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void ensureSchedulePricingEditable(String scheduleId) {
+        List<TicketItem> tickets = listScheduleTickets(scheduleId);
+        boolean hasOrderTickets = tickets != null && tickets.stream()
+                .anyMatch(ticket -> !"VOID".equals(ticket.getStatus()));
+        if (hasOrderTickets) {
+            throw new BusinessException(ErrorCode.CONFLICT, "已有订单或票据的场次不可修改票价");
+        }
+        List<ScheduleSeat> seats = scheduleSeatMapper.selectList(new LambdaQueryWrapper<ScheduleSeat>()
+                .eq(ScheduleSeat::getScheduleId, scheduleId));
+        boolean hasLockedOrSoldSeat = seats != null && seats.stream()
+                .anyMatch(seat -> "LOCKED".equals(seat.getStatus()) || "SOLD".equals(seat.getStatus()));
+        if (hasLockedOrSoldSeat) {
+            throw new BusinessException(ErrorCode.CONFLICT, "已有锁定或售出票的场次不可修改票价");
+        }
+        List<ScheduleAreaInventory> inventories = scheduleAreaInventoryMapper.selectList(new LambdaQueryWrapper<ScheduleAreaInventory>()
+                .eq(ScheduleAreaInventory::getScheduleId, scheduleId));
+        boolean hasReservedInventory = inventories != null && inventories.stream()
+                .anyMatch(inventory ->
+                        (inventory.getLockedCount() != null && inventory.getLockedCount() > 0)
+                                || (inventory.getSoldCount() != null && inventory.getSoldCount() > 0));
+        if (hasReservedInventory) {
+            throw new BusinessException(ErrorCode.CONFLICT, "已有锁定或售出票的场次不可修改票价");
+        }
+    }
+
+    private void syncSchedulePriceRange(String scheduleId, String fallbackRange) {
+        ShowSchedule schedule = showScheduleMapper.selectById(scheduleId);
+        if (schedule == null) {
+            return;
+        }
+        String nextRange = displayPriceRange(actualPriceBounds(scheduleId));
+        if (!StringUtils.hasText(nextRange)) {
+            nextRange = fallbackRange;
+        }
+        if (!Objects.equals(schedule.getPriceRange(), nextRange)) {
+            schedule.setPriceRange(nextRange);
+            showScheduleMapper.updateById(schedule);
+        }
+    }
+
+    private PriceBounds actualPriceBounds(String scheduleId) {
+        List<BigDecimal> prices = new ArrayList<>();
+        List<ScheduleSeat> seats = scheduleSeatMapper.selectList(new LambdaQueryWrapper<ScheduleSeat>()
+                .eq(ScheduleSeat::getScheduleId, scheduleId));
+        for (ScheduleSeat seat : seats == null ? List.<ScheduleSeat>of() : seats) {
+            if (!"DISABLED".equals(seat.getStatus())) {
+                addPrice(prices, seat.getPrice());
+            }
+        }
+        List<ScheduleAreaInventory> inventories = scheduleAreaInventoryMapper.selectList(new LambdaQueryWrapper<ScheduleAreaInventory>()
+                .eq(ScheduleAreaInventory::getScheduleId, scheduleId));
+        for (ScheduleAreaInventory inventory : inventories == null ? List.<ScheduleAreaInventory>of() : inventories) {
+            if ("DISABLED".equals(inventory.getStatus()) || "CANCELLED".equals(inventory.getStatus())) {
+                continue;
+            }
+            if (inventory.getTotalCount() != null && inventory.getTotalCount() <= 0) {
+                continue;
+            }
+            addPrice(prices, inventory.getPrice());
+        }
+        if (prices.isEmpty()) {
+            return new PriceBounds(null, null);
+        }
+        BigDecimal min = prices.stream().min(BigDecimal::compareTo).orElse(null);
+        BigDecimal max = prices.stream().max(BigDecimal::compareTo).orElse(null);
+        return new PriceBounds(min, max);
+    }
+
+    private SchedulePricing currentSchedulePricing(String scheduleId) {
+        List<ScheduleSeat> seats = scheduleSeatMapper.selectList(new LambdaQueryWrapper<ScheduleSeat>()
+                .eq(ScheduleSeat::getScheduleId, scheduleId));
+        List<ScheduleAreaInventory> inventories = scheduleAreaInventoryMapper.selectList(new LambdaQueryWrapper<ScheduleAreaInventory>()
+                .eq(ScheduleAreaInventory::getScheduleId, scheduleId));
+        Map<String, VenueArea> areaById = areaById(seats, inventories);
+        Map<String, BigDecimal> byBucket = new HashMap<>();
+
+        for (ScheduleSeat seat : seats == null ? List.<ScheduleSeat>of() : seats) {
+            if ("DISABLED".equals(seat.getStatus()) || seat.getPrice() == null) {
+                continue;
+            }
+            String code = StringUtils.hasText(seat.getSection())
+                    ? seat.getSection()
+                    : areaCode(areaById.get(seat.getAreaId()));
+            byBucket.putIfAbsent(pricingBucket(code), seat.getPrice());
+        }
+        for (ScheduleAreaInventory inventory : inventories == null ? List.<ScheduleAreaInventory>of() : inventories) {
+            if (inventory.getPrice() == null) {
+                continue;
+            }
+            byBucket.putIfAbsent(pricingBucket(areaCode(areaById.get(inventory.getAreaId()))), inventory.getPrice());
+        }
+
+        PriceBounds bounds = actualPriceBounds(scheduleId);
+        BigDecimal fallback = bounds.min() == null ? DEFAULT_STANDARD_PRICE : bounds.min();
+        BigDecimal base = byBucket.getOrDefault("BASE", byBucket.getOrDefault("STANDARD", fallback));
+        BigDecimal standard = byBucket.getOrDefault("STANDARD", base);
+        return new SchedulePricing(
+                base,
+                byBucket.getOrDefault("VIP", standard),
+                standard,
+                byBucket.getOrDefault("ECONOMY", standard)
+        );
+    }
+
+    private String areaCode(VenueArea area) {
+        if (area == null) {
+            return null;
+        }
+        return StringUtils.hasText(area.getCode()) ? area.getCode() : area.getName();
+    }
+
+    private void addPrice(List<BigDecimal> prices, BigDecimal price) {
+        if (price != null && price.compareTo(BigDecimal.ZERO) > 0) {
+            prices.add(price);
+        }
+    }
+
+    private String displayPriceRange(PriceBounds bounds) {
+        if (bounds == null || bounds.min() == null) {
+            return null;
+        }
+        if (bounds.max() == null || bounds.min().compareTo(bounds.max()) == 0) {
+            return normalizePrice(bounds.min());
+        }
+        return "%s - %s".formatted(normalizePrice(bounds.min()), normalizePrice(bounds.max()));
+    }
+
+    private String normalizePrice(BigDecimal value) {
+        return value == null ? "" : value.stripTrailingZeros().toPlainString();
+    }
+
+    private boolean moneyEquals(BigDecimal left, BigDecimal right) {
+        return moneyOrZero(left).compareTo(moneyOrZero(right)) == 0;
+    }
+
     private void releaseScheduleLocks(String scheduleId) {
         Set<String> lockKeys = redisTemplate.keys("encore:seat-lock:%s:*".formatted(scheduleId));
         if (lockKeys != null && !lockKeys.isEmpty()) {
@@ -1487,6 +1788,8 @@ public class AdminService {
 
     private AdminScheduleResponse toScheduleResponse(ShowSchedule schedule) {
         ShowEntity show = showMapper.selectById(schedule.getShowId());
+        String actualPriceRange = displayPriceRange(actualPriceBounds(schedule.getId()));
+        SchedulePricing pricing = currentSchedulePricing(schedule.getId());
         List<ScheduleSeat> seats = scheduleSeatMapper.selectList(new LambdaQueryWrapper<ScheduleSeat>()
                 .eq(ScheduleSeat::getScheduleId, schedule.getId()));
         List<TicketItem> tickets = listScheduleTickets(schedule.getId());
@@ -1525,7 +1828,11 @@ public class AdminService {
                 schedule.getSaleEndTime(),
                 schedule.getStatus(),
                 schedule.getPublishStatus() == null ? "DRAFT" : schedule.getPublishStatus(),
-                schedule.getPriceRange(),
+                StringUtils.hasText(actualPriceRange) ? actualPriceRange : schedule.getPriceRange(),
+                pricing.basePrice(),
+                pricing.vipPrice(),
+                pricing.standardPrice(),
+                pricing.economyPrice(),
                 schedule.getTicketMode(),
                 totalSeats,
                 availableSeats,
@@ -1544,7 +1851,8 @@ public class AdminService {
             return null;
         }
         try {
-            return venueManagementService.getHall(hallId).getName();
+            var hall = venueManagementService.getHall(hallId);
+            return hall == null ? null : hall.getName();
         } catch (BusinessException ignored) {
             return null;
         }
@@ -1555,7 +1863,8 @@ public class AdminService {
             return null;
         }
         try {
-            return venueManagementService.getLayout(layoutId).getName();
+            var layout = venueManagementService.getLayout(layoutId);
+            return layout == null ? null : layout.getName();
         } catch (BusinessException ignored) {
             return null;
         }

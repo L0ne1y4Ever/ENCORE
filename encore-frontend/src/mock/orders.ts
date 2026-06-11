@@ -13,6 +13,7 @@ export interface TicketItem {
   seatLabel?: string | null
   rowNo?: number | null
   colNo?: number | null
+  price?: number | string | null
   holderUserId?: string | null
   holderDisplayName?: string | null
 }
@@ -40,6 +41,7 @@ export interface Order {
   showTitle?: string | null
   theaterName?: string | null
   startTime?: string | null
+  endTime?: string | null
   totalAmount: number | string
   status: OrderStatus
   createdAt: string

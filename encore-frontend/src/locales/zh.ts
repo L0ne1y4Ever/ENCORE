@@ -259,7 +259,8 @@ export default {
       checkedIn: '状态：已核销',
       pendingRefund: '状态：退票审核中',
       void: '状态：已作废',
-      reserved: '状态：待支付'
+      reserved: '状态：待支付',
+      expired: '状态：已过期'
     },
     unassigned: '不指定座位',
     freeArea: '自由区域',
@@ -644,6 +645,8 @@ export default {
       ended: '已结束'
     },
     priceRange: '价格区间',
+    pricingConfig: '票价配置',
+    basePrice: '基础价格',
     ticketMode: '售票模式',
     startTime: '开始时间',
     endTime: '结束时间',
@@ -652,6 +655,8 @@ export default {
     vipPrice: 'VIP 价格',
     standardPrice: 'A 区价格',
     economyPrice: 'B 区价格',
+    pricingInvalid: '票价必须大于 0',
+    pricingLockedHint: '该场次已有锁定座位、售出票或订单，不能再修改真实票价。',
     scheduleSaved: '场次已保存',
     scheduleCancelled: '场次已取消',
     cancelSchedule: '取消场次',

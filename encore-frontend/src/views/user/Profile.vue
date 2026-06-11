@@ -23,6 +23,8 @@ const profileSaving = ref(false)
 const activeTab = ref<ProfileTab>('tickets')
 const orders = ref<Order[]>([])
 const orderLoading = ref(false)
+const orderRefreshing = ref(false)
+const ordersLoaded = ref(false)
 const orderError = ref('')
 const operatingOrderId = ref('')
 const refundDialogVisible = ref(false)
@@ -32,6 +34,8 @@ const refundTargetOrder = ref<Order | null>(null)
 const refundTargetTicketIds = ref<string[] | undefined>(undefined)
 const refundReasonInput = ref<HTMLTextAreaElement | null>(null)
 
+type DisplayTicketStatus = TicketItem['status'] | 'EXPIRED'
+
 interface TicketView {
   id: string
   orderId: string
@@ -40,7 +44,7 @@ interface TicketView {
   venue: string
   seat: string
   holder: string
-  status: TicketItem['status']
+  status: DisplayTicketStatus
   isGroupHeld: boolean
   canRefund: boolean
 }
@@ -62,7 +66,9 @@ watch(() => route.query.tab, syncTabFromRoute, { immediate: true })
 
 const selectTab = (tab: ProfileTab) => {
   activeTab.value = tab
-  router.replace({ path: '/profile', query: { tab } })
+  if (route.query.tab !== tab) {
+    router.replace({ path: '/profile', query: { tab } })
+  }
 }
 
 const handleLogout = async () => {
@@ -96,24 +102,22 @@ const toggleEdit = async () => {
 }
 
 const loadOrders = async () => {
-  orderLoading.value = true
+  const initialLoad = !ordersLoaded.value && orders.value.length === 0
+  orderLoading.value = initialLoad
+  orderRefreshing.value = !initialLoad
   orderError.value = ''
   try {
     orders.value = await getMyOrders()
+    ordersLoaded.value = true
   } catch (error) {
     orderError.value = error instanceof Error ? error.message : t('profile.ordersLoadFailed')
   } finally {
     orderLoading.value = false
+    orderRefreshing.value = false
   }
 }
 
 onMounted(loadOrders)
-
-watch(() => route.query.tab, (nextTab, previousTab) => {
-  if (nextTab === 'tickets' && previousTab !== undefined && nextTab !== previousTab) {
-    void loadOrders()
-  }
-})
 
 watch(refundDialogVisible, async visible => {
   document.body.classList.toggle('refund-modal-open', visible)
@@ -127,9 +131,35 @@ onUnmounted(() => {
   document.body.classList.remove('refund-modal-open')
 })
 
+const numericAmount = (value: number | string | null | undefined) => {
+  const amount = Number(value ?? 0)
+  return Number.isFinite(amount) && amount > 0 ? amount : 0
+}
+
+const hasPassed = (value?: string | null) => {
+  if (!value) return false
+  const time = Date.parse(value)
+  return Number.isFinite(time) && Date.now() > time
+}
+
+const isTicketHeldByCurrentUser = (order: Order, ticket: TicketItem) => {
+  if (ticket.holderUserId) return ticket.holderUserId === currentUserId.value
+  return order.userId === currentUserId.value
+}
+
+const isExpiredTicket = (order: Order, ticket: TicketItem) => {
+  return ticket.status === 'UNUSED' && hasPassed(order.endTime)
+}
+
+const effectiveTicketStatus = (order: Order, ticket: TicketItem): DisplayTicketStatus => {
+  if (order.status === 'PENDING_REFUND' && ticket.status === 'UNUSED') return 'PENDING_REFUND'
+  if (isExpiredTicket(order, ticket)) return 'EXPIRED'
+  return ticket.status
+}
+
 const tickets = computed<TicketView[]>(() => {
   return orders.value
-    .filter(order => order.status === 'PAID')
+    .filter(order => order.status === 'PAID' || order.status === 'PENDING_REFUND')
     .flatMap(order => (order.tickets || [])
       .filter(ticket => ticket.status !== 'VOID')
       .map(ticket => ({
@@ -142,19 +172,32 @@ const tickets = computed<TicketView[]>(() => {
           ? t('seat.info', { row: ticket.rowNo, col: ticket.colNo })
           : (ticket.seatLabel || ticket.seatId || t('ticket.unassigned')),
         holder: ticket.holderDisplayName || '',
-        status: ticket.status,
+        status: effectiveTicketStatus(order, ticket),
         isGroupHeld: order.userId !== currentUserId.value,
-        canRefund: order.status === 'PAID' && ticket.status === 'UNUSED'
+        canRefund: order.status === 'PAID' && ticket.status === 'UNUSED' && !isExpiredTicket(order, ticket)
       })))
 })
 
 const isOwnedOrder = (order: Order) => order.userId === currentUserId.value
+const ordersBusy = computed(() => orderLoading.value || orderRefreshing.value)
 
 const pendingReservations = computed(() => orders.value.filter(order => order.status === 'PENDING_PAYMENT' && isOwnedOrder(order)))
+const availableTicketCount = computed(() => tickets.value.filter(ticket => ticket.status === 'UNUSED').length)
 const totalSpend = computed(() => {
-  return orders.value
-    .filter(order => order.status === 'PAID' || order.status === 'PENDING_REFUND')
-    .reduce((sum, order) => sum + Number(order.totalAmount || 0), 0)
+  return orders.value.reduce((sum, order) => {
+    if (order.status !== 'PAID' && order.status !== 'PENDING_REFUND') return sum
+    const visibleTickets = order.tickets || []
+    const eligibleTickets = visibleTickets.filter(ticket =>
+      isTicketHeldByCurrentUser(order, ticket)
+      && (ticket.status === 'UNUSED' || ticket.status === 'CHECKED_IN')
+    )
+    const ticketSum = eligibleTickets.reduce((amount, ticket) => amount + numericAmount(ticket.price), 0)
+    if (ticketSum > 0) return sum + ticketSum
+    if (eligibleTickets.length > 0 && eligibleTickets.length === visibleTickets.length) {
+      return sum + numericAmount(order.totalAmount)
+    }
+    return sum
+  }, 0)
 })
 
 const viewTicket = (orderId: string) => {
@@ -180,12 +223,12 @@ const formatAmount = (value: number | string) => formatMoney(value, locale.value
 
 const orderStatusLabel = (status: Order['status']) => t(`profile.orderStatus.${status.toLowerCase()}`)
 
-const ticketStatusLabel = (status: TicketItem['status']) => {
+const ticketStatusLabel = (status: DisplayTicketStatus) => {
   const key = status.toLowerCase().replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase())
   return t(`ticket.status.${key}`)
 }
 
-const statusTone = (status: Order['status'] | TicketItem['status']) => status.toLowerCase().replace(/_/g, '-')
+const statusTone = (status: Order['status'] | DisplayTicketStatus) => status.toLowerCase().replace(/_/g, '-')
 
 const canRefundOrder = (order: Order) => {
   if (order.status !== 'PAID') return false
@@ -216,6 +259,7 @@ const orderById = (orderId: string) => orders.value.find(order => order.id === o
 const refundableTickets = (order: Order) => {
   return (order.tickets || []).filter(ticket => {
     if (ticket.status !== 'UNUSED') return false
+    if (isExpiredTicket(order, ticket)) return false
     if (isOwnedOrder(order)) return true
     return ticket.holderUserId === currentUserId.value
   })
@@ -321,8 +365,8 @@ const submitRefund = async () => {
         </div>
       </div>
       <div class="hero-actions">
-        <button class="text-action refresh-btn" type="button" :disabled="orderLoading" @click="loadOrders">
-          {{ t('profile.refresh') }}
+        <button class="text-action refresh-btn" type="button" :disabled="ordersBusy" @click="loadOrders">
+          {{ orderRefreshing ? t('common.loading') : t('profile.refresh') }}
         </button>
         <button class="text-action logout-btn" type="button" @click="handleLogout">
           {{ t('common.logout') }}
@@ -332,7 +376,7 @@ const submitRefund = async () => {
 
     <section class="metric-strip">
       <button type="button" :class="{ active: activeTab === 'tickets' }" @click="selectTab('tickets')">
-        <strong>{{ tickets.length }}</strong>
+        <strong>{{ availableTicketCount }}</strong>
         <span class="metric-label">{{ t('profile.availableTickets') }}</span>
       </button>
       <button type="button" :class="{ active: activeTab === 'reservations' }" @click="selectTab('reservations')">
@@ -369,7 +413,7 @@ const submitRefund = async () => {
             </div>
           </div>
           <div v-if="tickets.length > 0" class="ticket-list">
-            <article v-for="tkt in tickets" :key="tkt.id" class="ticket-card" :class="{ used: tkt.status === 'CHECKED_IN' }">
+            <article v-for="tkt in tickets" :key="tkt.id" class="ticket-card" :class="{ used: tkt.status === 'CHECKED_IN', expired: tkt.status === 'EXPIRED' }">
               <div class="ticket-rail" aria-hidden="true">
                 <Tickets />
               </div>
@@ -410,7 +454,7 @@ const submitRefund = async () => {
           <div v-else class="state-card ticket-empty">
             <span>{{ t('profile.noTickets') }}</span>
             <small>{{ t('profile.ticketRefreshHint') }}</small>
-            <button class="icon-action primary-link" type="button" :disabled="orderLoading" @click="loadOrders">
+            <button class="icon-action primary-link" type="button" :disabled="ordersBusy" @click="loadOrders">
               {{ t('profile.refresh') }}
             </button>
           </div>
@@ -1239,10 +1283,12 @@ const submitRefund = async () => {
   }
 
   strong {
+    min-width: 92px;
     color: #fff;
     font-size: 26px;
     font-weight: 600;
     line-height: 1.2;
+    font-variant-numeric: tabular-nums;
   }
 
   .metric-label {
@@ -1337,6 +1383,14 @@ const submitRefund = async () => {
 
   &:hover {
     background: rgba(255, 255, 255, 0.025);
+  }
+}
+
+.ticket-card.expired {
+  opacity: 0.68;
+
+  .ticket-rail {
+    color: rgba(255, 255, 255, 0.38);
   }
 }
 

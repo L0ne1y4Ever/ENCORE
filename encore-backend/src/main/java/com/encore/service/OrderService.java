@@ -486,6 +486,10 @@ public class OrderService {
         if (schedule == null || schedule.getStartTime() == null) {
             throw new BusinessException(ErrorCode.CONFLICT, "场次信息异常，无法自助退票");
         }
+        LocalDateTime now = LocalDateTime.now();
+        if (schedule.getEndTime() != null && now.isAfter(schedule.getEndTime())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "演出已结束，无法申请退票");
+        }
         LocalDateTime refundDeadline = schedule.getStartTime().minus(SELF_SERVICE_REFUND_DEADLINE);
         List<TicketItem> tickets = listTickets(orderId);
         RefundScope refundScope = resolveRefundScope(order, tickets, request, currentUserId);
@@ -493,7 +497,7 @@ public class OrderService {
             return toOrderResponse(getOrder(orderId));
         }
         String reason = cleanRefundText(request == null ? null : request.reason());
-        if (LocalDateTime.now().isBefore(refundDeadline)) {
+        if (now.isBefore(refundDeadline)) {
             createRefundRequest(order, "APPROVED", "USER_AUTO", refundScope.scope(), reason, null, null, currentUserId, refundScope.tickets());
             markRefunded(order, refundScope.tickets(), "USER_REFUNDED");
         } else {
@@ -939,7 +943,10 @@ public class OrderService {
                 : rawTickets.stream()
                         .filter(ticket -> viewerId.equals(ticket.getHolderUserId()))
                         .toList();
-        BigDecimal visibleAmount = fullAccess ? order.getTotalAmount() : calculateTicketAmount(order, visibleTickets);
+        List<TicketItem> billableVisibleTickets = visibleTickets.stream()
+                .filter(ticket -> "UNUSED".equals(ticket.getStatus()) || "CHECKED_IN".equals(ticket.getStatus()))
+                .toList();
+        BigDecimal visibleAmount = fullAccess ? order.getTotalAmount() : calculateTicketAmount(order, billableVisibleTickets);
 
         List<TicketItemResponse> tickets = visibleTickets.stream()
                 .sorted(Comparator.comparing(t -> t.getSeatId() == null ? "" : t.getSeatId()))
@@ -949,10 +956,12 @@ public class OrderService {
                     String seatLabel = "不指定座位";
                     Integer rowNo = null;
                     Integer colNo = null;
+                    BigDecimal price = BigDecimal.ZERO;
 
                     if (ticket.getAreaInventoryId() != null) {
                         ScheduleAreaInventory inv = scheduleAreaInventoryMapper.selectById(ticket.getAreaInventoryId());
                         if (inv != null) {
+                            price = moneyOrZero(inv.getPrice());
                             VenueArea area = venueAreaMapper.selectById(inv.getAreaId());
                             if (area != null) {
                                 areaName = area.getName();
@@ -975,6 +984,7 @@ public class OrderService {
                                     areaType = area.getAreaType();
                                 }
                             }
+                            price = moneyOrZero(seat.getPrice());
                         }
                     }
 
@@ -991,6 +1001,7 @@ public class OrderService {
                             seatLabel,
                             rowNo,
                             colNo,
+                            price,
                             ticket.getHolderUserId(),
                             ticket.getHolderDisplayName()
                     );
@@ -1004,6 +1015,7 @@ public class OrderService {
                 showTitle(order.getScheduleId()),
                 theaterName(order.getScheduleId()),
                 startTime(order.getScheduleId()),
+                endTime(order.getScheduleId()),
                 visibleAmount,
                 order.getStatus(),
                 order.getCreatedAt(),
@@ -1030,6 +1042,11 @@ public class OrderService {
     private LocalDateTime startTime(String scheduleId) {
         ShowSchedule schedule = showScheduleMapper.selectById(scheduleId);
         return schedule == null ? null : schedule.getStartTime();
+    }
+
+    private LocalDateTime endTime(String scheduleId) {
+        ShowSchedule schedule = showScheduleMapper.selectById(scheduleId);
+        return schedule == null ? null : schedule.getEndTime();
     }
 
     @Scheduled(fixedRate = 5000)

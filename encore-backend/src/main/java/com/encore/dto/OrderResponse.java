@@ -11,6 +11,7 @@ public record OrderResponse(
         String showTitle,
         String theaterName,
         LocalDateTime startTime,
+        LocalDateTime endTime,
         BigDecimal totalAmount,
         String status,
         LocalDateTime createdAt,

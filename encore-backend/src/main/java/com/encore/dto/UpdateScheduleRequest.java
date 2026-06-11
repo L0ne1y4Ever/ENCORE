@@ -16,7 +16,25 @@ public record UpdateScheduleRequest(
         LocalDateTime saleEndTime,
         @NotBlank String status,
         String publishStatus,
-        @NotBlank String priceRange,
+        String priceRange,
+        SchedulePricingRequest pricing,
         String ticketMode
 ) {
+    public UpdateScheduleRequest(
+            String showId,
+            String hallId,
+            String layoutId,
+            String theaterName,
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            LocalDateTime saleStartTime,
+            LocalDateTime saleEndTime,
+            String status,
+            String publishStatus,
+            String priceRange,
+            String ticketMode
+    ) {
+        this(showId, hallId, layoutId, theaterName, startTime, endTime, saleStartTime, saleEndTime,
+                status, publishStatus, priceRange, null, ticketMode);
+    }
 }

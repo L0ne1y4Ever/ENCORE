@@ -298,6 +298,10 @@ export interface AdminSchedule {
   status: ScheduleStatus
   publishStatus: PublishStatus | string
   priceRange: string
+  basePrice?: number | string | null
+  vipPrice?: number | string | null
+  standardPrice?: number | string | null
+  economyPrice?: number | string | null
   ticketMode: TicketMode | string
   totalSeats: number
   availableSeats: number
@@ -415,6 +419,13 @@ export interface UpdateStaffUserPayload {
   status: StaffStatus | string
 }
 
+export interface AdminSchedulePricingPayload {
+  basePrice: number
+  vipPrice: number
+  standardPrice: number
+  economyPrice: number
+}
+
 export interface CreateAdminSchedulePayload {
   showId: string
   hallId?: string | null
@@ -426,7 +437,8 @@ export interface CreateAdminSchedulePayload {
   saleEndTime?: string | null
   status?: ScheduleStatus
   publishStatus?: PublishStatus | string
-  priceRange: string
+  priceRange?: string
+  pricing?: AdminSchedulePricingPayload
   ticketMode: TicketMode | string
   seatRows?: number
   seatCols?: number
@@ -446,7 +458,8 @@ export interface UpdateAdminSchedulePayload {
   saleEndTime?: string | null
   status: ScheduleStatus
   publishStatus?: PublishStatus | string
-  priceRange: string
+  priceRange?: string
+  pricing?: AdminSchedulePricingPayload
   ticketMode?: TicketMode | string
 }
 

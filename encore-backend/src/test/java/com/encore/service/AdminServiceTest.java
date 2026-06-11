@@ -2,7 +2,9 @@ package com.encore.service;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.encore.dto.AdminBoxOfficeResponse;
+import com.encore.dto.AdminScheduleResponse;
 import com.encore.dto.ReviewRefundRequest;
+import com.encore.dto.SchedulePricingRequest;
 import com.encore.dto.UpdateScheduleRequest;
 import com.encore.exception.BusinessException;
 import com.encore.entity.RefundRequest;
@@ -32,6 +34,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -211,6 +214,98 @@ class AdminServiceTest {
         }
 
         verify(showScheduleMapper, never()).updateById(any(ShowSchedule.class));
+    }
+
+    @Test
+    void updateScheduleAppliesRealPricingAndAutoPriceRangeBeforeSales() {
+        AdminService service = createService();
+        ShowSchedule schedule = schedule();
+        schedule.setLayoutId("lay-1");
+        schedule.setHallId("hall-1");
+        schedule.setTicketMode("SEATED");
+        ScheduleSeat vip = pricedSeat("seat-1-1", "VIP", 150);
+        ScheduleSeat standard = pricedSeat("seat-1-2", "A", 100);
+        ScheduleSeat economy = pricedSeat("seat-1-3", "B", 50);
+        UpdateScheduleRequest request = new UpdateScheduleRequest(
+                "show-1",
+                "hall-1",
+                "lay-1",
+                "Main Hall",
+                LocalDateTime.now().plusDays(2),
+                LocalDateTime.now().plusDays(2).plusHours(2),
+                null,
+                null,
+                "ON_SALE",
+                "PUBLISHED",
+                null,
+                new SchedulePricingRequest(BigDecimal.valueOf(90), BigDecimal.valueOf(220), BigDecimal.valueOf(140), BigDecimal.valueOf(80)),
+                "SEATED"
+        );
+
+        when(userAccountMapper.selectById("u-admin")).thenReturn(user("u-admin", "admin"));
+        when(showScheduleMapper.selectById("sch-1")).thenReturn(schedule);
+        when(showMapper.selectById("show-1")).thenReturn(show());
+        when(scheduleSeatMapper.selectList(any())).thenReturn(List.of(vip, standard, economy));
+        when(scheduleAreaInventoryMapper.selectList(any())).thenReturn(List.of());
+        when(ticketItemMapper.selectList(any())).thenReturn(List.of());
+        when(redisTemplate.keys(any())).thenReturn(Set.of());
+
+        AdminScheduleResponse response;
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-admin");
+            response = service.updateSchedule("sch-1", request);
+        }
+
+        assertThat(vip.getPrice()).isEqualByComparingTo("220");
+        assertThat(standard.getPrice()).isEqualByComparingTo("140");
+        assertThat(economy.getPrice()).isEqualByComparingTo("80");
+        assertThat(response.priceRange()).isEqualTo("80 - 220");
+        assertThat(response.vipPrice()).isEqualByComparingTo("220");
+        assertThat(response.standardPrice()).isEqualByComparingTo("140");
+        assertThat(response.economyPrice()).isEqualByComparingTo("80");
+    }
+
+    @Test
+    void updateScheduleRejectsPricingChangeAfterTicketsExist() {
+        AdminService service = createService();
+        ShowSchedule schedule = schedule();
+        schedule.setLayoutId("lay-1");
+        schedule.setHallId("hall-1");
+        schedule.setTicketMode("SEATED");
+        ScheduleSeat vip = pricedSeat("seat-1-1", "VIP", 150);
+        TicketItem ticket = unusedTicket();
+        UpdateScheduleRequest request = new UpdateScheduleRequest(
+                "show-1",
+                "hall-1",
+                "lay-1",
+                "Main Hall",
+                LocalDateTime.now().plusDays(2),
+                LocalDateTime.now().plusDays(2).plusHours(2),
+                null,
+                null,
+                "ON_SALE",
+                "PUBLISHED",
+                null,
+                new SchedulePricingRequest(BigDecimal.valueOf(90), BigDecimal.valueOf(220), BigDecimal.valueOf(140), BigDecimal.valueOf(80)),
+                "SEATED"
+        );
+
+        when(userAccountMapper.selectById("u-admin")).thenReturn(user("u-admin", "admin"));
+        when(showScheduleMapper.selectById("sch-1")).thenReturn(schedule);
+        when(showMapper.selectById("show-1")).thenReturn(show());
+        when(scheduleSeatMapper.selectList(any())).thenReturn(List.of(vip));
+        when(scheduleAreaInventoryMapper.selectList(any())).thenReturn(List.of());
+        when(ticketItemMapper.selectList(any())).thenReturn(List.of(ticket));
+
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsString).thenReturn("u-admin");
+            assertThatThrownBy(() -> service.updateSchedule("sch-1", request))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("已有订单或票据的场次不可修改票价");
+        }
+
+        assertThat(vip.getPrice()).isEqualByComparingTo("150");
+        verify(scheduleSeatMapper, never()).updateById(vip);
     }
 
     @Test
@@ -429,6 +524,19 @@ class AdminServiceTest {
         seat.setScheduleId("sch-1");
         seat.setSeatCode("seat-1-1");
         seat.setStatus("SOLD");
+        return seat;
+    }
+
+    private ScheduleSeat pricedSeat(String seatCode, String section, int price) {
+        ScheduleSeat seat = new ScheduleSeat();
+        seat.setId("sch-1:" + seatCode);
+        seat.setScheduleId("sch-1");
+        seat.setSeatCode(seatCode);
+        seat.setRowNo(1);
+        seat.setColNo(1);
+        seat.setSection(section);
+        seat.setStatus("AVAILABLE");
+        seat.setPrice(BigDecimal.valueOf(price));
         return seat;
     }
 

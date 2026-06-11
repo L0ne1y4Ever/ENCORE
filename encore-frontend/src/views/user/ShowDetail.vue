@@ -33,8 +33,50 @@ const schedulePriceLabel = (schedule: Schedule) => {
   return lowestPriceLabel(schedule.priceRange, locale.value) || schedule.priceRange
 }
 
+const isBeforeSaleStart = (schedule: Schedule) => {
+  if (!schedule.saleStartTime) return false
+  const time = Date.parse(schedule.saleStartTime)
+  return Number.isFinite(time) && Date.now() < time
+}
+
+const isAfterSaleEnd = (schedule: Schedule) => {
+  if (!schedule.saleEndTime) return false
+  const time = Date.parse(schedule.saleEndTime)
+  return Number.isFinite(time) && Date.now() > time
+}
+
+const isAfterShowEnd = (schedule: Schedule) => {
+  if (!schedule.endTime) return false
+  const time = Date.parse(schedule.endTime)
+  return Number.isFinite(time) && Date.now() > time
+}
+
+const isBookableSchedule = (schedule: Schedule) => {
+  return schedule.status === 'ON_SALE'
+    && !isBeforeSaleStart(schedule)
+    && !isAfterSaleEnd(schedule)
+    && !isAfterShowEnd(schedule)
+}
+
+const isReservableSchedule = (schedule: Schedule) => {
+  if (schedule.status === 'CANCELLED' || schedule.status === 'ENDED' || isAfterSaleEnd(schedule) || isAfterShowEnd(schedule)) {
+    return false
+  }
+  return schedule.status === 'PREPARING'
+    || schedule.status === 'COMING_SOON'
+    || (schedule.status === 'ON_SALE' && isBeforeSaleStart(schedule))
+}
+
+const onSaleSchedules = computed(() => schedules.value.filter(isBookableSchedule))
+const displayableSchedules = computed(() => schedules.value.filter(schedule => {
+  if (schedule.status === 'CANCELLED' || schedule.status === 'ENDED') return false
+  if (isAfterSaleEnd(schedule) || isAfterShowEnd(schedule)) return false
+  return isBookableSchedule(schedule) || isReservableSchedule(schedule) || schedule.status === 'SOLD_OUT'
+}))
+
 const lowestPrice = computed(() => {
-  const minimums = schedules.value
+  const source = displayableSchedules.value
+  const minimums = source
     .map(item => numericPrice(item.minPrice))
     .filter((value): value is number => value != null)
   if (minimums.length) {
@@ -44,14 +86,13 @@ const lowestPrice = computed(() => {
   if (fromShow != null) {
     return formatMoney(fromShow, locale.value)
   }
-  const price = schedules.value.map(schedulePriceLabel).find(Boolean)
+  const price = source.map(schedulePriceLabel).find(Boolean)
   return price || t('home.pricePending')
 })
-const onSaleSchedules = computed(() => schedules.value.filter(item => item.status === 'ON_SALE'))
 
 const scheduleGroups = computed(() => {
   const groups = new Map<string, Schedule[]>()
-  for (const schedule of schedules.value) {
+  for (const schedule of displayableSchedules.value) {
     const key = schedule.startTime.slice(0, 10)
     const list = groups.get(key) || []
     list.push(schedule)
@@ -95,10 +136,11 @@ const scrollToSchedules = () => {
   document.getElementById('schedule-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
-const statusLabel = (status: Schedule['status']) => {
-  if (status === 'ON_SALE') return t('home.onSaleNow')
-  if (status === 'PREPARING' || status === 'COMING_SOON') return t('detail.reserve')
-  if (status === 'SOLD_OUT') return t('admin.scheduleStatusMap.soldOut')
+const statusLabel = (schedule: Schedule) => {
+  if (isBookableSchedule(schedule)) return t('home.onSaleNow')
+  if (isReservableSchedule(schedule)) return t('detail.reserve')
+  if (schedule.status === 'SOLD_OUT') return t('admin.scheduleStatusMap.soldOut')
+  if (schedule.status === 'ENDED' || isAfterSaleEnd(schedule) || isAfterShowEnd(schedule)) return t('admin.scheduleStatusMap.ended')
   return t('detail.unavailable')
 }
 
@@ -169,7 +211,7 @@ const ticketModeLabel = (mode?: string) => {
               <span class="section-kicker">{{ t('detail.selectSchedule') }}</span>
               <h2>{{ t('detail.availableDates') }}</h2>
             </div>
-            <span class="schedule-count">{{ schedules.length }}</span>
+            <span class="schedule-count">{{ displayableSchedules.length }}</span>
           </div>
 
           <div v-if="scheduleGroups.length > 0" class="date-groups">
@@ -180,7 +222,7 @@ const ticketModeLabel = (mode?: string) => {
                   v-for="sch in group.rows"
                   :key="sch.id"
                   class="schedule-card"
-                  :class="{ presale: sch.status === 'PREPARING' || sch.status === 'COMING_SOON', disabled: sch.status !== 'ON_SALE' && sch.status !== 'PREPARING' && sch.status !== 'COMING_SOON' }"
+                  :class="{ presale: isReservableSchedule(sch), disabled: !isBookableSchedule(sch) && !isReservableSchedule(sch) }"
                 >
                   <div class="time-box">
                     <strong>{{ formatScheduleTime(sch.startTime, locale) }}</strong>
@@ -193,7 +235,7 @@ const ticketModeLabel = (mode?: string) => {
                     </div>
                     <div class="schedule-tags">
                       <span>{{ ticketModeLabel(sch.ticketMode) }}</span>
-                      <span>{{ statusLabel(sch.status) }}</span>
+                      <span>{{ statusLabel(sch) }}</span>
                     </div>
                   </div>
                   <div class="schedule-price">
@@ -201,7 +243,7 @@ const ticketModeLabel = (mode?: string) => {
                     <strong>{{ schedulePriceLabel(sch) }}</strong>
                   </div>
                   <button
-                    v-if="sch.status === 'ON_SALE'"
+                    v-if="isBookableSchedule(sch)"
                     class="book-btn"
                     type="button"
                     @click="goSeatSelection(sch.id)"
@@ -209,7 +251,7 @@ const ticketModeLabel = (mode?: string) => {
                     {{ t('detail.book') }}
                   </button>
                   <button
-                    v-else-if="sch.status === 'PREPARING' || sch.status === 'COMING_SOON'"
+                    v-else-if="isReservableSchedule(sch)"
                     class="reserve-btn"
                     type="button"
                     @click="handleReserve"

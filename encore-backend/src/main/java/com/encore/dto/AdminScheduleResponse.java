@@ -1,5 +1,6 @@
 package com.encore.dto;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 public record AdminScheduleResponse(
@@ -19,6 +20,10 @@ public record AdminScheduleResponse(
         String status,
         String publishStatus,
         String priceRange,
+        BigDecimal basePrice,
+        BigDecimal vipPrice,
+        BigDecimal standardPrice,
+        BigDecimal economyPrice,
         String ticketMode,
         long totalSeats,
         long availableSeats,
